@@ -217,6 +217,14 @@ const PERM_MODE_LABEL = {
 
 const AGENT_LABEL = { claude: 'Claude', cursor: 'Cursor', codex: 'Codex', gemini: 'Gemini' };
 
+/** 聊天室頂欄狀態角標：中文短標（避免與權限列搶注意力） */
+const SESSION_STATE_LABEL = {
+  IDLE: '待命',
+  THINKING: '思考中',
+  STREAMING: '輸出中',
+  AWAITING_CONFIRM: '待授權',
+};
+
 /**
  * 依 agent_type 回傳可用的 permission_mode 下拉選項。
  * - Claude / Cursor: default / acceptEdits / bypassPermissions
@@ -305,13 +313,15 @@ function PermModeSwitch({ agentType, value, onChange, disabled, title }) {
   );
 }
 
-/** 權限模式：窄螢幕（app 版）用下拉選單，與 PermModeSwitch 選項一致。 */
-function PermModeSelect({ agentType, value, onChange, disabled, title, id }) {
+/** 權限模式：窄螢幕（app 版）用下拉選單，與 PermModeSwitch 選項一致。danger 值會套用琥珀邊框（與分段按鈕語意一致）。 */
+function PermModeSelect({ agentType, value, onChange, disabled, title, id, className }) {
   const opts = permModeOptionsFor(agentType);
   const t = String(agentType || 'claude').toLowerCase();
   const ariaLabel =
     title || (t === 'gemini' ? 'Gemini 核准模式' : '權限模式');
   const selectId = id || `perm-mode-select-${t}`;
+  const danger = value === 'bypassPermissions' || value === 'yolo';
+  const widthClass = className != null && String(className).trim() !== '' ? '' : 'w-full ';
   return (
     <select
       id={selectId}
@@ -319,7 +329,14 @@ function PermModeSelect({ agentType, value, onChange, disabled, title, id }) {
       value={value}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-600 disabled:opacity-45"
+      className={[
+        widthClass,
+        'min-w-0 rounded-lg px-3 py-1.5 text-sm focus:outline-none disabled:opacity-45 transition-[color,background-color,border-color,box-shadow] duration-150',
+        danger
+          ? 'border border-amber-600/75 bg-amber-950/45 text-amber-50 shadow-sm shadow-amber-950/35 focus:border-amber-500 focus:ring-1 focus:ring-amber-600/35'
+          : 'border border-gray-700 bg-gray-800 text-gray-200 focus:border-indigo-600',
+        className || '',
+      ].join(' ').replace(/\s+/g, ' ').trim()}
     >
       {opts.map((opt) => (
         <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -650,22 +667,28 @@ function SessionView({ onEnter, onSessionsLoaded, usePermModeDropdown = false })
               <option value="codex" disabled>Codex（未支援）</option>
             </select>
             <div className="min-w-0">
-              <div className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">權限模式</div>
               {usePermModeDropdown ? (
-                <PermModeSelect
-                  agentType={newAgent}
-                  value={newMode}
-                  onChange={setNewMode}
-                  disabled={newAgent === 'codex'}
-                  id="session-new-perm-mode"
-                />
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="shrink-0 text-xs text-gray-500">權限</span>
+                  <PermModeSelect
+                    agentType={newAgent}
+                    value={newMode}
+                    onChange={setNewMode}
+                    disabled={newAgent === 'codex'}
+                    id="session-new-perm-mode"
+                    className="flex-1 min-w-0 py-2"
+                  />
+                </div>
               ) : (
-                <PermModeSwitch
-                  agentType={newAgent}
-                  value={newMode}
-                  onChange={setNewMode}
-                  disabled={newAgent === 'codex'}
-                />
+                <>
+                  <div className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">權限模式</div>
+                  <PermModeSwitch
+                    agentType={newAgent}
+                    value={newMode}
+                    onChange={setNewMode}
+                    disabled={newAgent === 'codex'}
+                  />
+                </>
               )}
             </div>
           </div>
@@ -1016,8 +1039,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
 
   return (
     <div className={`flex flex-col ${fullHeight ? 'h-screen' : 'h-full'}`}>
-      {/* Header：窄螢幕改直向堆疊，權限列獨立一行，避免與標題搶寬 */}
-      <div className="flex flex-col gap-2 px-4 py-2 bg-gray-900 border-b border-gray-800 shrink-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+      {/* Header：app 版權限為單行（標籤＋下拉），並以頂部分隔線區隔會話資訊 */}
+      <div className="flex flex-col gap-1.5 px-4 py-2 bg-gray-900 border-b border-gray-800 shrink-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
            style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top) + var(--tg-content-safe-top))' }}>
         <div className="flex items-start gap-2 min-w-0 w-full sm:min-w-0 sm:flex-1 sm:items-center">
           {showBack && (
@@ -1036,12 +1059,17 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 {agentType}
               </span>
               <GitBranchBadge branch={session.git_branch} />
-              <span className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full font-mono shrink-0 ${
-                state === 'IDLE'            ? 'bg-green-900 text-green-300' :
-                state === 'THINKING'        ? 'bg-indigo-900 text-indigo-300' :
-                state === 'STREAMING'       ? 'bg-blue-900 text-blue-300' :
-                'bg-yellow-900 text-yellow-300'
-              }`}>{state}</span>
+              <span
+                title={state}
+                className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full font-medium shrink-0 ${
+                  state === 'IDLE'            ? 'bg-green-900 text-green-300' :
+                  state === 'THINKING'        ? 'bg-indigo-900 text-indigo-300' :
+                  state === 'STREAMING'       ? 'bg-blue-900 text-blue-300' :
+                  'bg-yellow-900 text-yellow-300'
+                }`}
+              >
+                {SESSION_STATE_LABEL[state] || state}
+              </span>
             </div>
             {session.work_dir && (
               <div className="text-xs text-gray-500 font-mono truncate">{session.work_dir}</div>
@@ -1052,27 +1080,28 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
           <div
             className={
               usePermModeDropdown
-                ? 'w-full min-w-0 shrink-0'
+                ? 'w-full min-w-0 shrink-0 border-t border-gray-800/90 pt-2 mt-0.5 -mx-4 px-4 sm:border-t-0 sm:pt-0 sm:mt-0 sm:px-0 sm:mx-0 sm:w-auto sm:max-w-[min(100%,20rem)] sm:self-center'
                 : 'w-fit max-w-full min-w-0 shrink-0 self-end sm:self-center sm:ml-auto'
             }
           >
             {usePermModeDropdown ? (
-              <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">權限模式</div>
-            ) : null}
-            {usePermModeDropdown ? (
-              <PermModeSelect
-                agentType={agentType}
-                value={mode}
-                onChange={handleSetMode}
-                title={
-                  agentType === 'gemini'
-                    ? 'Gemini 核准模式（--approval-mode）'
-                    : agentType === 'cursor'
-                    ? '權限模式（bypass：Cursor 會加 --force）'
-                    : '權限模式'
-                }
-                id="chat-perm-mode"
-              />
+              <div className="flex items-center gap-2 min-w-0 w-full sm:justify-end">
+                <span className="shrink-0 text-xs text-gray-500">權限</span>
+                <PermModeSelect
+                  agentType={agentType}
+                  value={mode}
+                  onChange={handleSetMode}
+                  title={
+                    agentType === 'gemini'
+                      ? 'Gemini 核准模式（--approval-mode）'
+                      : agentType === 'cursor'
+                      ? '權限模式（bypass：Cursor 會加 --force）'
+                      : '權限模式'
+                  }
+                  id="chat-perm-mode"
+                  className="flex-1 min-w-0 sm:min-w-[11rem]"
+                />
+              </div>
             ) : (
               <PermModeSwitch
                 agentType={agentType}
