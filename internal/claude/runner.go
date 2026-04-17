@@ -26,7 +26,7 @@ func (r *Runner) Name() string { return agent.TypeClaude }
 // Run 實作 agent.Runner：啟動 claude -p 子進程，逐行解析 stream-json 並透過 cb 回傳事件。
 func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventCallback) error {
 	args := []string{
-		"-p", opts.Prompt,
+		"-p",
 		"--output-format", "stream-json",
 		"--verbose",
 	}
@@ -56,12 +56,13 @@ func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventC
 		}
 	}
 
-	log.Printf("[claude] 執行指令: claude %s", strings.Join(args, " "))
+	log.Printf("[claude] 執行指令: claude %s (prompt len=%d)", strings.Join(args, " "), len(opts.Prompt))
 	if opts.WorkDir != "" {
 		log.Printf("[claude] 工作目錄: %s", opts.WorkDir)
 	}
 
 	cmd := exec.CommandContext(ctx, "claude", args...)
+	cmd.Stdin = strings.NewReader(opts.Prompt)
 	if opts.WorkDir != "" {
 		cmd.Dir = opts.WorkDir
 	}
