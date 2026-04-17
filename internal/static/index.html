@@ -15,7 +15,10 @@
   <style>
     :root { --tg-content-safe-top: 0px; }
     body { background: #0f0f0f; color: #e5e5e5; font-family: system-ui, sans-serif; }
-    input, textarea, select { font-size: 16px !important; }
+    /* 寬螢幕沿用 Tailwind text-sm（與聊天室一致）；僅窄螢幕強制 16px，避免 iOS 聚焦輸入時自動縮放 */
+    @media (max-width: 767px) {
+      input, textarea, select { font-size: 16px !important; }
+    }
     .prose pre { margin: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
     .prose pre code { white-space: pre; }
     .prose code:not(pre code) {
@@ -47,7 +50,7 @@
     .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #6366f1; margin: 0 2px; animation: pulse-dot 1.2s infinite; }
     .dot:nth-child(2) { animation-delay: 0.2s; }
     .dot:nth-child(3) { animation-delay: 0.4s; }
-    /* 側欄 Session 列表與聊天室共用：細捲軸、與標題 indigo 一致 */
+    /* 側欄 Session 列表、聊天室、textarea 共用：細捲軸、與標題 indigo 一致 */
     .app-scroll {
       -webkit-overflow-scrolling: touch;
       scrollbar-width: thin;
@@ -74,7 +77,7 @@
 <body class="h-screen">
 
 <script type="text/babel">
-const { useState, useEffect, useRef, useCallback, useMemo } = React;
+const { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } = React;
 
 // ── Telegram WebApp 初始化 ────────────────────────────────────────────────────
 const tgApp = window.Telegram?.WebApp;
@@ -619,7 +622,7 @@ function SessionView({ onEnter, onSessionsLoaded }) {
                 placeholder={'每行一個引數，例如：\n--plugin-dir\n./.claude/plugins/crm\n--plugin-dir\n./.claude/plugins/crm2\n含空格的路徑請寫在同一行。'}
                 rows={5}
                 spellCheck={false}
-                className="w-full min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-600 font-mono leading-relaxed"
+                className="w-full min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-600 font-mono leading-relaxed overflow-y-auto app-scroll"
               />
             </div>
           )}
@@ -736,6 +739,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true }) {
   const [histLoaded, setHistLoaded] = useState(false);
   const wsRef     = useRef(null);
   const bottomRef = useRef(null);
+  const chatInputRef = useRef(null);
   const streamBuf = useRef('');
   const connGenRef = useRef(0);
   const activeSessionRef = useRef(session.id);
@@ -943,6 +947,17 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true }) {
 
   const isDisabled = state !== 'IDLE';
 
+  /** 聊天輸入框：依內容伸縮高度，並遵守 CSS max-height（min(40vh,12rem)） */
+  useLayoutEffect(() => {
+    const el = chatInputRef.current;
+    if (!el || state === 'THINKING' || state === 'STREAMING') return;
+    el.style.height = '0px';
+    const maxStr = getComputedStyle(el).maxHeight;
+    const maxPx = parseFloat(maxStr);
+    const cap = Number.isFinite(maxPx) && maxPx > 0 ? maxPx : 12 * 16;
+    el.style.height = `${Math.min(el.scrollHeight, cap)}px`;
+  }, [input, state]);
+
   return (
     <div className={`flex flex-col ${fullHeight ? 'h-screen' : 'h-full'}`}>
       {/* Header：窄螢幕改直向堆疊，權限列獨立一行，避免與標題搶寬 */}
@@ -1067,8 +1082,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true }) {
         <div ref={bottomRef} />
       </div>
 
-      {/* 輸入區 */}
-      <div className="shrink-0 px-4 py-3 bg-gray-900 border-t border-gray-800"
+      {/* 輸入區：水平內距略小於訊息列表，讓輸入框可用寬度較大 */}
+      <div className="shrink-0 px-2 sm:px-3 py-3 bg-gray-900 border-t border-gray-800"
            style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
         {state === 'STREAMING' || state === 'THINKING' ? (
           <button onClick={handleInterrupt}
@@ -1076,18 +1091,19 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true }) {
             中斷
           </button>
         ) : (
-          <div className="flex gap-2">
+          <div className="flex gap-2 w-full min-w-0 items-end">
             <textarea
+              ref={chatInputRef}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               disabled={isDisabled}
               placeholder="輸入指令… (Enter 送出，Shift+Enter 換行)"
-              rows={2}
-              className="flex-1 resize-none bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-600 disabled:opacity-40"
+              rows={1}
+              className="flex-1 min-w-0 w-full resize-none overflow-y-auto app-scroll bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm leading-relaxed text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-600 disabled:opacity-40 min-h-[2.75rem] max-h-[min(40vh,12rem)] box-border"
             />
-            <button onClick={handleSend} disabled={isDisabled || !input.trim()}
-              className="px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white rounded-lg text-sm font-medium">
+            <button type="button" onClick={handleSend} disabled={isDisabled || !input.trim()}
+              className="shrink-0 self-end px-4 py-2 min-h-[2.75rem] bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white rounded-lg text-sm font-medium">
               送出
             </button>
           </div>
