@@ -7,25 +7,29 @@ import (
 )
 
 type Session struct {
-	ID              string   `json:"id"`
-	ClaudeID        string   `json:"claude_id"`
-	Name            string   `json:"name"`
-	Description     string   `json:"description"`
-	WorkDir         string   `json:"work_dir"`
-	PermissionMode  string   `json:"permission_mode"`
-	AllowedTools    []string `json:"allowed_tools"`
-	PendingDenials  string   `json:"pending_denials"`
-	LastActive      string   `json:"last_active"`
+	ID             string   `json:"id"`
+	AgentType      string   `json:"agent_type"`
+	AgentSessionID string   `json:"agent_session_id"`
+	Name           string   `json:"name"`
+	Description    string   `json:"description"`
+	WorkDir        string   `json:"work_dir"`
+	PermissionMode string   `json:"permission_mode"`
+	AllowedTools   []string `json:"allowed_tools"`
+	PendingDenials string   `json:"pending_denials"`
+	LastActive     string   `json:"last_active"`
 }
 
-func (db *DB) CreateSession(name, description, workDir, permissionMode string) (*Session, error) {
+func (db *DB) CreateSession(name, description, workDir, permissionMode, agentType string) (*Session, error) {
 	id := uuid.New().String()
 	if permissionMode == "" {
 		permissionMode = "default"
 	}
+	if agentType == "" {
+		agentType = "claude"
+	}
 	_, err := db.Exec(
-		`INSERT INTO sessions (id, name, description, work_dir, permission_mode) VALUES (?, ?, ?, ?, ?)`,
-		id, name, description, workDir, permissionMode,
+		`INSERT INTO sessions (id, name, description, work_dir, permission_mode, agent_type) VALUES (?, ?, ?, ?, ?, ?)`,
+		id, name, description, workDir, permissionMode, agentType,
 	)
 	if err != nil {
 		return nil, err
@@ -35,14 +39,14 @@ func (db *DB) CreateSession(name, description, workDir, permissionMode string) (
 
 func (db *DB) GetSession(id string) (*Session, error) {
 	row := db.QueryRow(
-		`SELECT id, claude_id, name, description, work_dir, permission_mode, allowed_tools, pending_denials, last_active FROM sessions WHERE id = ?`, id,
+		`SELECT id, agent_type, agent_session_id, name, description, work_dir, permission_mode, allowed_tools, pending_denials, last_active FROM sessions WHERE id = ?`, id,
 	)
 	return scanSession(row)
 }
 
 func (db *DB) ListSessions() ([]*Session, error) {
 	rows, err := db.Query(
-		`SELECT id, claude_id, name, description, work_dir, permission_mode, allowed_tools, pending_denials, last_active FROM sessions ORDER BY last_active DESC`,
+		`SELECT id, agent_type, agent_session_id, name, description, work_dir, permission_mode, allowed_tools, pending_denials, last_active FROM sessions ORDER BY last_active DESC`,
 	)
 	if err != nil {
 		return nil, err
@@ -76,10 +80,11 @@ func (db *DB) UpdateSessionName(id, name string) error {
 	return err
 }
 
-func (db *DB) UpdateClaudeID(id, claudeID string) error {
+// UpdateAgentSessionID 更新 session 中由 AI 工具回傳的原生 session id（例如 Claude 的 session_id）。
+func (db *DB) UpdateAgentSessionID(id, agentSessionID string) error {
 	_, err := db.Exec(
-		`UPDATE sessions SET claude_id = ?, last_active = datetime('now') WHERE id = ?`,
-		claudeID, id,
+		`UPDATE sessions SET agent_session_id = ?, last_active = datetime('now') WHERE id = ?`,
+		agentSessionID, id,
 	)
 	return err
 }
@@ -121,7 +126,7 @@ func scanSession(s scanner) (*Session, error) {
 	var sess Session
 	var allowedTools string
 	err := s.Scan(
-		&sess.ID, &sess.ClaudeID, &sess.Name, &sess.Description,
+		&sess.ID, &sess.AgentType, &sess.AgentSessionID, &sess.Name, &sess.Description,
 		&sess.WorkDir, &sess.PermissionMode, &allowedTools, &sess.PendingDenials, &sess.LastActive,
 	)
 	if err != nil {
@@ -131,6 +136,9 @@ func scanSession(s scanner) (*Session, error) {
 		sess.AllowedTools = strings.Split(allowedTools, ",")
 	} else {
 		sess.AllowedTools = []string{}
+	}
+	if sess.AgentType == "" {
+		sess.AgentType = "claude"
 	}
 	return &sess, nil
 }

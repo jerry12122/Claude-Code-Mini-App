@@ -7,22 +7,24 @@ import (
 	"log"
 	"os/exec"
 	"strings"
+
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/agent"
 )
 
-type RunOptions struct {
-	Prompt         string
-	SessionID      string // 空字串表示新 session
-	WorkDir        string
-	PermissionMode string   // default | acceptEdits | bypassPermissions
-	AllowedTools   []string // 允許的工具清單
+func init() {
+	agent.Register(agent.TypeClaude, func() agent.Runner {
+		return &Runner{}
+	})
 }
 
-// EventCallback 每收到一個解析好的事件就呼叫一次
-type EventCallback func(e *StreamEvent)
+// Runner 是 Claude Code CLI 的 agent.Runner 實作。
+type Runner struct{}
 
-// Run 啟動 claude -p 子進程，逐行解析 stream-json，透過 callback 回傳事件
-// 子進程結束後函式返回
-func Run(ctx context.Context, opts RunOptions, cb EventCallback) error {
+// Name 實作 agent.Runner。
+func (r *Runner) Name() string { return agent.TypeClaude }
+
+// Run 實作 agent.Runner：啟動 claude -p 子進程，逐行解析 stream-json 並透過 cb 回傳事件。
+func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventCallback) error {
 	args := []string{
 		"-p", opts.Prompt,
 		"--output-format", "stream-json",
@@ -33,14 +35,25 @@ func Run(ctx context.Context, opts RunOptions, cb EventCallback) error {
 		args = append(args, "--resume", opts.SessionID)
 	}
 
-	mode := opts.PermissionMode
+	mode := ""
+	if opts.ExtraArgs != nil {
+		mode = opts.ExtraArgs[agent.ArgPermissionMode]
+	}
 	if mode == "" {
 		mode = "default"
 	}
 	args = append(args, "--permission-mode", mode)
 
-	for _, tool := range opts.AllowedTools {
-		args = append(args, "--allowedTools", tool)
+	if opts.ExtraArgs != nil {
+		if raw := opts.ExtraArgs[agent.ArgAllowedTools]; raw != "" {
+			for _, tool := range strings.Split(raw, ",") {
+				tool = strings.TrimSpace(tool)
+				if tool == "" {
+					continue
+				}
+				args = append(args, "--allowedTools", tool)
+			}
+		}
 	}
 
 	log.Printf("[claude] 執行指令: claude %s", strings.Join(args, " "))
@@ -59,7 +72,6 @@ func Run(ctx context.Context, opts RunOptions, cb EventCallback) error {
 		return err
 	}
 
-	// 同時捕捉 stderr
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf
 
@@ -72,6 +84,7 @@ func Run(ctx context.Context, opts RunOptions, cb EventCallback) error {
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB buffer
 
+	streamStartSent := false
 	lineCount := 0
 	for scanner.Scan() {
 		line := scanner.Bytes()
@@ -99,7 +112,8 @@ func Run(ctx context.Context, opts RunOptions, cb EventCallback) error {
 		if len(e.PermissionDenials) > 0 {
 			log.Printf("[claude]   └─ permission_denials=%d 項", len(e.PermissionDenials))
 		}
-		cb(e)
+
+		r.dispatch(e, cb, &streamStartSent)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -117,6 +131,60 @@ func Run(ctx context.Context, opts RunOptions, cb EventCallback) error {
 		log.Printf("[claude] 子進程正常結束，共處理 %d 行", lineCount)
 	}
 	return waitErr
+}
+
+// dispatch 將 Claude 專屬 StreamEvent 轉換為 agent.Event 送給 cb。
+func (r *Runner) dispatch(e *StreamEvent, cb agent.EventCallback, streamStartSent *bool) {
+	switch e.Type {
+	case "system":
+		if e.Subtype == "init" && e.SessionID != "" {
+			cb(agent.Event{Type: agent.EventSessionInit, SessionID: e.SessionID})
+		}
+
+	case "stream_event":
+		if e.Event == nil {
+			return
+		}
+		switch e.Event.Type {
+		case "content_block_start":
+			if e.Event.ContentBlock != nil && e.Event.ContentBlock.Type == "text" && !*streamStartSent {
+				*streamStartSent = true
+				cb(agent.Event{Type: agent.EventStreamStart})
+			}
+		case "content_block_delta":
+			if e.Event.Delta != nil && e.Event.Delta.Type == "text_delta" && e.Event.Delta.Text != "" {
+				if !*streamStartSent {
+					*streamStartSent = true
+					cb(agent.Event{Type: agent.EventStreamStart})
+				}
+				cb(agent.Event{Type: agent.EventDelta, Text: e.Event.Delta.Text})
+			}
+		}
+
+	case "assistant":
+		text := e.TextContent()
+		if text != "" {
+			if !*streamStartSent {
+				*streamStartSent = true
+				cb(agent.Event{Type: agent.EventStreamStart})
+			}
+			cb(agent.Event{Type: agent.EventDelta, Text: text})
+		}
+
+	case "result":
+		if len(e.PermissionDenials) > 0 {
+			denials := make([]agent.PermissionDenial, 0, len(e.PermissionDenials))
+			for _, d := range e.PermissionDenials {
+				denials = append(denials, agent.PermissionDenial{
+					ToolName:  d.ToolName,
+					ToolUseID: d.ToolUseID,
+					ToolInput: d.ToolInput,
+				})
+			}
+			cb(agent.Event{Type: agent.EventPermDenied, Denials: denials, SessionID: e.SessionID})
+		}
+		cb(agent.Event{Type: agent.EventDone, SessionID: e.SessionID})
+	}
 }
 
 // truncate 截斷過長字串，避免 log 爆炸

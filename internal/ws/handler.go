@@ -11,7 +11,9 @@ import (
 
 	fiberws "github.com/gofiber/contrib/websocket"
 
-	"github.com/jerry12122/Claude-Code-Mini-App/internal/claude"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/agent"
+	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/claude" // 註冊 claude runner
+	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/cursor" // 註冊 cursor runner
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/tg"
 )
@@ -66,14 +68,20 @@ func NewHandler(database *db.DB, botToken string) func(*fiberws.Conn) {
 			return
 		}
 
-		log.Printf("[ws] session %s 已連線 (claudeID=%q mode=%s)", sessionID, sess.ClaudeID, sess.PermissionMode)
+		log.Printf("[ws] session %s 已連線 (agent=%s agentSessionID=%q mode=%s)", sessionID, sess.AgentType, sess.AgentSessionID, sess.PermissionMode)
 		defer log.Printf("[ws] session %s 已斷線", sessionID)
 
 		var mu sync.Mutex
 		var cancelFn context.CancelFunc
-		claudeID := sess.ClaudeID
+		agentType := sess.AgentType
+		if agentType == "" {
+			agentType = agent.TypeClaude
+		}
+		agentSessionID := sess.AgentSessionID
 		permMode := sess.PermissionMode
 		allowedTools := sess.AllowedTools
+
+		isClaude := agentType == agent.TypeClaude
 
 		// 此連線的 send（直接寫入當前 c）
 		send := func(msg serverMsg) bool {
@@ -103,8 +111,8 @@ func NewHandler(database *db.DB, botToken string) func(*fiberws.Conn) {
 			relaySend(serverMsg{Type: "status", Value: status})
 		}
 
-		// 還原未處理的 pending_denials
-		if sess.PendingDenials != "" {
+		// 還原未處理的 pending_denials（僅 Claude 有此流程）
+		if isClaude && sess.PendingDenials != "" {
 			send(serverMsg{Type: "status", Value: StateAwaitingConfirm})
 			send(serverMsg{Type: "permission_request", Tools: json.RawMessage(sess.PendingDenials)})
 			statusRegistry.Store(sessionID, StateAwaitingConfirm)
@@ -120,104 +128,124 @@ func NewHandler(database *db.DB, botToken string) func(*fiberws.Conn) {
 			statusRegistry.Store(sessionID, status)
 		}
 
-		// runClaude 啟動子進程並串流結果
-		runClaude := func(prompt string) {
+		// runAgent 啟動子進程並串流結果
+		runAgent := func(prompt string) {
 			mu.Lock()
 			if cancelFn != nil {
 				cancelFn()
 			}
 			ctx, cancel := context.WithCancel(context.Background())
 			cancelFn = cancel
-			opts := claude.RunOptions{
-				Prompt:         prompt,
-				SessionID:      claudeID,
-				WorkDir:        sess.WorkDir,
-				PermissionMode: permMode,
-				AllowedTools:   allowedTools,
+
+			extra := map[string]string{}
+			if isClaude {
+				extra[agent.ArgPermissionMode] = permMode
+				if len(allowedTools) > 0 {
+					extra[agent.ArgAllowedTools] = strings.Join(allowedTools, ",")
+				}
+			}
+			// Cursor：CLI 的 --force 對應「放寬指令／工具核准」；與 DB 的 bypassPermissions 對齊
+			if agentType == agent.TypeCursor && permMode == "bypassPermissions" {
+				extra[agent.ArgForce] = "true"
+			}
+
+			opts := agent.RunOptions{
+				Prompt:    prompt,
+				SessionID: agentSessionID,
+				WorkDir:   sess.WorkDir,
+				ExtraArgs: extra,
 			}
 			mu.Unlock()
 
-			log.Printf("[ws] 啟動 claude.Run claudeID=%q mode=%s", opts.SessionID, opts.PermissionMode)
+			runner, err := agent.NewRunner(agentType)
+			if err != nil {
+				log.Printf("[ws] 無法建立 %s runner: %v", agentType, err)
+				relaySend(serverMsg{Type: "error", Content: err.Error()})
+				setAndSendStatus(StateIdle)
+				return
+			}
+
+			log.Printf("[ws] 啟動 %s.Run agentSessionID=%q mode=%s", runner.Name(), opts.SessionID, permMode)
 			setAndSendStatus(StateThinking)
 
-			go func(opts claude.RunOptions) {
-				streaming := false
+			go func(opts agent.RunOptions) {
 				var responseBuf strings.Builder
+				permDenied := false
 
-				err := claude.Run(ctx, opts, func(e *claude.StreamEvent) {
+				err := runner.Run(ctx, opts, func(e agent.Event) {
 					switch e.Type {
-					case "stream_event":
-						if e.Event == nil {
+					case agent.EventStreamStart:
+						setAndSendStatus(StateStreaming)
+
+					case agent.EventDelta:
+						responseBuf.WriteString(e.Text)
+						relaySend(serverMsg{Type: "delta", Content: e.Text})
+
+					case agent.EventSessionInit:
+						mu.Lock()
+						if e.SessionID != "" && e.SessionID != agentSessionID {
+							agentSessionID = e.SessionID
+							if err := database.UpdateAgentSessionID(sessionID, agentSessionID); err != nil {
+								log.Printf("[ws] 更新 agent_session_id 失敗: %v", err)
+							}
+						}
+						mu.Unlock()
+
+					case agent.EventPermDenied:
+						if !isClaude {
 							return
 						}
-						switch e.Event.Type {
-						case "content_block_start":
-							if e.Event.ContentBlock != nil && e.Event.ContentBlock.Type == "text" && !streaming {
-								streaming = true
-								setAndSendStatus(StateStreaming)
-							}
-						case "content_block_delta":
-							if e.Event.Delta != nil && e.Event.Delta.Type == "text_delta" && e.Event.Delta.Text != "" {
-								responseBuf.WriteString(e.Event.Delta.Text)
-								relaySend(serverMsg{Type: "delta", Content: e.Event.Delta.Text})
+						permDenied = true
+						if raw, err := json.Marshal(e.Denials); err == nil {
+							if err := database.UpdatePendingDenials(sessionID, string(raw)); err != nil {
+								log.Printf("[ws] 儲存 pending_denials 失敗: %v", err)
 							}
 						}
+						setAndSendStatus(StateAwaitingConfirm)
+						relaySend(serverMsg{Type: "permission_request", Tools: e.Denials})
+						go tg.Notify(botToken, tgUserID, fmt.Sprintf("⚠️ *%s* 需要授權確認，請開啟 App", sess.Name))
 
-					case "assistant":
-						text := e.TextContent()
-						if text != "" {
-							log.Printf("[ws] assistant 整包回覆，長度=%d", len(text))
-							if !streaming {
-								streaming = true
-								setAndSendStatus(StateStreaming)
-							}
-							responseBuf.WriteString(text)
-							relaySend(serverMsg{Type: "delta", Content: text})
-						}
-
-					case "result":
+					case agent.EventDone:
 						mu.Lock()
-						if e.SessionID != "" && e.SessionID != claudeID {
-							claudeID = e.SessionID
-							if err := database.UpdateClaudeID(sessionID, claudeID); err != nil {
-								log.Printf("[ws] 更新 claude_id 失敗: %v", err)
+						if e.SessionID != "" && e.SessionID != agentSessionID {
+							agentSessionID = e.SessionID
+							if err := database.UpdateAgentSessionID(sessionID, agentSessionID); err != nil {
+								log.Printf("[ws] 更新 agent_session_id 失敗: %v", err)
 							}
 						}
 						mu.Unlock()
 
 						if resp := responseBuf.String(); resp != "" {
 							if err := database.AddMessage(sessionID, "claude", resp); err != nil {
-								log.Printf("[ws] 儲存 claude 訊息失敗: %v", err)
+								log.Printf("[ws] 儲存 assistant 訊息失敗: %v", err)
 							}
 						}
 
-						if len(e.PermissionDenials) > 0 {
-							if raw, err := json.Marshal(e.PermissionDenials); err == nil {
-								if err := database.UpdatePendingDenials(sessionID, string(raw)); err != nil {
-									log.Printf("[ws] 儲存 pending_denials 失敗: %v", err)
-								}
-							}
-							setAndSendStatus(StateAwaitingConfirm)
-							relaySend(serverMsg{Type: "permission_request", Tools: e.PermissionDenials})
-							go tg.Notify(botToken, tgUserID, fmt.Sprintf("⚠️ *%s* 需要授權確認，請開啟 App", sess.Name))
-						} else {
+						if !permDenied {
 							clearPendingDenials(database, sessionID)
 							setAndSendStatus(StateIdle)
 							go tg.Notify(botToken, tgUserID, fmt.Sprintf("✅ *%s* 任務完成", sess.Name))
+						}
+
+					case agent.EventError:
+						if e.Err != nil {
+							relaySend(serverMsg{Type: "error", Content: e.Err.Error()})
 						}
 					}
 				})
 
 				if err != nil {
 					if ctx.Err() != nil {
-						log.Println("[ws] claude.Run 被 context 取消")
+						log.Printf("[ws] %s.Run 被 context 取消", agentType)
 					} else {
-						log.Printf("[ws] claude.Run 執行錯誤: %v", err)
+						log.Printf("[ws] %s.Run 執行錯誤: %v", agentType, err)
 						relaySend(serverMsg{Type: "error", Content: err.Error()})
 					}
-					setAndSendStatus(StateIdle)
+					if !permDenied {
+						setAndSendStatus(StateIdle)
+					}
 				} else {
-					log.Println("[ws] claude.Run 正常結束")
+					log.Printf("[ws] %s.Run 正常結束", agentType)
 				}
 			}(opts)
 		}
@@ -239,9 +267,13 @@ func NewHandler(database *db.DB, botToken string) func(*fiberws.Conn) {
 				if err := database.AddMessage(sessionID, "user", msg.Data); err != nil {
 					log.Printf("[ws] 儲存 user 訊息失敗: %v", err)
 				}
-				runClaude(msg.Data)
+				runAgent(msg.Data)
 
 			case "allow_once":
+				if !isClaude {
+					log.Printf("[ws] agent=%s 不支援 allow_once，忽略", agentType)
+					continue
+				}
 				clearPendingDenials(database, sessionID)
 				mu.Lock()
 				existing := make(map[string]bool)
@@ -260,9 +292,13 @@ func NewHandler(database *db.DB, botToken string) func(*fiberws.Conn) {
 				if err := database.UpdateAllowedTools(sessionID, merged); err != nil {
 					log.Printf("[ws] 更新 allowed_tools 失敗: %v", err)
 				}
-				runClaude("please retry the previous operation")
+				runAgent("please retry the previous operation")
 
 			case "set_mode":
+				if agentType != agent.TypeClaude && agentType != agent.TypeCursor {
+					log.Printf("[ws] agent=%s 不支援 set_mode，忽略", agentType)
+					continue
+				}
 				clearPendingDenials(database, sessionID)
 				mu.Lock()
 				permMode = msg.Mode
@@ -279,10 +315,10 @@ func NewHandler(database *db.DB, botToken string) func(*fiberws.Conn) {
 					cancelFn()
 					cancelFn = nil
 				}
-				claudeID = ""
+				agentSessionID = ""
 				mu.Unlock()
-				if err := database.UpdateClaudeID(sessionID, ""); err != nil {
-					log.Printf("[ws] 清除 claude_id 失敗: %v", err)
+				if err := database.UpdateAgentSessionID(sessionID, ""); err != nil {
+					log.Printf("[ws] 清除 agent_session_id 失敗: %v", err)
 				}
 				if err := database.ClearMessages(sessionID); err != nil {
 					log.Printf("[ws] 清除訊息失敗: %v", err)

@@ -31,11 +31,15 @@ func (h *SessionHandler) Create(c *fiber.Ctx) error {
 		Description    string `json:"description"`
 		WorkDir        string `json:"work_dir"`
 		PermissionMode string `json:"permission_mode"`
+		AgentType      string `json:"agent_type"`
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
-	s, err := h.db.CreateSession(body.Name, body.Description, body.WorkDir, body.PermissionMode)
+	if body.AgentType == "" {
+		body.AgentType = "claude"
+	}
+	s, err := h.db.CreateSession(body.Name, body.Description, body.WorkDir, body.PermissionMode, body.AgentType)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}

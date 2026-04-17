@@ -45,7 +45,7 @@
 <body class="h-screen">
 
 <script type="text/babel">
-const { useState, useEffect, useRef, useCallback } = React;
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
 // ── Telegram WebApp 初始化 ────────────────────────────────────────────────────
 const tgApp = window.Telegram?.WebApp;
@@ -102,13 +102,69 @@ const parseMarkdown = (text) => {
     .replace(/<\/table>/g, '</table></div>');
 };
 
+/** 依 CLI runner（agent_type）回傳 badge 的 Tailwind 底色／文字色 */
+function getAgentBadgeClass(agentType) {
+  const t = String(agentType || 'claude').toLowerCase();
+  const map = {
+    claude: 'bg-orange-900/60 text-orange-200',
+    cursor: 'bg-emerald-900/60 text-emerald-300',
+    codex: 'bg-green-900/60 text-green-300',
+    gemini: 'bg-sky-900/60 text-sky-300',
+  };
+  return map[t] || 'bg-gray-700/60 text-gray-300';
+}
+
+/**
+ * 廠商圖示：Simple Icons CDN（https://cdn.simpleicons.org/{slug}/{hex}）
+ * slug 見 https://simpleicons.org/ ；色碼與 badge 文字色對齊（無 #）
+ */
+const AGENT_BADGE_ICON_CDN = {
+  claude: { slug: 'claude', color: 'fed7aa' },
+  cursor: { slug: 'cursor', color: '6ee7b7' },
+  codex: { slug: 'openai', color: '86efac' },
+  gemini: { slug: 'googlegemini', color: '7dd3fc' },
+};
+
+function AgentBadgeIcon({ agentType }) {
+  const t = String(agentType || 'claude').toLowerCase();
+  const cfg = AGENT_BADGE_ICON_CDN[t] || { slug: 'anthropic', color: 'd1d5db' };
+  const src = `https://cdn.simpleicons.org/${cfg.slug}/${cfg.color}`;
+  return (
+    <img
+      src={src}
+      alt=""
+      width={14}
+      height={14}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      className="w-3.5 h-3.5 shrink-0 opacity-95 object-contain [content-visibility:auto]"
+      onError={(e) => {
+        e.currentTarget.removeAttribute('src');
+        e.currentTarget.style.display = 'none';
+      }}
+    />
+  );
+}
+
+/** 解析 API 回傳的 last_active（SQLite datetime 字串）為毫秒時間戳 */
+function sessionLastActiveMs(s) {
+  if (!s || !s.last_active) return 0;
+  const raw = String(s.last_active).trim();
+  const t = Date.parse(raw.includes('T') ? raw : raw.replace(' ', 'T'));
+  return Number.isNaN(t) ? 0 : t;
+}
+
 // ── Session 列表畫面 ──────────────────────────────────────────────────────────
 function SessionView({ onEnter }) {
   const [sessions, setSessions]   = useState([]);
+  const [sessionSearch, setSessionSearch] = useState('');
+  const [sessionSort, setSessionSort]     = useState('last_active_desc');
   const [showForm, setShowForm]   = useState(false);
   const [newName, setNewName]     = useState('');
   const [newDir, setNewDir]       = useState('');
   const [newMode, setNewMode]     = useState('default');
+  const [newAgent, setNewAgent]   = useState('claude');
   const [loading, setLoading]     = useState(false);
   const [renamingId, setRenamingId] = useState(null);
   const [renameVal, setRenameVal]   = useState('');
@@ -131,9 +187,14 @@ function SessionView({ onEnter }) {
     await apiFetch('/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName.trim(), work_dir: newDir.trim(), permission_mode: newMode }),
+      body: JSON.stringify({
+        name: newName.trim(),
+        work_dir: newDir.trim(),
+        permission_mode: newMode,
+        agent_type: newAgent,
+      }),
     });
-    setNewName(''); setNewDir(''); setNewMode('default');
+    setNewName(''); setNewDir(''); setNewMode('default'); setNewAgent('claude');
     setShowForm(false);
     setLoading(false);
     load();
@@ -172,9 +233,59 @@ function SessionView({ onEnter }) {
   };
 
   const modeLabel = { default: '預設', acceptEdits: '自動編輯', bypassPermissions: '⚠️ 跳過授權' };
+  const agentLabel = { claude: 'Claude', cursor: 'Cursor', codex: 'Codex', gemini: 'Gemini' };
+
+  const sortOptions = [
+    { value: 'last_active_desc', label: '活動 新→舊' },
+    { value: 'last_active_asc', label: '活動 舊→新' },
+    { value: 'name_asc', label: '名稱 A→Z' },
+    { value: 'name_desc', label: '名稱 Z→A' },
+    { value: 'agent_asc', label: 'Runner' },
+  ];
+
+  const displaySessions = useMemo(() => {
+    const q = sessionSearch.trim().toLowerCase();
+    let list = sessions;
+    if (q) {
+      list = sessions.filter((s) => {
+        const parts = [
+          s.name,
+          s.work_dir,
+          s.description,
+          s.agent_type,
+          s.agent_session_id,
+          s.id,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return parts.includes(q);
+      });
+    }
+    const out = [...list];
+    const cmpName = (a, b) => (a.name || '').localeCompare(b.name || '', 'zh-Hant');
+    const cmpAgent = (a, b) => (a.agent_type || '').localeCompare(b.agent_type || '');
+    out.sort((a, b) => {
+      switch (sessionSort) {
+        case 'last_active_asc':
+          return sessionLastActiveMs(a) - sessionLastActiveMs(b);
+        case 'last_active_desc':
+          return sessionLastActiveMs(b) - sessionLastActiveMs(a);
+        case 'name_asc':
+          return cmpName(a, b);
+        case 'name_desc':
+          return cmpName(b, a);
+        case 'agent_asc':
+          return cmpAgent(a, b) || cmpName(a, b);
+        default:
+          return 0;
+      }
+    });
+    return out;
+  }, [sessions, sessionSearch, sessionSort]);
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-screen min-w-0 overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gray-900 border-b border-gray-800 shrink-0"
            style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top) + var(--tg-content-safe-top))' }}>
@@ -185,28 +296,82 @@ function SessionView({ onEnter }) {
         </button>
       </div>
 
+      {/* 搜尋／排序（有 Session 時顯示） */}
+      {sessions.length > 0 && (
+        <div className="px-3 py-2 bg-gray-900/80 border-b border-gray-800 shrink-0 flex flex-col gap-2 min-w-0">
+          <input
+            type="search"
+            value={sessionSearch}
+            onChange={(e) => setSessionSearch(e.target.value)}
+            placeholder="搜尋名稱、目錄、Runner…"
+            autoComplete="off"
+            className="w-full min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-600"
+          />
+          <div className="min-w-0">
+            <div className="text-xs text-gray-500 mb-1.5">排序方式</div>
+            <div
+              className="flex flex-wrap gap-1.5"
+              role="group"
+              aria-label="排序方式"
+            >
+              {sortOptions.map((opt) => {
+                const active = sessionSort === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setSessionSort(opt.value)}
+                    aria-pressed={active}
+                    title={opt.label}
+                    className={
+                      'px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors shrink-0 ' +
+                      (active
+                        ? 'bg-indigo-600 border-indigo-500 text-white shadow-sm'
+                        : 'bg-gray-800/80 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-300')
+                    }
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 建立表單 */}
       {showForm && (
-        <div className="px-4 py-3 bg-gray-900 border-b border-gray-700 space-y-2 shrink-0">
+        <div className="px-4 py-3 bg-gray-900 border-b border-gray-700 space-y-2 shrink-0 min-w-0">
           <input value={newName} onChange={e => setNewName(e.target.value)}
             placeholder="Session 名稱（必填）"
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-600" />
+            className="w-full min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-600" />
           <input value={newDir} onChange={e => setNewDir(e.target.value)}
             placeholder="工作目錄（選填，如 /home/user/project）"
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-600 font-mono" />
-          <div className="flex gap-2">
+            className="w-full min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-600 font-mono" />
+          {/* 寬螢幕側欄寬度有限：單行四個控制項會溢出，改為兩行 */}
+          <div className="grid grid-cols-2 gap-2 min-w-0">
+            <select value={newAgent} onChange={e => setNewAgent(e.target.value)}
+              className="min-w-0 max-w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-sm text-gray-300">
+              <option value="claude">Claude</option>
+              <option value="cursor">Cursor</option>
+              <option value="codex" disabled>Codex（未支援）</option>
+              <option value="gemini" disabled>Gemini（未支援）</option>
+            </select>
             <select value={newMode} onChange={e => setNewMode(e.target.value)}
-              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-sm text-gray-300">
+              className="min-w-0 max-w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-sm text-gray-300"
+              disabled={newAgent !== 'claude' && newAgent !== 'cursor'}>
               <option value="default">default</option>
               <option value="acceptEdits">acceptEdits</option>
               <option value="bypassPermissions">bypassPermissions ⚠️</option>
             </select>
+          </div>
+          <div className="flex flex-wrap gap-2 justify-end">
             <button onClick={create} disabled={loading || !newName.trim()}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-lg text-sm font-medium">
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-lg text-sm font-medium shrink-0">
               建立
             </button>
             <button onClick={() => setShowForm(false)}
-              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm">
+              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm shrink-0">
               取消
             </button>
           </div>
@@ -217,7 +382,9 @@ function SessionView({ onEnter }) {
       <div className="flex-1 overflow-y-auto session-list" style={{overscrollBehaviorY: 'contain'}}>
         {sessions.length === 0 ? (
           <div className="text-center text-gray-600 mt-24 text-sm">尚無 Session，點右上角建立</div>
-        ) : sessions.map(s => (
+        ) : displaySessions.length === 0 ? (
+          <div className="text-center text-gray-600 mt-24 text-sm px-4">沒有符合搜尋條件的 Session</div>
+        ) : displaySessions.map(s => (
           <div key={s.id} onClick={() => renamingId !== s.id && onEnter(s)}
             className="flex items-center justify-between px-4 py-3.5 border-b border-gray-800 hover:bg-gray-800/50 active:bg-gray-700/50 cursor-pointer transition-colors">
             <div className="min-w-0 flex-1 mr-2">
@@ -232,17 +399,31 @@ function SessionView({ onEnter }) {
                   className="w-full bg-gray-700 border border-indigo-500 rounded px-2 py-1 text-sm text-gray-100 focus:outline-none"
                 />
               ) : (
-                <div className="text-sm font-medium text-gray-100 truncate">{s.name || '未命名'}</div>
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="text-sm font-bold text-gray-100 truncate">{s.name || '未命名'}</div>
+                  <span className={`inline-flex items-center gap-1 shrink-0 text-[10px] px-2 py-0.5 rounded-full font-mono uppercase ${getAgentBadgeClass(s.agent_type)}`}>
+                    <AgentBadgeIcon agentType={s.agent_type} />
+                    {agentLabel[s.agent_type] || s.agent_type || 'claude'}
+                  </span>
+                </div>
               )}
               {s.work_dir && (
                 <div className="text-xs text-gray-500 font-mono mt-0.5 truncate">{s.work_dir}</div>
               )}
-              <div className="text-xs text-gray-600 mt-0.5">{modeLabel[s.permission_mode] || s.permission_mode}</div>
+              {((s.agent_type || 'claude') === 'claude' || s.agent_type === 'cursor') && (
+                <div className="text-xs text-gray-600 mt-0.5">{modeLabel[s.permission_mode] || s.permission_mode}</div>
+              )}
             </div>
             <div className="flex items-center gap-1 shrink-0">
-              <button onClick={(e) => startRename(s, e)}
-                className="text-gray-600 hover:text-indigo-400 px-2 py-1 text-xs rounded transition-colors">
-                ✏️
+              <button type="button" onClick={(e) => startRename(s, e)}
+                aria-label="重新命名"
+                title="重新命名"
+                className="text-gray-600 hover:text-indigo-400 p-1.5 rounded transition-colors inline-flex items-center justify-center">
+                {/* outline 鉛筆／編輯圖示（Flaticon 類常見線條風格） */}
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0" aria-hidden="true">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
               </button>
               <button onClick={(e) => del(s.id, e)}
                 className="text-gray-600 hover:text-red-400 px-2 py-1 text-xs rounded transition-colors">
@@ -258,6 +439,9 @@ function SessionView({ onEnter }) {
 
 // ── 聊天畫面 ─────────────────────────────────────────────────────────────────
 function ChatView({ session, onBack, showBack = true, fullHeight = true }) {
+  const agentType = session.agent_type || 'claude';
+  const isClaude  = agentType === 'claude';
+  const showPermModeSelect = isClaude || agentType === 'cursor';
   const [messages, setMessages]   = useState([]);
   const [input, setInput]         = useState('');
   const [state, setState]         = useState('IDLE');
@@ -460,7 +644,11 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true }) {
           )}
           <div className="min-w-0">
             <div className="flex items-center gap-2 min-w-0">
-              <div className="font-semibold text-indigo-400 text-sm truncate">{session.name || '未命名'}</div>
+              <div className="font-bold text-indigo-400 text-sm truncate">{session.name || '未命名'}</div>
+              <span className={`inline-flex items-center gap-1 shrink-0 text-[10px] px-2 py-0.5 rounded-full font-mono uppercase ${getAgentBadgeClass(agentType)}`}>
+                <AgentBadgeIcon agentType={agentType} />
+                {agentType}
+              </span>
               <span className={`text-xs px-2 py-0.5 rounded-full font-mono shrink-0 ${
                 state === 'IDLE'            ? 'bg-green-900 text-green-300' :
                 state === 'THINKING'        ? 'bg-indigo-900 text-indigo-300' :
@@ -474,12 +662,14 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true }) {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <select value={mode} onChange={e => handleSetMode(e.target.value)}
-            className="text-xs bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-300">
-            <option value="default">default</option>
-            <option value="acceptEdits">acceptEdits</option>
-            <option value="bypassPermissions">bypass ⚠️</option>
-          </select>
+          {showPermModeSelect && (
+            <select value={mode} onChange={e => handleSetMode(e.target.value)}
+              className="text-xs bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-300">
+              <option value="default">default</option>
+              <option value="acceptEdits">acceptEdits</option>
+              <option value="bypassPermissions">bypass ⚠️（Cursor：等同 --force）</option>
+            </select>
+          )}
         </div>
       </div>
 
@@ -492,7 +682,9 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true }) {
           <div key={i} className={`rounded-xl px-4 py-3 text-sm max-w-full ${
             m.role === 'user' ? 'bubble-user ml-8' : 'bubble-claude mr-8'
           }`}>
-            <div className="text-xs text-gray-500 mb-1">{m.role === 'user' ? '你' : 'Claude'}</div>
+            <div className="text-xs text-gray-500 mb-1">
+              {m.role === 'user' ? '你' : (agentType === 'cursor' ? 'Cursor' : agentType === 'codex' ? 'Codex' : agentType === 'gemini' ? 'Gemini' : 'Claude')}
+            </div>
             {m.role === 'claude' ? (
               m.html
                 ? <div className="prose text-gray-200 text-sm" dangerouslySetInnerHTML={{ __html: m.html }} />
@@ -672,7 +864,7 @@ function App() {
 
     return (
       <div className="h-screen flex bg-black">
-        <aside className="w-[360px] max-w-[40vw] border-r border-gray-800 bg-gray-950">
+        <aside className="w-[360px] max-w-[40vw] min-w-0 border-r border-gray-800 bg-gray-950 flex flex-col">
           <SessionView onEnter={setSession} />
         </aside>
         <main className="flex-1 min-w-0">
