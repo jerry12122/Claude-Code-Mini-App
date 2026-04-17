@@ -16,9 +16,10 @@ type Config struct {
 }
 
 type Web struct {
-	Password     string   `mapstructure:"password"`
-	AllowedCIDRs []string `mapstructure:"allowed_cidrs"`
-	SessionTTL   string   `mapstructure:"session_ttl"`
+	Password          string   `mapstructure:"password"`
+	AllowedCIDRs      []string `mapstructure:"allowed_cidrs"`
+	SessionTTL        string   `mapstructure:"session_ttl"`
+	DefaultNotifyTgID int64    `mapstructure:"default_notify_tg_id"` // 網頁登入時預設綁定的 TG 通知對象（須在白名單）；0 表示未指定
 }
 
 type Server struct {

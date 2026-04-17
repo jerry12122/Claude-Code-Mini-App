@@ -61,7 +61,7 @@ func main() {
 	// --- 登入 / 登出端點 ---
 
 	// POST /auth/login
-	// Body: {"password": "..."}
+	// Body: {"password": "...", "tg_user_id": 0}（tg_user_id 選填；省略時由 default_notify_tg_id 或單一白名單自動綁定）
 	// 僅允許來自內網 IP；成功後設定 HttpOnly session cookie。
 	app.Post("/auth/login", func(c *fiber.Ctx) error {
 		if cfg.NoAuth {
@@ -78,7 +78,8 @@ func main() {
 		}
 
 		var body struct {
-			Password string `json:"password"`
+			Password   string `json:"password"`
+			TgUserID   int64  `json:"tg_user_id"` // 選填：白名單內 Telegram ID，用於任務完成／授權通知
 		}
 		if err := c.BodyParser(&body); err != nil || body.Password == "" {
 			return c.Status(400).JSON(fiber.Map{"error": "請提供 password 欄位"})
@@ -88,7 +89,40 @@ func main() {
 			return c.Status(401).JSON(fiber.Map{"error": "密碼錯誤"})
 		}
 
-		token, err := sessions.Create()
+		var bindTgID int64
+		if body.TgUserID != 0 {
+			allowed, err := database.IsUserAllowed(body.TgUserID)
+			if err != nil {
+				return c.Status(500).JSON(fiber.Map{"error": "DB 錯誤"})
+			}
+			if !allowed {
+				log.Printf("[auth] Web 登入拒絕：tg_user_id=%d 不在白名單", body.TgUserID)
+				return c.Status(403).JSON(fiber.Map{"error": "tg_user_id 不在白名單內"})
+			}
+			bindTgID = body.TgUserID
+		} else {
+			// 未手動指定時：設定檔預設 → 否則白名單僅一人時自動綁定
+			if cfg.Web.DefaultNotifyTgID != 0 {
+				ok, err := database.IsUserAllowed(cfg.Web.DefaultNotifyTgID)
+				if err != nil {
+					return c.Status(500).JSON(fiber.Map{"error": "DB 錯誤"})
+				}
+				if ok {
+					bindTgID = cfg.Web.DefaultNotifyTgID
+				} else {
+					log.Printf("[auth] web.default_notify_tg_id=%d 不在白名單，略過", cfg.Web.DefaultNotifyTgID)
+				}
+			}
+			if bindTgID == 0 {
+				autoID, err := database.DefaultNotifyTgIDIfSingle()
+				if err != nil {
+					return c.Status(500).JSON(fiber.Map{"error": "DB 錯誤"})
+				}
+				bindTgID = autoID
+			}
+		}
+
+		token, err := sessions.Create(bindTgID)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "無法建立 session"})
 		}
@@ -159,8 +193,12 @@ func main() {
 		}
 
 		token := c.Cookies("session_token")
-		if !sessions.Validate(token) {
+		ok, webTgID := sessions.Validate(token)
+		if !ok {
 			return c.Status(401).JSON(fiber.Map{"error": "請先登入"})
+		}
+		if webTgID != 0 {
+			c.Locals("tg_id", webTgID)
 		}
 
 		return c.Next()
