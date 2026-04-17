@@ -6,6 +6,13 @@ import (
 	"github.com/google/uuid"
 )
 
+// Session 層級狀態（供列表角標與背景任務）
+const (
+	SessionStatusIdle            = "idle"
+	SessionStatusRunning         = "running"
+	SessionStatusAwaitingConfirm = "awaiting_confirm"
+)
+
 type Session struct {
 	ID             string   `json:"id"`
 	AgentType      string   `json:"agent_type"`
@@ -17,6 +24,7 @@ type Session struct {
 	AllowedTools   []string `json:"allowed_tools"`
 	PendingDenials string   `json:"pending_denials"`
 	LastActive     string   `json:"last_active"`
+	Status         string   `json:"status"`
 }
 
 func (db *DB) CreateSession(name, description, workDir, permissionMode, agentType string) (*Session, error) {
@@ -39,14 +47,14 @@ func (db *DB) CreateSession(name, description, workDir, permissionMode, agentTyp
 
 func (db *DB) GetSession(id string) (*Session, error) {
 	row := db.QueryRow(
-		`SELECT id, agent_type, agent_session_id, name, description, work_dir, permission_mode, allowed_tools, pending_denials, last_active FROM sessions WHERE id = ?`, id,
+		`SELECT id, agent_type, agent_session_id, name, description, work_dir, permission_mode, allowed_tools, pending_denials, last_active, status FROM sessions WHERE id = ?`, id,
 	)
 	return scanSession(row)
 }
 
 func (db *DB) ListSessions() ([]*Session, error) {
 	rows, err := db.Query(
-		`SELECT id, agent_type, agent_session_id, name, description, work_dir, permission_mode, allowed_tools, pending_denials, last_active FROM sessions ORDER BY last_active DESC`,
+		`SELECT id, agent_type, agent_session_id, name, description, work_dir, permission_mode, allowed_tools, pending_denials, last_active, status FROM sessions ORDER BY last_active DESC`,
 	)
 	if err != nil {
 		return nil, err
@@ -118,6 +126,15 @@ func (db *DB) TouchSession(id string) error {
 	return err
 }
 
+// UpdateSessionStatus 更新背景任務／授權狀態（idle | running | awaiting_confirm）
+func (db *DB) UpdateSessionStatus(id, status string) error {
+	_, err := db.Exec(
+		`UPDATE sessions SET status = ?, last_active = datetime('now') WHERE id = ?`,
+		status, id,
+	)
+	return err
+}
+
 type scanner interface {
 	Scan(...any) error
 }
@@ -127,7 +144,7 @@ func scanSession(s scanner) (*Session, error) {
 	var allowedTools string
 	err := s.Scan(
 		&sess.ID, &sess.AgentType, &sess.AgentSessionID, &sess.Name, &sess.Description,
-		&sess.WorkDir, &sess.PermissionMode, &allowedTools, &sess.PendingDenials, &sess.LastActive,
+		&sess.WorkDir, &sess.PermissionMode, &allowedTools, &sess.PendingDenials, &sess.LastActive, &sess.Status,
 	)
 	if err != nil {
 		return nil, err
@@ -139,6 +156,9 @@ func scanSession(s scanner) (*Session, error) {
 	}
 	if sess.AgentType == "" {
 		sess.AgentType = "claude"
+	}
+	if sess.Status == "" {
+		sess.Status = SessionStatusIdle
 	}
 	return &sess, nil
 }

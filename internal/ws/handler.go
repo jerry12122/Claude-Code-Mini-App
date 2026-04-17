@@ -7,26 +7,16 @@ import (
 	"log"
 	"strings"
 	"sync"
-	"time"
 
 	fiberws "github.com/gofiber/contrib/websocket"
 
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/agent"
 	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/claude" // 註冊 claude runner
 	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/cursor" // 註冊 cursor runner
+	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/gemini" // 註冊 gemini runner
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/tg"
 )
-
-// connRegistry 記錄每個 session 當前活著的連線
-// key: sessionID, value: activeConn
-var connRegistry sync.Map
-var statusRegistry sync.Map // key: sessionID, value: string
-
-type activeConn struct {
-	token int64
-	send  func(serverMsg) bool
-}
 
 // clearPendingDenials 清除 DB 中的待授權紀錄
 func clearPendingDenials(database *db.DB, sessionID string) {
@@ -50,10 +40,11 @@ type clientMsg struct {
 }
 
 type serverMsg struct {
-	Type    string      `json:"type"`
-	Value   string      `json:"value,omitempty"`
-	Content string      `json:"content,omitempty"`
-	Tools   interface{} `json:"tools,omitempty"`
+	Type     string          `json:"type"`
+	Value    string          `json:"value,omitempty"`
+	Content  string          `json:"content,omitempty"`
+	Tools    interface{}     `json:"tools,omitempty"`
+	Messages json.RawMessage `json:"messages,omitempty"`
 }
 
 func NewHandler(database *db.DB, botToken string) func(*fiberws.Conn) {
@@ -72,118 +63,131 @@ func NewHandler(database *db.DB, botToken string) func(*fiberws.Conn) {
 		defer log.Printf("[ws] session %s 已斷線", sessionID)
 
 		var mu sync.Mutex
-		var cancelFn context.CancelFunc
 		agentType := sess.AgentType
 		if agentType == "" {
 			agentType = agent.TypeClaude
 		}
 		agentSessionID := sess.AgentSessionID
-		permMode := sess.PermissionMode
-		allowedTools := sess.AllowedTools
+		allowedTools := append([]string(nil), sess.AllowedTools...)
 
 		isClaude := agentType == agent.TypeClaude
 
-		// 此連線的 send（直接寫入當前 c）
 		send := func(msg serverMsg) bool {
 			b, _ := json.Marshal(msg)
 			return c.WriteMessage(1, b) == nil
 		}
 
-		// 註冊到 registry，用 token 確保斷線時不誤刪後來的連線
-		token := time.Now().UnixNano()
-		connRegistry.Store(sessionID, activeConn{token: token, send: send})
-		defer func() {
-			if v, ok := connRegistry.Load(sessionID); ok && v.(activeConn).token == token {
-				connRegistry.Delete(sessionID)
-			}
-		}()
+		unsub := hub.Subscribe(sessionID, send)
+		defer unsub()
 
-		// relaySend：查 registry，送給當前活著的連線（不限於本連線）
-		relaySend := func(msg serverMsg) bool {
-			if v, ok := connRegistry.Load(sessionID); ok {
-				return v.(activeConn).send(msg)
-			}
-			return false
+		broadcast := func(msg serverMsg) {
+			hub.Broadcast(sessionID, msg)
 		}
 
-		setAndSendStatus := func(status string) {
-			statusRegistry.Store(sessionID, status)
-			relaySend(serverMsg{Type: "status", Value: status})
+		// 連線建立：sync（歷史 + 狀態）
+		uiState, msgsJSON, err := buildSyncPayload(database, sessionID)
+		if err != nil {
+			log.Printf("[ws] buildSyncPayload: %v", err)
+			uiState = StateIdle
 		}
+		syncMsg := serverMsg{Type: "sync", Value: uiState, Messages: msgsJSON}
+		send(syncMsg)
 
-		// 還原未處理的 pending_denials（僅 Claude 有此流程）
 		if isClaude && sess.PendingDenials != "" {
-			send(serverMsg{Type: "status", Value: StateAwaitingConfirm})
 			send(serverMsg{Type: "permission_request", Tools: json.RawMessage(sess.PendingDenials)})
-			statusRegistry.Store(sessionID, StateAwaitingConfirm)
 			log.Printf("[ws] 還原 pending_denials for session %s", sessionID)
-		} else {
-			status := StateIdle
-			if v, ok := statusRegistry.Load(sessionID); ok {
-				if s, ok := v.(string); ok && s != "" {
-					status = s
-				}
-			}
-			send(serverMsg{Type: "status", Value: status})
-			statusRegistry.Store(sessionID, status)
 		}
 
-		// runAgent 啟動子進程並串流結果
+		// runAgent：與 WS 解耦，任務在背景執行
 		runAgent := func(prompt string) {
-			mu.Lock()
-			if cancelFn != nil {
-				cancelFn()
+			taskCancel(sessionID)
+			if err := database.FinalizePendingMessagesForSession(sessionID); err != nil {
+				log.Printf("[ws] FinalizePendingMessagesForSession: %v", err)
 			}
+
+			s, err := database.GetSession(sessionID)
+			if err != nil {
+				log.Printf("[ws] GetSession: %v", err)
+				broadcast(serverMsg{Type: "error", Content: err.Error()})
+				return
+			}
+			mu.Lock()
+			pm := s.PermissionMode
+			at := append([]string(nil), s.AllowedTools...)
+			agSid := s.AgentSessionID
+			wdir := s.WorkDir
+			mu.Unlock()
+
+			msgID, err := database.CreatePendingMessage(sessionID)
+			if err != nil {
+				log.Printf("[ws] CreatePendingMessage: %v", err)
+				broadcast(serverMsg{Type: "error", Content: err.Error()})
+				return
+			}
+
 			ctx, cancel := context.WithCancel(context.Background())
-			cancelFn = cancel
+			taskStart(sessionID, cancel, msgID)
+
+			if err := database.UpdateSessionStatus(sessionID, db.SessionStatusRunning); err != nil {
+				log.Printf("[ws] UpdateSessionStatus running: %v", err)
+			}
+			broadcast(serverMsg{Type: "status", Value: StateThinking})
 
 			extra := map[string]string{}
-			if isClaude {
-				extra[agent.ArgPermissionMode] = permMode
-				if len(allowedTools) > 0 {
-					extra[agent.ArgAllowedTools] = strings.Join(allowedTools, ",")
-				}
+			if pm != "" {
+				extra[agent.ArgPermissionMode] = pm
 			}
-			// Cursor：CLI 的 --force 對應「放寬指令／工具核准」；與 DB 的 bypassPermissions 對齊
-			if agentType == agent.TypeCursor && permMode == "bypassPermissions" {
+			if isClaude && len(at) > 0 {
+				extra[agent.ArgAllowedTools] = strings.Join(at, ",")
+			}
+			if agentType == agent.TypeCursor && pm == "bypassPermissions" {
 				extra[agent.ArgForce] = "true"
 			}
 
 			opts := agent.RunOptions{
 				Prompt:    prompt,
-				SessionID: agentSessionID,
-				WorkDir:   sess.WorkDir,
+				SessionID: agSid,
+				WorkDir:   wdir,
 				ExtraArgs: extra,
 			}
-			mu.Unlock()
 
 			runner, err := agent.NewRunner(agentType)
 			if err != nil {
 				log.Printf("[ws] 無法建立 %s runner: %v", agentType, err)
-				relaySend(serverMsg{Type: "error", Content: err.Error()})
-				setAndSendStatus(StateIdle)
+				_ = database.FinalizeMessage(msgID)
+				_ = database.UpdateSessionStatus(sessionID, db.SessionStatusIdle)
+				taskEnd(sessionID)
+				broadcast(serverMsg{Type: "error", Content: err.Error()})
+				broadcast(serverMsg{Type: "status", Value: StateIdle})
 				return
 			}
 
-			log.Printf("[ws] 啟動 %s.Run agentSessionID=%q mode=%s", runner.Name(), opts.SessionID, permMode)
-			setAndSendStatus(StateThinking)
+			log.Printf("[ws] 啟動 %s.Run agentSessionID=%q mode=%s msgID=%d", runner.Name(), opts.SessionID, pm, msgID)
 
-			go func(opts agent.RunOptions) {
-				var responseBuf strings.Builder
+			go func(opts agent.RunOptions, msgID int64) {
+				defer taskEnd(sessionID)
+
 				permDenied := false
 
 				err := runner.Run(ctx, opts, func(e agent.Event) {
 					switch e.Type {
 					case agent.EventStreamStart:
-						setAndSendStatus(StateStreaming)
+						broadcast(serverMsg{Type: "status", Value: StateStreaming})
 
 					case agent.EventDelta:
-						responseBuf.WriteString(e.Text)
-						relaySend(serverMsg{Type: "delta", Content: e.Text})
+						if e.Text != "" {
+							if err := database.AppendMessageContent(msgID, e.Text); err != nil {
+								log.Printf("[ws] AppendMessageContent: %v", err)
+							}
+							broadcast(serverMsg{Type: "delta", Content: e.Text})
+						}
 
 					case agent.EventSessionInit:
+						if e.SessionID == "" {
+							return
+						}
 						mu.Lock()
-						if e.SessionID != "" && e.SessionID != agentSessionID {
+						if e.SessionID != agentSessionID {
 							agentSessionID = e.SessionID
 							if err := database.UpdateAgentSessionID(sessionID, agentSessionID); err != nil {
 								log.Printf("[ws] 更新 agent_session_id 失敗: %v", err)
@@ -201,8 +205,11 @@ func NewHandler(database *db.DB, botToken string) func(*fiberws.Conn) {
 								log.Printf("[ws] 儲存 pending_denials 失敗: %v", err)
 							}
 						}
-						setAndSendStatus(StateAwaitingConfirm)
-						relaySend(serverMsg{Type: "permission_request", Tools: e.Denials})
+						if err := database.UpdateSessionStatus(sessionID, db.SessionStatusAwaitingConfirm); err != nil {
+							log.Printf("[ws] UpdateSessionStatus awaiting_confirm: %v", err)
+						}
+						broadcast(serverMsg{Type: "status", Value: StateAwaitingConfirm})
+						broadcast(serverMsg{Type: "permission_request", Tools: e.Denials})
 						go tg.Notify(botToken, tgUserID, fmt.Sprintf("⚠️ *%s* 需要授權確認，請開啟 App", sess.Name))
 
 					case agent.EventDone:
@@ -215,21 +222,21 @@ func NewHandler(database *db.DB, botToken string) func(*fiberws.Conn) {
 						}
 						mu.Unlock()
 
-						if resp := responseBuf.String(); resp != "" {
-							if err := database.AddMessage(sessionID, "claude", resp); err != nil {
-								log.Printf("[ws] 儲存 assistant 訊息失敗: %v", err)
-							}
-						}
-
 						if !permDenied {
+							if err := database.FinalizeMessage(msgID); err != nil {
+								log.Printf("[ws] FinalizeMessage: %v", err)
+							}
 							clearPendingDenials(database, sessionID)
-							setAndSendStatus(StateIdle)
+							if err := database.UpdateSessionStatus(sessionID, db.SessionStatusIdle); err != nil {
+								log.Printf("[ws] UpdateSessionStatus idle: %v", err)
+							}
+							broadcast(serverMsg{Type: "status", Value: StateIdle})
 							go tg.Notify(botToken, tgUserID, fmt.Sprintf("✅ *%s* 任務完成", sess.Name))
 						}
 
 					case agent.EventError:
 						if e.Err != nil {
-							relaySend(serverMsg{Type: "error", Content: e.Err.Error()})
+							broadcast(serverMsg{Type: "error", Content: e.Err.Error()})
 						}
 					}
 				})
@@ -239,15 +246,21 @@ func NewHandler(database *db.DB, botToken string) func(*fiberws.Conn) {
 						log.Printf("[ws] %s.Run 被 context 取消", agentType)
 					} else {
 						log.Printf("[ws] %s.Run 執行錯誤: %v", agentType, err)
-						relaySend(serverMsg{Type: "error", Content: err.Error()})
+						broadcast(serverMsg{Type: "error", Content: err.Error()})
+					}
+					if err := database.FinalizeMessage(msgID); err != nil {
+						log.Printf("[ws] FinalizeMessage (err path): %v", err)
 					}
 					if !permDenied {
-						setAndSendStatus(StateIdle)
+						if err := database.UpdateSessionStatus(sessionID, db.SessionStatusIdle); err != nil {
+							log.Printf("[ws] UpdateSessionStatus idle: %v", err)
+						}
+						broadcast(serverMsg{Type: "status", Value: StateIdle})
 					}
 				} else {
 					log.Printf("[ws] %s.Run 正常結束", agentType)
 				}
-			}(opts)
+			}(opts, msgID)
 		}
 
 		for {
@@ -295,26 +308,21 @@ func NewHandler(database *db.DB, botToken string) func(*fiberws.Conn) {
 				runAgent("please retry the previous operation")
 
 			case "set_mode":
-				if agentType != agent.TypeClaude && agentType != agent.TypeCursor {
+				if agentType != agent.TypeClaude && agentType != agent.TypeCursor && agentType != agent.TypeGemini {
 					log.Printf("[ws] agent=%s 不支援 set_mode，忽略", agentType)
 					continue
 				}
 				clearPendingDenials(database, sessionID)
-				mu.Lock()
-				permMode = msg.Mode
-				mu.Unlock()
 				if err := database.UpdatePermissionMode(sessionID, msg.Mode); err != nil {
 					log.Printf("[ws] 更新 permission_mode 失敗: %v", err)
 				}
-				setAndSendStatus(StateIdle)
+				broadcast(serverMsg{Type: "status", Value: StateIdle})
 				log.Println("[ws] permission mode 切換為:", msg.Mode)
 
 			case "reset_context":
+				taskCancel(sessionID)
+				_ = database.FinalizePendingMessagesForSession(sessionID)
 				mu.Lock()
-				if cancelFn != nil {
-					cancelFn()
-					cancelFn = nil
-				}
 				agentSessionID = ""
 				mu.Unlock()
 				if err := database.UpdateAgentSessionID(sessionID, ""); err != nil {
@@ -324,18 +332,20 @@ func NewHandler(database *db.DB, botToken string) func(*fiberws.Conn) {
 					log.Printf("[ws] 清除訊息失敗: %v", err)
 				}
 				clearPendingDenials(database, sessionID)
-				send(serverMsg{Type: "reset"})
-				setAndSendStatus(StateIdle)
+				if err := database.UpdateSessionStatus(sessionID, db.SessionStatusIdle); err != nil {
+					log.Printf("[ws] UpdateSessionStatus idle: %v", err)
+				}
+				broadcast(serverMsg{Type: "reset"})
+				broadcast(serverMsg{Type: "status", Value: StateIdle})
 				log.Printf("[ws] session %s context 已重置", sessionID)
 
 			case "interrupt":
-				mu.Lock()
-				if cancelFn != nil {
-					cancelFn()
-					cancelFn = nil
+				taskCancel(sessionID)
+				_ = database.FinalizePendingMessagesForSession(sessionID)
+				if err := database.UpdateSessionStatus(sessionID, db.SessionStatusIdle); err != nil {
+					log.Printf("[ws] UpdateSessionStatus idle: %v", err)
 				}
-				mu.Unlock()
-				setAndSendStatus(StateIdle)
+				broadcast(serverMsg{Type: "status", Value: StateIdle})
 			}
 		}
 	}

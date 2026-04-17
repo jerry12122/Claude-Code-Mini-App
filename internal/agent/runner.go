@@ -20,12 +20,14 @@ type RunOptions struct {
 type EventType string
 
 const (
-	EventDelta       EventType = "delta"
-	EventDone        EventType = "done"
-	EventError       EventType = "error"
-	EventPermDenied  EventType = "permission_denied"
-	EventSessionInit EventType = "session_init"
-	EventStreamStart EventType = "stream_start"
+	EventDelta         EventType = "delta"
+	EventDone          EventType = "done"
+	EventError         EventType = "error"
+	EventPermDenied    EventType = "permission_denied"
+	EventSessionInit   EventType = "session_init"
+	EventStreamStart   EventType = "stream_start"
+	EventToolStarted   EventType = "tool_started"
+	EventToolCompleted EventType = "tool_completed"
 )
 
 // PermissionDenial 是 Claude 特有的授權拒絕資訊，其他工具可忽略。
@@ -35,12 +37,24 @@ type PermissionDenial struct {
 	ToolInput json.RawMessage `json:"tool_input"`
 }
 
+// ToolCall 是 tool_started / tool_completed 事件的共用承載結構，
+// 各 runner 會把自身 CLI 的工具事件正規化成此結構。
+type ToolCall struct {
+	CallID     string          `json:"call_id"`
+	Name       string          `json:"name"`
+	Arguments  json.RawMessage `json:"arguments,omitempty"`
+	Output     string          `json:"output,omitempty"` // 僅 tool_completed 帶入（文字輸出）
+	OK         bool            `json:"ok,omitempty"`     // 僅 tool_completed 帶入
+	ErrMessage string          `json:"err_message,omitempty"`
+}
+
 // Event 是 Runner 透過 callback 回傳的統一事件結構。
 type Event struct {
 	Type      EventType
 	Text      string             // delta 文字
 	SessionID string             // session_init / done 時帶入
 	Denials   []PermissionDenial // 僅 Claude 有
+	Tool      *ToolCall          // tool_started / tool_completed 時帶入
 	Err       error              // error 時帶入
 }
 
@@ -58,11 +72,16 @@ type Runner interface {
 
 // ExtraArg 是 ExtraArgs map 的共用 key。
 const (
-	// Claude 專屬
+	// 共用語意：授權/權限模式
+	// Claude 值：default / acceptEdits / bypassPermissions / plan
+	// Cursor 值：default / bypassPermissions（僅決定是否加 --force）
+	// Gemini 值：default / auto_edit / yolo / plan（Gemini runner 另外接受 acceptEdits → auto_edit、bypassPermissions → yolo 的向下相容 mapping）
 	ArgPermissionMode = "permission_mode"
-	ArgAllowedTools   = "allowed_tools" // 以逗號分隔
 
-	// Cursor Agent 專屬
+	// Claude 專屬
+	ArgAllowedTools = "allowed_tools" // 以逗號分隔
+
+	// Cursor Agent / Gemini 共用
 	ArgModel = "model" // --model <m>
-	ArgForce = "force" // --force，值為 "true"/"1" 表示開啟
+	ArgForce = "force" // Cursor: --force，值為 "true"/"1" 表示開啟
 )
