@@ -15,10 +15,9 @@ config.yaml
 config.local.yaml
 *.local.yaml
 
-# 環境變數
+# 環境變數（含 .env.example，請自行維護本機範本）
 .env
 .env.*
-!.env.example
 
 # 作業系統
 .DS_Store
