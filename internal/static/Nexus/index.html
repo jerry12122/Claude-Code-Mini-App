@@ -955,13 +955,15 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     };
   }, [messages, syncChatNearBottom]);
 
-  // Shell 待確認區塊出現時：若原本已在底部則捲動以露出確認框（須在 messages 捲底 effect 之後宣告，同 commit 時先同步 ref）
+  // 待授權／Shell 確認區塊出現時捲到底（此狀態常不經 messages 更新而單獨出現）
   useEffect(() => {
-    if (!shellRequest) return;
+    const showPermPanel =
+      (state === 'AWAITING_CONFIRM' && permTools.length > 0) ||
+      (state === 'AWAITING_SHELL_CONFIRM' && shellRequest);
+    if (!showPermPanel) return;
     let id2;
     const id1 = requestAnimationFrame(() => {
       id2 = requestAnimationFrame(() => {
-        if (!chatNearBottomRef.current) return;
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
       });
     });
@@ -969,7 +971,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       cancelAnimationFrame(id1);
       if (id2 != null) cancelAnimationFrame(id2);
     };
-  }, [shellRequest]);
+  }, [state, permTools.length, shellRequest]);
 
   // 離開頁面確認（任務進行中或等待授權時）
   useEffect(() => {
