@@ -270,7 +270,28 @@ const SESSION_STATE_LABEL = {
   SHELL_IDLE: '待命',
   SHELL_AWAITING_APPROVAL: '等待確認',
   SHELL_RUNNING: '執行中',
+  AWAITING_SHELL_CONFIRM: '待確認 Shell',
+  SHELL_EXEC: 'Shell 執行中',
 };
+
+const INPUT_MODE_STORAGE_PREFIX = 'cc_input_mode:';
+/** 舊版單一全域鍵，僅在該 session 尚無專用紀錄時作為向後相容讀取 */
+const INPUT_MODE_LEGACY_KEY = 'cc_input_mode';
+
+function inputModeStorageKey(sessionId) {
+  return INPUT_MODE_STORAGE_PREFIX + String(sessionId || '');
+}
+
+/** 依 session 從 localStorage 讀取輸入模式；該 session 未設定或無效時預設 agent */
+function readInputModeForSession(sessionId) {
+  try {
+    const v = localStorage.getItem(inputModeStorageKey(sessionId));
+    if (v === 'shell' || v === 'agent') return v;
+    const legacy = localStorage.getItem(INPUT_MODE_LEGACY_KEY);
+    if (legacy === 'shell' || legacy === 'agent') return legacy;
+  } catch (_) {}
+  return 'agent';
+}
 
 /**
  * 依 agent_type 回傳可用的 permission_mode 下拉選項。
@@ -969,28 +990,64 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const [permTools, setPermTools] = useState([]);
   const [mode, setMode]           = useState(() => normalizePermMode(agentType, session.permission_mode || 'default'));
   const [histLoaded, setHistLoaded] = useState(false);
-  const [inputMode, setInputMode] = useState(session.input_mode || 'agent');
+  const [inputMode, setInputMode] = useState(() => readInputModeForSession(session.id));
   const [shellType, setShellType] = useState('bash');
   const [shellPendingCmd, setShellPendingCmd] = useState(null);
+  const [shellRequest, setShellRequest] = useState(null);
   const shellBuf = useRef([]);
   const shellRenderPending = useRef(false);
   const wsRef     = useRef(null);
   const bottomRef = useRef(null);
+  const chatScrollRef = useRef(null);
+  const chatNearBottomRef = useRef(true);
   const chatInputRef = useRef(null);
   const streamBuf = useRef('');
   const connGenRef = useRef(0);
   const activeSessionRef = useRef(session.id);
   const reconnectTimerRef = useRef(null);
 
+  const syncChatNearBottom = useCallback(() => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+    chatNearBottomRef.current = gap < 80;
+  }, []);
+
   // 捲到底
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    let id2;
+    const id1 = requestAnimationFrame(() => {
+      id2 = requestAnimationFrame(() => {
+        syncChatNearBottom();
+      });
+    });
+    return () => {
+      cancelAnimationFrame(id1);
+      if (id2 != null) cancelAnimationFrame(id2);
+    };
+  }, [messages, syncChatNearBottom]);
+
+  // Shell 待確認區塊出現時：若原本已在底部則捲動以露出確認框（須在 messages 捲底 effect 之後宣告，同 commit 時先同步 ref）
+  useEffect(() => {
+    if (!shellRequest) return;
+    let id2;
+    const id1 = requestAnimationFrame(() => {
+      id2 = requestAnimationFrame(() => {
+        if (!chatNearBottomRef.current) return;
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+      });
+    });
+    return () => {
+      cancelAnimationFrame(id1);
+      if (id2 != null) cancelAnimationFrame(id2);
+    };
+  }, [shellRequest]);
 
   // 離開頁面確認（任務進行中或等待授權時）
   useEffect(() => {
     const handler = (e) => {
-      if (state === 'THINKING' || state === 'STREAMING' || state === 'AWAITING_CONFIRM' || state === 'SHELL_RUNNING' || state === 'SHELL_AWAITING_APPROVAL') {
+      if (state === 'THINKING' || state === 'STREAMING' || state === 'AWAITING_CONFIRM' || state === 'SHELL_RUNNING' || state === 'SHELL_AWAITING_APPROVAL' || state === 'AWAITING_SHELL_CONFIRM' || state === 'SHELL_EXEC') {
         e.preventDefault();
         e.returnValue = '';
       }
@@ -1009,9 +1066,10 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     setHistLoaded(false);
     setState('IDLE');
     setPermTools([]);
+    setShellRequest(null);
     setInput('');
+    setInputMode(session.input_mode === 'shell' || session.input_mode === 'agent' ? session.input_mode : readInputModeForSession(session.id));
     setMode(normalizePermMode(agentType, session.permission_mode || 'default'));
-    setInputMode(session.input_mode || 'agent');
     setShellPendingCmd(null);
   }, [session.id, session.permission_mode, agentType, session.input_mode]);
 
@@ -1086,6 +1144,9 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
 
         if (msg.type === 'status') {
           setState(msg.value);
+          if (msg.value !== 'AWAITING_SHELL_CONFIRM') {
+            setShellRequest(null);
+          }
           if (msg.value === 'THINKING') {
             streamBuf.current = '';
             setMessages((prev) => {
@@ -1096,13 +1157,13 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               return [...prev, { role: 'claude', content: '', html: null, streaming: true, status: 'pending' }];
             });
           }
-          if (msg.value === 'SHELL_RUNNING') {
+          if (msg.value === 'SHELL_RUNNING' || msg.value === 'SHELL_EXEC') {
             shellBuf.current = [];
             setShellPendingCmd(null);
             setMessages((prev) => {
               const last = prev[prev.length - 1];
               if (last && last.role === 'shell' && last.streaming) return prev;
-              return [...prev, { role: 'shell', content: '', streaming: true, status: 'pending' }];
+              return [...prev, { role: 'shell', content: '', html: null, streaming: true, status: 'pending' }];
             });
           }
           if (msg.value === 'SHELL_IDLE') {
@@ -1163,6 +1224,14 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
           setShellPendingCmd(null);
         }
 
+        if (msg.type === 'shell_command_request') {
+          setShellRequest({
+            command: msg.command || '',
+            line: msg.line || '',
+            workDirKey: msg.work_dir_key || '',
+          });
+        }
+
         if (msg.type === 'shell_delta') {
           if (!msg.content) return;
           shellBuf.current.push({ stream: msg.stream || 'stdout', text: msg.content });
@@ -1184,7 +1253,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
           const code = msg.exit_code;
           setMessages(prev => prev.map((m, i) =>
             i === prev.length - 1 && m.role === 'shell' && m.streaming
-              ? { ...m, streaming: false, status: 'done', exitCode: code }
+              ? { ...m, streaming: false, status: 'done', exitCode: code, id: msg.id != null ? msg.id : m.id }
               : m
           ));
           shellBuf.current = [];
@@ -1198,6 +1267,31 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               ? { ...m, content: rendered }
               : m
           ));
+        }
+
+        if (msg.type === 'shell_result') {
+          setMessages((prev) => {
+            const id = msg.id;
+            const content = msg.content != null ? String(msg.content) : '';
+            let found = false;
+            const next = prev.map((m) => {
+              if (found) return m;
+              if (id != null && m.id === id) {
+                found = true;
+                return { ...m, role: 'shell', content, html: null, streaming: false, status: 'done' };
+              }
+              return m;
+            });
+            if (found) return next;
+            for (let i = next.length - 1; i >= 0; i--) {
+              if (next[i].role === 'shell' && next[i].status === 'pending') {
+                const copy = [...next];
+                copy[i] = { ...copy[i], id: id != null ? id : copy[i].id, content, html: null, streaming: false, status: 'done' };
+                return copy;
+              }
+            }
+            return [...next, { role: 'shell', id: id != null ? id : null, content, html: null, streaming: false, status: 'done' }];
+          });
         }
       };
 
@@ -1240,7 +1334,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     if (!trimmed) return;
     if (inputMode === 'shell') {
       if (state !== 'SHELL_IDLE' && state !== 'IDLE') return;
-      send({ type: 'shell_run', data: trimmed });
+      send({ type: 'shell_exec', data: trimmed });
       setInput('');
       return;
     }
@@ -1250,8 +1344,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       setInput('');
       return;
     }
-    const sent = send({ type: 'input', data: trimmed });
-    if (!sent) return;
+    if (!send({ type: 'input', data: trimmed })) return;
     setInput('');
   };
 
@@ -1273,9 +1366,12 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const handleInterrupt = () => send({ type: 'interrupt' });
 
   const handleInputModeChange = (newMode) => {
-    const busy = ['THINKING', 'STREAMING', 'AWAITING_CONFIRM', 'SHELL_RUNNING', 'SHELL_AWAITING_APPROVAL'].includes(state);
+    const busy = ['THINKING', 'STREAMING', 'AWAITING_CONFIRM', 'SHELL_RUNNING', 'SHELL_AWAITING_APPROVAL', 'SHELL_EXEC', 'AWAITING_SHELL_CONFIRM'].includes(state);
     if (busy) return;
     setInputMode(newMode);
+    try {
+      localStorage.setItem(inputModeStorageKey(session.id), newMode);
+    } catch (_) {}
     send({ type: 'set_input_mode', mode: newMode });
   };
 
@@ -1289,13 +1385,13 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     setShellPendingCmd(null);
   };
 
-  const isDisabled = state === 'THINKING' || state === 'STREAMING' || state === 'AWAITING_CONFIRM' || state === 'SHELL_RUNNING' || state === 'SHELL_AWAITING_APPROVAL';
-  const modeSwitchDisabled = ['THINKING', 'STREAMING', 'AWAITING_CONFIRM', 'SHELL_RUNNING', 'SHELL_AWAITING_APPROVAL'].includes(state);
+  const isDisabled = state === 'THINKING' || state === 'STREAMING' || state === 'AWAITING_CONFIRM' || state === 'SHELL_RUNNING' || state === 'SHELL_AWAITING_APPROVAL' || state === 'SHELL_EXEC' || state === 'AWAITING_SHELL_CONFIRM';
+  const modeSwitchDisabled = ['THINKING', 'STREAMING', 'AWAITING_CONFIRM', 'SHELL_RUNNING', 'SHELL_AWAITING_APPROVAL', 'SHELL_EXEC', 'AWAITING_SHELL_CONFIRM'].includes(state);
 
   /** 聊天輸入框：依內容伸縮高度，並遵守 CSS max-height（min(40vh,12rem)） */
   useLayoutEffect(() => {
     const el = chatInputRef.current;
-    if (!el || state === 'THINKING' || state === 'STREAMING' || state === 'SHELL_RUNNING') return;
+    if (!el || state === 'THINKING' || state === 'STREAMING' || state === 'SHELL_RUNNING' || state === 'SHELL_EXEC' || state === 'AWAITING_SHELL_CONFIRM') return;
     el.style.height = '0px';
     const maxStr = getComputedStyle(el).maxHeight;
     const maxPx = parseFloat(maxStr);
@@ -1331,6 +1427,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                   state === 'IDLE'            ? 'bg-green-900 text-green-300' :
                   state === 'THINKING'        ? 'bg-indigo-900 text-indigo-300' :
                   state === 'STREAMING'       ? 'bg-blue-900 text-blue-300' :
+                  state === 'SHELL_EXEC' || state === 'SHELL_RUNNING' ? 'bg-purple-900 text-purple-300' :
+                  state === 'AWAITING_SHELL_CONFIRM' || state === 'SHELL_AWAITING_APPROVAL' ? 'bg-orange-950 text-orange-200' :
                   'bg-yellow-900 text-yellow-300'
                 }`}
               >
@@ -1342,12 +1440,34 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             )}
           </div>
         </div>
-        {/* 手機版：只顯示權限選單（模式切換移至輸入欄前） */}
-        {usePermModeDropdown && showPermModeSelect && (
-          <div className="w-full min-w-0 shrink-0 border-t border-gray-800/90 pt-2 mt-0.5 -mx-4 px-4">
-            <div className="flex items-center gap-2 min-w-0 w-full">
-              <span className="shrink-0 text-xs text-gray-500">權限</span>
-              <PermModeSelect
+        {showPermModeSelect && inputMode === 'agent' && (
+          <div
+            className={
+              usePermModeDropdown
+                ? 'w-full min-w-0 shrink-0 border-t border-gray-800/90 pt-2 mt-0.5 -mx-4 px-4 sm:border-t-0 sm:pt-0 sm:mt-0 sm:px-0 sm:mx-0 sm:w-auto sm:max-w-[min(100%,20rem)] sm:self-center'
+                : 'w-fit max-w-full min-w-0 shrink-0 self-end sm:self-center sm:ml-auto'
+            }
+          >
+            {usePermModeDropdown ? (
+              <div className="flex items-center gap-2 min-w-0 w-full sm:justify-end">
+                <span className="shrink-0 text-xs text-gray-500">權限</span>
+                <PermModeSelect
+                  agentType={agentType}
+                  value={mode}
+                  onChange={handleSetMode}
+                  title={
+                    agentType === 'gemini'
+                      ? 'Gemini 核准模式（--approval-mode）'
+                      : agentType === 'cursor'
+                      ? '權限模式（bypass：Cursor 會加 --force）'
+                      : '權限模式'
+                  }
+                  id="chat-perm-mode"
+                  className="flex-1 min-w-0 sm:min-w-[11rem]"
+                />
+              </div>
+            ) : (
+              <PermModeSwitch
                 agentType={agentType}
                 value={mode}
                 onChange={handleSetMode}
@@ -1358,33 +1478,18 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                     ? '權限模式（bypass：Cursor 會加 --force）'
                     : '權限模式'
                 }
-                id="chat-perm-mode"
-                className="flex-1 min-w-0"
               />
-            </div>
-          </div>
-        )}
-        {/* 桌面版：只顯示權限模式（模式切換移至輸入欄前） */}
-        {!usePermModeDropdown && showPermModeSelect && (
-          <div className="flex items-center gap-2 w-fit max-w-full min-w-0 shrink-0 self-end sm:self-center sm:ml-auto">
-            <PermModeSwitch
-              agentType={agentType}
-              value={mode}
-              onChange={handleSetMode}
-              title={
-                agentType === 'gemini'
-                  ? 'Gemini 核准模式（--approval-mode）'
-                  : agentType === 'cursor'
-                  ? '權限模式（bypass：Cursor 會加 --force）'
-                  : '權限模式'
-              }
-            />
+            )}
           </div>
         )}
       </div>
 
       {/* 訊息列表 */}
-      <div className="flex-1 overflow-y-auto app-scroll px-4 py-4 space-y-3">
+      <div
+        ref={chatScrollRef}
+        onScroll={syncChatNearBottom}
+        className="flex-1 overflow-y-auto app-scroll px-4 py-4 space-y-3"
+      >
         {histLoaded && messages.length === 0 && (
           <div className="text-center text-gray-600 mt-20 text-sm">輸入指令開始對話</div>
         )}
@@ -1488,6 +1593,33 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
           </div>
         )}
 
+        {state === 'AWAITING_SHELL_CONFIRM' && shellRequest && (
+          <div className="rounded-xl border border-orange-700/90 bg-orange-950/35 px-4 py-3 text-sm mr-8">
+            <div className="text-orange-300 font-semibold mb-2">允許執行 Shell 指令？</div>
+            <div className="text-gray-200 text-xs font-mono break-words mb-1 whitespace-pre-wrap">{shellRequest.line}</div>
+            <div className="text-gray-500 text-[10px] font-mono mb-2">
+              指令名稱：<span className="text-orange-200/90">{shellRequest.command}</span>
+              {shellRequest.workDirKey ? (
+                <span className="block truncate mt-0.5" title={shellRequest.workDirKey}>目錄：{shellRequest.workDirKey}</span>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-2 mt-2">
+              <button type="button" onClick={() => { send({ type: 'shell_allow_once' }); }}
+                className="px-3 py-1.5 bg-orange-800 hover:bg-orange-700 text-white rounded-lg text-xs">
+                允許一次
+              </button>
+              <button type="button" onClick={() => { send({ type: 'shell_allow_remember_workdir' }); }}
+                className="px-3 py-1.5 bg-amber-900 hover:bg-amber-800 text-amber-100 rounded-lg text-xs">
+                允許並記住此目錄
+              </button>
+              <button type="button" onClick={() => { send({ type: 'shell_deny' }); }}
+                className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs">
+                拒絕
+              </button>
+            </div>
+          </div>
+        )}
+
         <div ref={bottomRef} />
       </div>
 
@@ -1496,14 +1628,13 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         className={`shrink-0 px-2 sm:px-3 py-3 border-t transition-colors duration-200 ${inputMode === 'shell' ? 'bg-[#120d00] border-amber-900/50' : 'bg-gray-900 border-gray-800'}`}
         style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
       >
-        {(state === 'STREAMING' || state === 'THINKING' || state === 'SHELL_RUNNING') ? (
+        {(state === 'STREAMING' || state === 'THINKING' || state === 'SHELL_RUNNING' || state === 'SHELL_EXEC') ? (
           <button onClick={handleInterrupt}
             className="w-full py-2 bg-red-900/60 hover:bg-red-800 text-red-300 rounded-lg text-sm">
             中斷
           </button>
         ) : (
           <div className="flex gap-2 w-full min-w-0 items-end">
-            {/* 手機版：圖示按鈕（無文字）；桌面版：圖示＋文字按鈕 */}
             <ModeToggleBtn
               value={inputMode}
               onChange={handleInputModeChange}

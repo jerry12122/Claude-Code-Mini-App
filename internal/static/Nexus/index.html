@@ -303,7 +303,26 @@ const SESSION_STATE_LABEL = {
   THINKING: '思考中',
   STREAMING: '輸出中',
   AWAITING_CONFIRM: '待授權',
+  AWAITING_SHELL_CONFIRM: '待確認 Shell',
+  SHELL_EXEC: 'Shell 執行中',
 };
+
+const INPUT_MODE_STORAGE_PREFIX = 'cc_input_mode:';
+const INPUT_MODE_LEGACY_KEY = 'cc_input_mode';
+
+function inputModeStorageKey(sessionId) {
+  return INPUT_MODE_STORAGE_PREFIX + String(sessionId || '');
+}
+
+function readInputModeForSession(sessionId) {
+  try {
+    const v = localStorage.getItem(inputModeStorageKey(sessionId));
+    if (v === 'shell' || v === 'agent') return v;
+    const legacy = localStorage.getItem(INPUT_MODE_LEGACY_KEY);
+    if (legacy === 'shell' || legacy === 'agent') return legacy;
+  } catch (_) {}
+  return 'agent';
+}
 
 /**
  * 依 agent_type 回傳可用的 permission_mode 下拉選項。
@@ -902,23 +921,60 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const [permTools, setPermTools] = useState([]);
   const [mode, setMode]           = useState(() => normalizePermMode(agentType, session.permission_mode || 'default'));
   const [histLoaded, setHistLoaded] = useState(false);
+  const [inputMode, setInputMode]   = useState(() => readInputModeForSession(session.id));
+  const [shellRequest, setShellRequest] = useState(null);
   const wsRef     = useRef(null);
   const bottomRef = useRef(null);
+  const chatScrollRef = useRef(null);
+  const chatNearBottomRef = useRef(true);
   const chatInputRef = useRef(null);
   const streamBuf = useRef('');
   const connGenRef = useRef(0);
   const activeSessionRef = useRef(session.id);
   const reconnectTimerRef = useRef(null);
 
+  const syncChatNearBottom = useCallback(() => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+    chatNearBottomRef.current = gap < 80;
+  }, []);
+
   // 捲到底
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    let id2;
+    const id1 = requestAnimationFrame(() => {
+      id2 = requestAnimationFrame(() => {
+        syncChatNearBottom();
+      });
+    });
+    return () => {
+      cancelAnimationFrame(id1);
+      if (id2 != null) cancelAnimationFrame(id2);
+    };
+  }, [messages, syncChatNearBottom]);
+
+  // Shell 待確認區塊出現時：若原本已在底部則捲動以露出確認框（須在 messages 捲底 effect 之後宣告，同 commit 時先同步 ref）
+  useEffect(() => {
+    if (!shellRequest) return;
+    let id2;
+    const id1 = requestAnimationFrame(() => {
+      id2 = requestAnimationFrame(() => {
+        if (!chatNearBottomRef.current) return;
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+      });
+    });
+    return () => {
+      cancelAnimationFrame(id1);
+      if (id2 != null) cancelAnimationFrame(id2);
+    };
+  }, [shellRequest]);
 
   // 離開頁面確認（任務進行中或等待授權時）
   useEffect(() => {
     const handler = (e) => {
-      if (state === 'THINKING' || state === 'STREAMING' || state === 'AWAITING_CONFIRM') {
+      if (state === 'THINKING' || state === 'STREAMING' || state === 'AWAITING_CONFIRM' || state === 'AWAITING_SHELL_CONFIRM' || state === 'SHELL_EXEC') {
         e.preventDefault();
         e.returnValue = '';
       }
@@ -935,7 +991,9 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     setHistLoaded(false);
     setState('IDLE');
     setPermTools([]);
+    setShellRequest(null);
     setInput('');
+    setInputMode(readInputModeForSession(session.id));
     setMode(normalizePermMode(agentType, session.permission_mode || 'default'));
   }, [session.id, session.permission_mode, agentType]);
 
@@ -1007,6 +1065,9 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
 
         if (msg.type === 'status') {
           setState(msg.value);
+          if (msg.value !== 'AWAITING_SHELL_CONFIRM') {
+            setShellRequest(null);
+          }
           if (msg.value === 'THINKING') {
             streamBuf.current = '';
             setMessages((prev) => {
@@ -1017,10 +1078,26 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               return [...prev, { role: 'claude', content: '', html: null, streaming: true, status: 'pending' }];
             });
           }
+          if (msg.value === 'SHELL_EXEC') {
+            setMessages((prev) => {
+              const last = prev[prev.length - 1];
+              if (last && last.role === 'shell' && last.streaming && last.status === 'pending') {
+                return prev;
+              }
+              return [...prev, { role: 'shell', content: '', html: null, streaming: true, status: 'pending' }];
+            });
+          }
           if (msg.value === 'IDLE' || msg.value === 'AWAITING_CONFIRM') {
-            setMessages((prev) => prev.map((m, i) =>
-              i === prev.length - 1 ? { ...m, streaming: false, status: m.status === 'pending' ? 'done' : m.status } : m
-            ));
+            setMessages((prev) => {
+              const updated = prev.map((m, i) =>
+                i === prev.length - 1 ? { ...m, streaming: false, status: m.status === 'pending' ? 'done' : m.status } : m
+              );
+              const last = updated[updated.length - 1];
+              if (last && last.role === 'claude' && last.id == null && !last.content && !last.html) {
+                return updated.slice(0, -1);
+              }
+              return updated;
+            });
           }
         }
 
@@ -1043,6 +1120,39 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
 
         if (msg.type === 'permission_request') {
           setPermTools(msg.tools || []);
+        }
+
+        if (msg.type === 'shell_command_request') {
+          setShellRequest({
+            command: msg.command || '',
+            line: msg.line || '',
+            workDirKey: msg.work_dir_key || '',
+          });
+        }
+
+        if (msg.type === 'shell_result') {
+          setMessages((prev) => {
+            const id = msg.id;
+            const content = msg.content != null ? String(msg.content) : '';
+            let found = false;
+            const next = prev.map((m) => {
+              if (found) return m;
+              if (id != null && m.id === id) {
+                found = true;
+                return { ...m, role: 'shell', content, html: null, streaming: false, status: 'done' };
+              }
+              return m;
+            });
+            if (found) return next;
+            for (let i = next.length - 1; i >= 0; i--) {
+              if (next[i].role === 'shell' && next[i].status === 'pending') {
+                const copy = [...next];
+                copy[i] = { ...copy[i], id: id != null ? id : copy[i].id, content, html: null, streaming: false, status: 'done' };
+                return copy;
+              }
+            }
+            return [...next, { role: 'shell', id: id != null ? id : null, content, html: null, streaming: false, status: 'done' }];
+          });
         }
       };
 
@@ -1088,7 +1198,9 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       setInput('');
       return;
     }
-    const sent = send({ type: 'input', data: trimmed });
+    const sent = inputMode === 'shell'
+      ? send({ type: 'shell_exec', data: trimmed })
+      : send({ type: 'input', data: trimmed });
     if (!sent) return;
     setInput('');
   };
@@ -1112,10 +1224,17 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
 
   const isDisabled = state !== 'IDLE';
 
+  const setInputModePersist = (mode) => {
+    setInputMode(mode);
+    try {
+      localStorage.setItem(inputModeStorageKey(session.id), mode);
+    } catch (_) {}
+  };
+
   /** 聊天輸入框：依內容伸縮高度，並遵守 CSS max-height（min(40vh,12rem)） */
   useLayoutEffect(() => {
     const el = chatInputRef.current;
-    if (!el || state === 'THINKING' || state === 'STREAMING') return;
+    if (!el || state === 'THINKING' || state === 'STREAMING' || state === 'SHELL_EXEC' || state === 'AWAITING_SHELL_CONFIRM') return;
     el.style.height = '0px';
     const maxStr = getComputedStyle(el).maxHeight;
     const maxPx = parseFloat(maxStr);
@@ -1152,6 +1271,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                   state === 'IDLE'            ? 'bg-emerald-950/80 text-emerald-300' :
                   state === 'THINKING'        ? 'bg-cyan-950/80 text-cyan-300' :
                   state === 'STREAMING'       ? 'bg-sky-950/80 text-sky-300' :
+                  state === 'SHELL_EXEC'      ? 'bg-fuchsia-950/80 text-fuchsia-200' :
+                  state === 'AWAITING_SHELL_CONFIRM' ? 'bg-orange-950/85 text-orange-200' :
                   'bg-amber-950/80 text-amber-200'
                 }`}
               >
@@ -1163,7 +1284,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             )}
           </div>
         </div>
-        {showPermModeSelect && (
+        {showPermModeSelect && inputMode === 'agent' && (
           <div
             className={
               usePermModeDropdown
@@ -1208,7 +1329,11 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       </div>
 
       {/* 訊息列表 */}
-      <div className="flex-1 overflow-y-auto app-scroll px-3 sm:px-5 py-5 space-y-4">
+      <div
+        ref={chatScrollRef}
+        onScroll={syncChatNearBottom}
+        className="flex-1 overflow-y-auto app-scroll px-3 sm:px-5 py-5 space-y-4"
+      >
         {histLoaded && messages.length === 0 && (
           <div className="text-center text-slate-500 mt-20 text-sm">輸入指令開始對話</div>
         )}
@@ -1217,6 +1342,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             (state === 'THINKING' || state === 'STREAMING') &&
             m.role === 'claude' &&
             i === messages.length - 1;
+          const showShellTail =
+            state === 'SHELL_EXEC' && m.role === 'shell' && m.streaming && i === messages.length - 1;
           return (
           <div
             key={m.id != null ? `m-${m.id}` : i}
@@ -1224,12 +1351,14 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
           >
             <div
               className={`rounded-2xl px-4 py-3 text-sm w-fit max-w-[88%] min-w-0 ${
-                m.role === 'user' ? 'bubble-user' : 'bubble-claude'
+                m.role === 'user' ? 'bubble-user' : m.role === 'shell' ? 'bg-slate-900/90 border border-cyan-500/20' : 'bubble-claude'
               }`}
             >
             <div className="text-xs text-slate-500 mb-1.5 font-medium">
               {m.role === 'user' ? (
                 '你'
+              ) : m.role === 'shell' ? (
+                'Shell'
               ) : (
                 <span className="inline-flex items-center gap-1.5">
                   <AgentBadgeIcon agentType={agentType} />
@@ -1250,6 +1379,17 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               ) : (
                 <><span className="dot"/><span className="dot"/><span className="dot"/></>
               )
+            ) : m.role === 'shell' ? (
+              <div className="flex flex-row items-end gap-1 font-mono text-xs text-slate-100 min-w-0">
+                <div className="whitespace-pre-wrap break-words flex-1 min-w-0">
+                  {(m.content || '').trim() === '' && m.status === 'done' && !showShellTail
+                    ? '（無輸出）'
+                    : m.content}
+                  {showShellTail && (
+                    <span className="streaming-tail shrink-0 select-none text-fuchsia-300" aria-hidden="true">...</span>
+                  )}
+                </div>
+              </div>
             ) : (
               <div className="whitespace-pre-wrap text-slate-100 break-words">{m.content}</div>
             )}
@@ -1283,6 +1423,33 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
           </div>
         )}
 
+        {state === 'AWAITING_SHELL_CONFIRM' && shellRequest && (
+          <div className="rounded-2xl border border-orange-600/50 bg-gradient-to-br from-orange-950/55 to-slate-950/85 px-4 py-4 text-sm mr-4 shadow-xl">
+            <div className="text-orange-300 font-semibold mb-2 nexus-display">允許執行 Shell 指令？</div>
+            <div className="text-slate-200 text-xs font-mono break-words mb-1 whitespace-pre-wrap">{shellRequest.line}</div>
+            <div className="text-slate-500 text-[10px] font-mono mb-2">
+              指令名稱：<span className="text-orange-200/90">{shellRequest.command}</span>
+              {shellRequest.workDirKey ? (
+                <span className="block truncate mt-0.5" title={shellRequest.workDirKey}>目錄：{shellRequest.workDirKey}</span>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <button type="button" onClick={() => { send({ type: 'shell_allow_once' }); }}
+                className="px-4 py-2 bg-orange-700/90 hover:bg-orange-600 text-white rounded-xl text-xs font-semibold">
+                允許一次
+              </button>
+              <button type="button" onClick={() => { send({ type: 'shell_allow_remember_workdir' }); }}
+                className="px-4 py-2 bg-amber-900/90 hover:bg-amber-800 text-amber-100 rounded-xl text-xs font-semibold">
+                允許並記住此目錄
+              </button>
+              <button type="button" onClick={() => { send({ type: 'shell_deny' }); }}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold">
+                拒絕
+              </button>
+            </div>
+          </div>
+        )}
+
         <div ref={bottomRef} />
       </div>
 
@@ -1290,31 +1457,61 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         className="shrink-0 px-3 sm:px-4 py-3 border-t border-cyan-500/10 bg-slate-950/60 backdrop-blur-xl"
         style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
       >
-        {state === 'STREAMING' || state === 'THINKING' ? (
+        {state === 'STREAMING' || state === 'THINKING' || state === 'SHELL_EXEC' ? (
           <button onClick={handleInterrupt}
             className="w-full py-3 bg-red-950/70 hover:bg-red-900/80 text-red-200 rounded-2xl text-sm font-semibold border border-red-500/25">
             中斷
           </button>
         ) : (
-          <div className="flex gap-2.5 w-full min-w-0 items-end">
+          <div className="flex flex-col gap-1.5 w-full min-w-0">
+            <div className="flex w-full min-w-0 gap-2.5 items-end">
+            <button
+              type="button"
+              onClick={() => setInputModePersist(inputMode === 'shell' ? 'agent' : 'shell')}
+              disabled={isDisabled}
+              title={inputMode === 'shell' ? '切換為 Agent 模式' : '切換為 Shell 模式'}
+              aria-label={inputMode === 'shell' ? '切換為 Agent 模式' : '切換為 Shell 模式'}
+              aria-pressed={inputMode === 'shell'}
+              className={`shrink-0 flex items-center justify-center w-12 h-12 min-h-[2.75rem] rounded-2xl border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:opacity-40 ${
+                inputMode === 'shell'
+                  ? 'border-orange-500/55 bg-orange-950/35 text-orange-400 hover:bg-orange-950/50'
+                  : 'border-cyan-500/20 bg-slate-900/80 text-cyan-400/90 hover:bg-slate-800/90'
+              }`}
+            >
+              {inputMode === 'shell' ? (
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5-4.5h7.5m-15 8.25h13.5A2.25 2.25 0 0021 12V5.25A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25v12A2.25 2.25 0 005.25 19.5z" />
+                </svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+                </svg>
+              )}
+            </button>
             <textarea
               ref={chatInputRef}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               disabled={isDisabled}
-              placeholder="輸入指令…"
+              placeholder={
+                inputMode === 'shell'
+                  ? '輸入指令，例如 git status（左側圖示切回 Agent）'
+                  : '輸入與 Agent 對話…（左側圖示切到 Shell）'
+              }
               rows={1}
               className="flex-1 min-w-0 w-full resize-none overflow-y-auto app-scroll bg-slate-900/75 border border-cyan-500/15 rounded-2xl px-4 py-3 text-sm leading-relaxed text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400/45 focus:ring-1 focus:ring-cyan-500/20 disabled:opacity-40 min-h-[2.75rem] max-h-[min(40vh,12rem)] box-border shadow-inner shadow-black/20"
             />
             <button type="button" onClick={handleSend} disabled={isDisabled || !input.trim()}
               aria-label="送出"
               title="送出（Enter）"
-              className="shrink-0 self-end flex items-center justify-center w-12 h-12 min-h-[2.75rem] rounded-2xl bg-gradient-to-br from-cyan-500 to-teal-600 hover:brightness-110 disabled:opacity-30 text-slate-950 shadow-lg shadow-cyan-950/40 transition-all">
+              className="shrink-0 self-end flex items-center justify-center w-12 h-12 min-h-[2.75rem] rounded-2xl bg-gradient-to-br from-cyan-500 to-teal-600 hover:brightness-110 disabled:opacity-30 text-slate-950 shadow-lg shadow-cyan-950/40 transition-all"
+            >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5" aria-hidden>
                 <path d="M3.478 2.405a.75.75 0 0 0-.926.94l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.405Z" />
               </svg>
             </button>
+            </div>
           </div>
         )}
       </div>
