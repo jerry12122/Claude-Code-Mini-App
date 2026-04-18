@@ -9,19 +9,20 @@ import (
 
 // Session-level status for sidebar badges and background tasks.
 const (
-	SessionStatusIdle            = "idle"
-	SessionStatusRunning         = "running"
-	SessionStatusAwaitingConfirm = "awaiting_confirm"
+	SessionStatusIdle                 = "idle"
+	SessionStatusRunning              = "running"
+	SessionStatusAwaitingConfirm      = "awaiting_confirm"
+	SessionStatusAwaitingShellConfirm = "awaiting_shell_confirm"
 )
 
 type Session struct {
-	ID             string   `json:"id"`
-	AgentType      string   `json:"agent_type"`
-	AgentSessionID string   `json:"agent_session_id"`
-	Name           string   `json:"name"`
-	Description    string   `json:"description"`
-	WorkDir        string   `json:"work_dir"`
-	// GitBranch is not persisted; filled by API from git when serializing.
+	ID             string `json:"id"`
+	AgentType      string `json:"agent_type"`
+	AgentSessionID string `json:"agent_session_id"`
+	Name           string `json:"name"`
+	Description    string `json:"description"`
+	WorkDir        string `json:"work_dir"`
+	// GitBranch 非 DB 欄位，僅於 API 序列化時由後端填入（目前分支名稱）。
 	GitBranch      string   `json:"git_branch,omitempty"`
 	PermissionMode string   `json:"permission_mode"`
 	AllowedTools   []string `json:"allowed_tools"`
@@ -30,8 +31,10 @@ type Session struct {
 	Status         string   `json:"status"`
 	// CliExtraArgs: optional argv list, stored as JSON in cli_extra_args.
 	CliExtraArgs []string `json:"cli_extra_args"`
-	// InputMode: "agent" (AI chat) or "shell" (local commands).
+	// InputMode：agent（AI 對話）或 shell（本機指令）。
 	InputMode string `json:"input_mode"`
+	// ShellPending 為待確認的 shell 指令 JSON（見 docs/shell-allowlist-schema.md）；空字串表示無。
+	ShellPending string `json:"shell_pending,omitempty"`
 }
 
 func (db *DB) CreateSession(name, description, workDir, permissionMode, agentType string, cliExtraArgs []string, inputMode string) (*Session, error) {
@@ -68,14 +71,14 @@ func (db *DB) CreateSession(name, description, workDir, permissionMode, agentTyp
 
 func (db *DB) GetSession(id string) (*Session, error) {
 	row := db.QueryRow(
-		`SELECT id, agent_type, agent_session_id, name, description, work_dir, permission_mode, allowed_tools, pending_denials, last_active, status, cli_extra_args, input_mode FROM sessions WHERE id = ?`, id,
+		`SELECT id, agent_type, agent_session_id, name, description, work_dir, permission_mode, allowed_tools, pending_denials, last_active, status, cli_extra_args, input_mode, shell_pending FROM sessions WHERE id = ?`, id,
 	)
 	return scanSession(row)
 }
 
 func (db *DB) ListSessions() ([]*Session, error) {
 	rows, err := db.Query(
-		`SELECT id, agent_type, agent_session_id, name, description, work_dir, permission_mode, allowed_tools, pending_denials, last_active, status, cli_extra_args, input_mode FROM sessions ORDER BY last_active DESC`,
+		`SELECT id, agent_type, agent_session_id, name, description, work_dir, permission_mode, allowed_tools, pending_denials, last_active, status, cli_extra_args, input_mode, shell_pending FROM sessions ORDER BY last_active DESC`,
 	)
 	if err != nil {
 		return nil, err
@@ -169,7 +172,16 @@ func (db *DB) ResetRunningSessions() error {
 	return err
 }
 
-// UpdateSessionStatus updates idle | running | awaiting_confirm.
+// UpdateShellPending 更新待確認的 shell 指令 JSON；空字串表示清除。
+func (db *DB) UpdateShellPending(id, pendingJSON string) error {
+	_, err := db.Exec(
+		`UPDATE sessions SET shell_pending = ? WHERE id = ?`,
+		pendingJSON, id,
+	)
+	return err
+}
+
+// UpdateSessionStatus 更新背景任務／授權狀態（idle | running | awaiting_confirm | awaiting_shell_confirm）。
 func (db *DB) UpdateSessionStatus(id, status string) error {
 	_, err := db.Exec(
 		`UPDATE sessions SET status = ?, last_active = datetime('now') WHERE id = ?`,
@@ -200,7 +212,7 @@ func scanSession(s scanner) (*Session, error) {
 	var extraJSON string
 	err := s.Scan(
 		&sess.ID, &sess.AgentType, &sess.AgentSessionID, &sess.Name, &sess.Description,
-		&sess.WorkDir, &sess.PermissionMode, &allowedTools, &sess.PendingDenials, &sess.LastActive, &sess.Status, &extraJSON, &sess.InputMode,
+		&sess.WorkDir, &sess.PermissionMode, &allowedTools, &sess.PendingDenials, &sess.LastActive, &sess.Status, &extraJSON, &sess.InputMode, &sess.ShellPending,
 	)
 	if err != nil {
 		return nil, err

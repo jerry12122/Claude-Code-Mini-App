@@ -3,6 +3,8 @@ package db
 const (
 	MessageStatusPending = "pending"
 	MessageStatusDone    = "done"
+	// RoleShell 為直連 shell 輸出訊息（非 agent）。
+	RoleShell = "shell"
 )
 
 type Message struct {
@@ -27,7 +29,7 @@ func (db *DB) CreatePendingMessage(sessionID string) (int64, error) {
 	return db.CreatePendingMessageWithRole(sessionID, "claude")
 }
 
-// CreatePendingMessageWithRole inserts an empty row for the given role (claude, shell, ...).
+// CreatePendingMessageWithRole 建立一筆 pending 訊息（role 為 claude 或 shell）。
 func (db *DB) CreatePendingMessageWithRole(sessionID, role string) (int64, error) {
 	res, err := db.Exec(
 		`INSERT INTO messages (session_id, role, content, status) VALUES (?, ?, '', ?)`,
@@ -39,7 +41,23 @@ func (db *DB) CreatePendingMessageWithRole(sessionID, role string) (int64, error
 	return res.LastInsertId()
 }
 
-// AppendMessageContent appends text to a pending message.
+// SetShellMessageResult 寫入 shell 輸出並標記完成；若訊息已被他處 finalize（併發中止）則略過。
+func (db *DB) SetShellMessageResult(msgID int64, sessionID, content string) error {
+	res, err := db.Exec(
+		`UPDATE messages SET content = ?, status = ? WHERE id = ? AND session_id = ? AND status = ?`,
+		content, MessageStatusDone, msgID, sessionID, MessageStatusPending,
+	)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return nil
+	}
+	return nil
+}
+
+// AppendMessageContent 將 delta 累加到 pending 訊息。
 func (db *DB) AppendMessageContent(msgID int64, delta string) error {
 	if delta == "" {
 		return nil
@@ -66,11 +84,15 @@ func (db *DB) ResetPendingMessages() error {
 	return err
 }
 
-// FinalizePendingMessagesForSession marks pending rows done for one session.
+// FinalizePendingMessagesForSession 將該 session 所有 pending 標為 done（新回合前或中斷時）。
+// 若 shell 訊息仍為空內容，寫入「（已中止）」以利 UI 辨識。
 func (db *DB) FinalizePendingMessagesForSession(sessionID string) error {
 	_, err := db.Exec(
-		`UPDATE messages SET status = ? WHERE session_id = ? AND status = ?`,
-		MessageStatusDone, sessionID, MessageStatusPending,
+		`UPDATE messages SET status = ?, content = CASE
+			WHEN role = ? AND TRIM(COALESCE(content, '')) = '' THEN '（已中止）'
+			ELSE content END
+		 WHERE session_id = ? AND status = ?`,
+		MessageStatusDone, RoleShell, sessionID, MessageStatusPending,
 	)
 	return err
 }
