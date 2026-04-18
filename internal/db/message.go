@@ -52,6 +52,16 @@ func (db *DB) FinalizeMessage(msgID int64) error {
 	return err
 }
 
+// ResetPendingMessages 將所有 status=pending 的訊息標為 done。
+// 伺服器啟動時呼叫，修復 crash 留下的殘留訊息。
+func (db *DB) ResetPendingMessages() error {
+	_, err := db.Exec(
+		`UPDATE messages SET status = ? WHERE status = ?`,
+		MessageStatusDone, MessageStatusPending,
+	)
+	return err
+}
+
 // FinalizePendingMessagesForSession 將該 session 所有 pending 標為 done（新回合前或中斷時）
 func (db *DB) FinalizePendingMessagesForSession(sessionID string) error {
 	_, err := db.Exec(

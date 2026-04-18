@@ -53,6 +53,14 @@ func main() {
 	}
 	defer database.Close()
 
+	// 修復 crash 遺留的殘留狀態
+	if err := database.ResetRunningSessions(); err != nil {
+		log.Printf("[startup] ResetRunningSessions 失敗: %v", err)
+	}
+	if err := database.ResetPendingMessages(); err != nil {
+		log.Printf("[startup] ResetPendingMessages 失敗: %v", err)
+	}
+
 	// 將 config.yaml 中的白名單寫入 DB
 	for _, id := range cfg.WhitelistTgIDs {
 		if err := database.AddUser(id, ""); err != nil {

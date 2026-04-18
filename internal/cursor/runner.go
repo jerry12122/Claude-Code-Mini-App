@@ -8,8 +8,10 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/agent"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/proc"
 )
 
 func init() {
@@ -82,6 +84,14 @@ func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventC
 	cmd := exec.CommandContext(ctx, "cursor-agent", args...)
 	if opts.WorkDir != "" {
 		cmd.Dir = opts.WorkDir
+	}
+	cmd.SysProcAttr = proc.SysProcAttr()
+	cmd.WaitDelay = 5 * time.Second
+	cmd.Cancel = func() error {
+		if cmd.Process != nil {
+			return proc.GracefulStop(cmd.Process.Pid, 3*time.Second)
+		}
+		return nil
 	}
 
 	stdout, err := cmd.StdoutPipe()

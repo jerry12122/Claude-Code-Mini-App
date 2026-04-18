@@ -975,9 +975,17 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             });
           }
           if (msg.value === 'IDLE' || msg.value === 'AWAITING_CONFIRM') {
-            setMessages((prev) => prev.map((m, i) =>
-              i === prev.length - 1 ? { ...m, streaming: false, status: m.status === 'pending' ? 'done' : m.status } : m
-            ));
+            setMessages((prev) => {
+              const updated = prev.map((m, i) =>
+                i === prev.length - 1 ? { ...m, streaming: false, status: m.status === 'pending' ? 'done' : m.status } : m
+              );
+              const last = updated[updated.length - 1];
+              // 移除因中斷而從未收到任何內容的暫存 claude 泡泡（無 DB id、無內容）
+              if (last && last.role === 'claude' && last.id == null && !last.content && !last.html) {
+                return updated.slice(0, -1);
+              }
+              return updated;
+            });
           }
         }
 

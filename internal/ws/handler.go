@@ -174,6 +174,9 @@ func NewHandler(database *db.DB, botToken string) func(*fiberws.Conn) {
 				permDenied := false
 
 				err := runner.Run(ctx, opts, func(e agent.Event) {
+					if ctx.Err() != nil {
+						return
+					}
 					switch e.Type {
 					case agent.EventStreamStart:
 						broadcast(serverMsg{Type: "status", Value: StateStreaming})

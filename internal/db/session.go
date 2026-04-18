@@ -152,6 +152,16 @@ func (db *DB) TouchSession(id string) error {
 	return err
 }
 
+// ResetRunningSessions 將所有 status=running 的 session 重設為 idle。
+// 伺服器啟動時呼叫，修復 crash 留下的殘留狀態。
+func (db *DB) ResetRunningSessions() error {
+	_, err := db.Exec(
+		`UPDATE sessions SET status = ? WHERE status = ?`,
+		SessionStatusIdle, SessionStatusRunning,
+	)
+	return err
+}
+
 // UpdateSessionStatus 更新背景任務／授權狀態（idle | running | awaiting_confirm）
 func (db *DB) UpdateSessionStatus(id, status string) error {
 	_, err := db.Exec(
