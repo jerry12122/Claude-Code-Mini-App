@@ -30,3 +30,16 @@ server:
 
 db:
   path: "./claude-miniapp.db"
+
+# 直連 Shell：在 Session 的 work_dir 執行使用者輸入的指令（等同 RCE，預設關閉）。
+# shell:
+#   enabled: true
+#   timeout: 60s
+#   max_output_bytes: 524288
+#   # 與 SQLite shell_workdir_commands（依目錄「記住」的指令）聯集後為「有效集合」。
+#   # 有效集合為空時：每道指令都需先經使用者確認，不會因「未設定清單」而自動放行。
+#   # 有效集合非空時：僅第一個指令名稱在集合內者可跳過確認（仍阻擋 &&、||、|、; 等串接）。
+#   allowed_commands:
+#     - git
+#     - ls
+#     - echo
