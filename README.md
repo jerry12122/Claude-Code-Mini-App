@@ -13,6 +13,7 @@ A Telegram Mini App that lets you remotely drive AI coding CLIs on your server f
 - **Permissions** — For Claude, `stream-json` `permission_denials` enters an approval flow; allow once or change `permission_mode` (Cursor / Gemini also support mode switching per their CLIs)
 - **Telegram auth** — Mini App `initData` HMAC verification plus an allowlisted `tg_id`
 - **Web login** — Password login from allowed intranet IPs (HttpOnly cookie), with optional binding to an allowlisted user for **Telegram task-complete / approval notifications**
+- **Direct shell (optional)** — Toggle **Agent / Shell** with the **icon** to the left of the chat input (preference is stored per session in the browser `localStorage` key `cc_input_mode:<sessionId>`, defaulting to **Agent** when unset); runs OS commands in that session’s `work_dir` (e.g. `git status`). Disabled by default — enable explicitly in `config.yaml` (see security notes below)
 
 ## Architecture
 
@@ -82,9 +83,25 @@ server:
 
 db:
   path: "./claude-miniapp.db"
+
+# Direct shell (default off; enabling it lets authenticated users run shell commands on the server)
+# shell:
+#   enabled: true
+#   timeout: 60s
+#   max_output_bytes: 524288
+#   # Union with per-work_dir DB allowlist; if the union is empty, every command needs confirmation first (see "Effective command set" below)
+#   allowed_commands:
+#     - git
+#     - ls
 ```
 
 > **Security:** Do not commit `config.yaml` with real secrets. Never use `no_auth` in production.
+
+> **Direct shell:** With `shell.enabled: true`, any user who passes Telegram allowlist or web login can run shell commands on the server (under each session’s `work_dir`). That effectively grants shell access on the host to trusted users — use only on private networks or tightly controlled deployments.
+
+> **Effective command set:** The server builds the **union** of **`shell.allowed_commands` (global)** and **commands remembered per `work_dir`** in SQLite (when the user chooses “allow and remember for this directory”), then classifies by the **first command name** (normalized). This matches `ClassifyShellLine` in `internal/shell/effective.go`.
+> - **Union is empty** (no global entries and nothing accumulated for that directory yet): **no** command runs without confirmation; the UI always prompts first.
+> - **Union non-empty:** if the first command name is in the set, it may run directly after character checks; otherwise the UI prompts. Matching is case-insensitive (e.g. `git` / `git.exe`). Chaining is blocked (`&&`, `||`, `|`, `;`, newlines, backticks, `$(`, …).
 
 ### 3. Run
 
@@ -107,6 +124,10 @@ Listens on `:8080` by default. Static UI is served from `./internal/static`.
 | `no_auth` | Disable all authentication | `false` |
 | `server.port` | HTTP port | `8080` |
 | `db.path` | SQLite file path | `./claude-miniapp.db` |
+| `shell.enabled` | Allow WebSocket `shell_exec` (direct shell) | `false` |
+| `shell.timeout` | Per-command timeout | `60s` |
+| `shell.max_output_bytes` | Max bytes returned per command | `524288` |
+| `shell.allowed_commands` | Global command names; **union** with per-`work_dir` DB rows is the effective set. **If the union is empty, every command requires confirmation first**; if non-empty, only names in the set may run without confirmation (chaining still blocked) | `[]` |
 
 ## REST API
 
@@ -129,6 +150,7 @@ Except static files and auth routes, endpoints require Telegram `initData` (head
 
 ```json
 { "type": "input", "data": "user prompt" }
+{ "type": "shell_exec", "data": "git status" }
 { "type": "allow_once", "tools": ["Write"] }
 { "type": "set_mode", "mode": "acceptEdits" }
 { "type": "interrupt" }
@@ -140,14 +162,16 @@ Except static files and auth routes, endpoints require Telegram `initData` (head
 ```json
 { "type": "sync", "value": "IDLE", "messages": [...] }
 { "type": "status", "value": "STREAMING" }
+{ "type": "status", "value": "SHELL_EXEC" }
 { "type": "delta", "content": "..." }
 { "type": "user_message", "content": "..." }
+{ "type": "shell_result", "id": 123, "content": "command output text" }
 { "type": "permission_request", "tools": [...] }
 { "type": "reset" }
 { "type": "error", "content": "..." }
 ```
 
-On connect, the client receives `sync` (UI state + history). Background work and approval state are reflected in the session `status` field (`idle`, `running`, `awaiting_confirm`).
+On connect, the client receives `sync` (UI state + history). Background work and approval state are reflected in the session `status` field (e.g. `idle`, `running`, `awaiting_confirm`, `awaiting_shell_confirm`).
 
 ## Permission modes (Claude / Cursor / Gemini)
 
@@ -179,6 +203,7 @@ If the request is tied to a `tg_id` (in-app Telegram or web login bound to an al
 - `docs/plan.md` — Specification and roadmap  
 - `docs/headless.md` — Claude `-p` and stream-json  
 - `docs/claude-code-cli.md`, `docs/cursor-agent-cli.md`, `docs/gemini-cli.md` — CLI references  
+- `docs/shell-allowlist-schema.md` — Shell allowlist, pending confirmation, and WebSocket shapes  
 
 ## License
 

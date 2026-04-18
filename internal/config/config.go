@@ -13,6 +13,15 @@ type Config struct {
 	NoAuth         bool    `mapstructure:"no_auth"`
 	Server         Server  `mapstructure:"server"`
 	DB             DB      `mapstructure:"db"`
+	Shell          Shell   `mapstructure:"shell"`
+}
+
+// Shell 直連 shell 執行（等同伺服器端任意指令，預設關閉）。
+type Shell struct {
+	Enabled          bool     `mapstructure:"enabled"`
+	Timeout          string   `mapstructure:"timeout"`           // 例如 "60s"
+	MaxOutputBytes   int      `mapstructure:"max_output_bytes"` // 單次輸出上限（位元組）
+	AllowedCommands  []string `mapstructure:"allowed_commands"` // 非空時僅允許第一個指令名稱在白名單內；空則不限制
 }
 
 type Web struct {
@@ -46,6 +55,9 @@ func Load() (*Config, error) {
 		"172.16.0.0/12",
 		"192.168.0.0/16",
 	})
+	viper.SetDefault("shell.enabled", false)
+	viper.SetDefault("shell.timeout", "60s")
+	viper.SetDefault("shell.max_output_bytes", 524288)
 
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("讀取 config.yaml 失敗: %w", err)

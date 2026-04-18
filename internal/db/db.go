@@ -49,6 +49,13 @@ func (db *DB) migrate() error {
 			content    TEXT NOT NULL,
 			created_at TEXT NOT NULL DEFAULT (datetime('now'))
 		);
+		CREATE TABLE IF NOT EXISTS shell_workdir_commands (
+			id           INTEGER PRIMARY KEY AUTOINCREMENT,
+			work_dir_key TEXT    NOT NULL,
+			command      TEXT    NOT NULL,
+			created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+			UNIQUE (work_dir_key, command)
+		);
 	`)
 	if err != nil {
 		return err
@@ -75,5 +82,11 @@ func (db *DB) migrate() error {
 	if _, err := db.Exec(`UPDATE messages SET status = 'done' WHERE status = 'pending'`); err != nil {
 		return err
 	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_shell_wd_cmd_dir ON shell_workdir_commands (work_dir_key)`); err != nil {
+		return err
+	}
+	// 新增 shell_pending 欄位（已存在時忽略）
+	tryAlter(`ALTER TABLE sessions ADD COLUMN shell_pending TEXT NOT NULL DEFAULT ''`)
+
 	return nil
 }

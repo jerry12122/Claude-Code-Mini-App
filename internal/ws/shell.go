@@ -46,7 +46,7 @@ func peekShellPending(sessionID string) *shellPendingInfo {
 	return shellPending[sessionID]
 }
 
-func clearShellPending(sessionID string) {
+func clearInMemoryShellApproval(sessionID string) {
 	shellPendingMu.Lock()
 	delete(shellPending, sessionID)
 	shellPendingMu.Unlock()

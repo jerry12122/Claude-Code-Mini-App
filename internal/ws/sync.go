@@ -2,20 +2,24 @@ package ws
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
 )
 
 // SyncPayload is sent to the client on WebSocket connect (type "sync").
 type SyncPayload struct {
-	UIState        string
-	Messages       json.RawMessage
-	InputMode      string
-	ShellType      string
+	UIState         string
+	Messages        json.RawMessage
+	InputMode       string
+	ShellType       string
 	ShellPendingCmd *shellPendingInfo
 }
 
 func computeWSState(sess *db.Session, msgs []*db.Message) string {
+	if strings.TrimSpace(sess.ShellPending) != "" {
+		return StateAwaitingShellConfirm
+	}
 	if peekShellPending(sess.ID) != nil {
 		return StateShellAwaitingApproval
 	}
@@ -28,7 +32,10 @@ func computeWSState(sess *db.Session, msgs []*db.Message) string {
 	if sess.Status == db.SessionStatusRunning {
 		for i := len(msgs) - 1; i >= 0; i-- {
 			m := msgs[i]
-			if m.Role == "shell" && m.Status == db.MessageStatusPending {
+			if m.Role == db.RoleShell && m.Status == db.MessageStatusPending {
+				if m.Content == "" {
+					return StateShellExec
+				}
 				return StateShellRunning
 			}
 			if m.Role == "claude" && m.Status == db.MessageStatusPending {
@@ -79,10 +86,10 @@ func buildSyncPayload(database *db.DB, sessionID string) (SyncPayload, error) {
 		im = "agent"
 	}
 	return SyncPayload{
-		UIState:        uiState,
-		Messages:       raw,
-		InputMode:      im,
-		ShellType:      shellTypeString(),
+		UIState:         uiState,
+		Messages:        raw,
+		InputMode:       im,
+		ShellType:       shellTypeString(),
 		ShellPendingCmd: peekShellPending(sess.ID),
 	}, nil
 }
