@@ -931,6 +931,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const connGenRef = useRef(0);
   const activeSessionRef = useRef(session.id);
   const reconnectTimerRef = useRef(null);
+  const serverPermAppliedRef = useRef(null);
+  const serverInputAppliedRef = useRef(null);
 
   const syncChatNearBottom = useCallback(() => {
     const el = chatScrollRef.current;
@@ -994,9 +996,16 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     setPermTools([]);
     setShellRequest(null);
     setInput('');
-    setInputMode(readInputModeForSession(session.id));
-    setMode(normalizePermMode(agentType, session.permission_mode || 'default'));
-  }, [session.id, session.permission_mode, agentType]);
+    const im =
+      session.input_mode === 'shell' || session.input_mode === 'agent'
+        ? session.input_mode
+        : readInputModeForSession(session.id);
+    const pm = normalizePermMode(agentType, session.permission_mode || 'default');
+    serverInputAppliedRef.current = im;
+    serverPermAppliedRef.current = pm;
+    setInputMode(im);
+    setMode(pm);
+  }, [session.id, session.permission_mode, agentType, session.input_mode]);
 
   // 載入歷史 + 建立 WS
   useEffect(() => {
@@ -1054,6 +1063,10 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
 
         if (msg.type === 'sync') {
           setState(msg.value);
+          if (msg.input_mode) {
+            setInputMode(msg.input_mode);
+            serverInputAppliedRef.current = msg.input_mode;
+          }
           if (msg.messages) {
             const rows = Array.isArray(msg.messages) ? msg.messages : JSON.parse(msg.messages);
             const mapped = rows.map(mapMessageRow);
@@ -1121,6 +1134,11 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
 
         if (msg.type === 'permission_request') {
           setPermTools(msg.tools || []);
+        }
+
+        if (msg.type === 'input_mode_changed') {
+          setInputMode(msg.value);
+          serverInputAppliedRef.current = msg.value;
         }
 
         if (msg.type === 'shell_command_request') {
@@ -1191,14 +1209,30 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     return true;
   }, [session.id]);
 
+  const flushPendingModes = useCallback(() => {
+    const wantPerm = normalizePermMode(agentType, mode);
+    const wantInput = inputMode === 'shell' || inputMode === 'agent' ? inputMode : 'agent';
+    if (showPermModeSelect && wantPerm !== serverPermAppliedRef.current) {
+      if (!send({ type: 'set_mode', mode: wantPerm })) return false;
+      serverPermAppliedRef.current = wantPerm;
+    }
+    if (wantInput !== serverInputAppliedRef.current) {
+      if (!send({ type: 'set_input_mode', mode: wantInput })) return false;
+      serverInputAppliedRef.current = wantInput;
+    }
+    return true;
+  }, [send, agentType, mode, inputMode, showPermModeSelect]);
+
   const handleSend = () => {
     const trimmed = input.trim();
     if (!trimmed || state !== 'IDLE') return;
     if (trimmed === '/reset' || trimmed === '/clear') {
+      if (!flushPendingModes()) return;
       send({ type: 'reset_context' });
       setInput('');
       return;
     }
+    if (!flushPendingModes()) return;
     const sent = inputMode === 'shell'
       ? send({ type: 'shell_exec', data: trimmed })
       : send({ type: 'input', data: trimmed });
@@ -1215,15 +1249,22 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     setPermTools([]);
   };
 
-  const handleSetMode = (newMode) => {
-    setMode(newMode);
-    send({ type: 'set_mode', mode: newMode });
+  const handlePermModeDraftChange = (newMode) => {
+    setMode(normalizePermMode(agentType, newMode));
+  };
+
+  const handlePermModeCommitNow = (newMode) => {
+    const n = normalizePermMode(agentType, newMode);
+    setMode(n);
+    if (!send({ type: 'set_mode', mode: n })) return;
+    serverPermAppliedRef.current = n;
     setPermTools([]);
   };
 
   const handleInterrupt = () => send({ type: 'interrupt' });
 
   const isDisabled = state !== 'IDLE';
+  const modeSwitchDisabled = state !== 'IDLE';
 
   const setInputModePersist = (mode) => {
     setInputMode(mode);
@@ -1350,7 +1391,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 className="px-4 py-2 bg-amber-600/90 hover:bg-amber-500 text-white rounded-xl text-xs font-semibold shadow-md">
                 允許此操作
               </button>
-              <button onClick={() => handleSetMode('acceptEdits')}
+              <button onClick={() => handlePermModeCommitNow('acceptEdits')}
                 className="px-4 py-2 bg-stone-700 hover:bg-stone-600 text-white rounded-xl text-xs font-semibold">
                 允許並記住
               </button>
@@ -1422,7 +1463,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 <PermModeSelect
                   agentType={agentType}
                   value={mode}
-                  onChange={handleSetMode}
+                  onChange={handlePermModeDraftChange}
+                  disabled={modeSwitchDisabled}
                   title={
                     agentType === 'gemini'
                       ? 'Gemini 核准模式（--approval-mode）'
@@ -1439,7 +1481,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 <PermModeSwitch
                   agentType={agentType}
                   value={mode}
-                  onChange={handleSetMode}
+                  onChange={handlePermModeDraftChange}
+                  disabled={modeSwitchDisabled}
                   title={
                     agentType === 'gemini'
                       ? 'Gemini 核准模式（--approval-mode）'

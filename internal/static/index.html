@@ -1005,6 +1005,9 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const connGenRef = useRef(0);
   const activeSessionRef = useRef(session.id);
   const reconnectTimerRef = useRef(null);
+  /** 後端已套用的權限／輸入模式（送出時若與畫面選擇不同才送 set_mode／set_input_mode） */
+  const serverPermAppliedRef = useRef(null);
+  const serverInputAppliedRef = useRef(null);
 
   const syncChatNearBottom = useCallback(() => {
     const el = chatScrollRef.current;
@@ -1071,8 +1074,15 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     setPermTools([]);
     setShellRequest(null);
     setInput('');
-    setInputMode(session.input_mode === 'shell' || session.input_mode === 'agent' ? session.input_mode : readInputModeForSession(session.id));
-    setMode(normalizePermMode(agentType, session.permission_mode || 'default'));
+    const im =
+      session.input_mode === 'shell' || session.input_mode === 'agent'
+        ? session.input_mode
+        : readInputModeForSession(session.id);
+    const pm = normalizePermMode(agentType, session.permission_mode || 'default');
+    serverInputAppliedRef.current = im;
+    serverPermAppliedRef.current = pm;
+    setInputMode(im);
+    setMode(pm);
     setShellPendingCmd(null);
   }, [session.id, session.permission_mode, agentType, session.input_mode]);
 
@@ -1132,7 +1142,10 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
 
         if (msg.type === 'sync') {
           setState(msg.value);
-          if (msg.input_mode) setInputMode(msg.input_mode);
+          if (msg.input_mode) {
+            setInputMode(msg.input_mode);
+            serverInputAppliedRef.current = msg.input_mode;
+          }
           if (msg.shell_type) setShellType(msg.shell_type);
           if (msg.shell_pending) setShellPendingCmd(msg.shell_pending);
           if (msg.messages) {
@@ -1216,6 +1229,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
 
         if (msg.type === 'input_mode_changed') {
           setInputMode(msg.value);
+          serverInputAppliedRef.current = msg.value;
           if (msg.shell_type) setShellType(msg.shell_type);
         }
 
@@ -1332,21 +1346,38 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     return true;
   }, [session.id]);
 
+  const flushPendingModes = useCallback(() => {
+    const wantPerm = normalizePermMode(agentType, mode);
+    const wantInput = inputMode === 'shell' || inputMode === 'agent' ? inputMode : 'agent';
+    if (showPermModeSelect && wantPerm !== serverPermAppliedRef.current) {
+      if (!send({ type: 'set_mode', mode: wantPerm })) return false;
+      serverPermAppliedRef.current = wantPerm;
+    }
+    if (wantInput !== serverInputAppliedRef.current) {
+      if (!send({ type: 'set_input_mode', mode: wantInput })) return false;
+      serverInputAppliedRef.current = wantInput;
+    }
+    return true;
+  }, [send, agentType, mode, inputMode, showPermModeSelect]);
+
   const handleSend = () => {
     const trimmed = input.trim();
     if (!trimmed) return;
     if (inputMode === 'shell') {
       if (state !== 'SHELL_IDLE' && state !== 'IDLE') return;
+      if (!flushPendingModes()) return;
       send({ type: 'shell_exec', data: trimmed });
       setInput('');
       return;
     }
     if (state !== 'IDLE' && state !== 'SHELL_IDLE') return;
     if (trimmed === '/reset' || trimmed === '/clear') {
+      if (!flushPendingModes()) return;
       send({ type: 'reset_context' });
       setInput('');
       return;
     }
+    if (!flushPendingModes()) return;
     if (!send({ type: 'input', data: trimmed })) return;
     setInput('');
   };
@@ -1360,9 +1391,16 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     setPermTools([]);
   };
 
-  const handleSetMode = (newMode) => {
-    setMode(newMode);
-    send({ type: 'set_mode', mode: newMode });
+  /** 僅更新畫面選擇，送出訊息時才會送 set_mode */
+  const handlePermModeDraftChange = (newMode) => {
+    setMode(normalizePermMode(agentType, newMode));
+  };
+  /** 授權面板「允許並記住」：須立即寫入後端並重試 */
+  const handlePermModeCommitNow = (newMode) => {
+    const n = normalizePermMode(agentType, newMode);
+    setMode(n);
+    if (!send({ type: 'set_mode', mode: n })) return;
+    serverPermAppliedRef.current = n;
     setPermTools([]);
   };
 
@@ -1375,7 +1413,6 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     try {
       localStorage.setItem(inputModeStorageKey(session.id), newMode);
     } catch (_) {}
-    send({ type: 'set_input_mode', mode: newMode });
   };
 
   const handleShellApprove = () => {
@@ -1457,7 +1494,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 <PermModeSelect
                   agentType={agentType}
                   value={mode}
-                  onChange={handleSetMode}
+                  onChange={handlePermModeDraftChange}
+                  disabled={modeSwitchDisabled}
                   title={
                     agentType === 'gemini'
                       ? 'Gemini 核准模式（--approval-mode）'
@@ -1473,7 +1511,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               <PermModeSwitch
                 agentType={agentType}
                 value={mode}
-                onChange={handleSetMode}
+                onChange={handlePermModeDraftChange}
+                disabled={modeSwitchDisabled}
                 title={
                   agentType === 'gemini'
                     ? 'Gemini 核准模式（--approval-mode）'
@@ -1588,7 +1627,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 className="px-3 py-1.5 bg-yellow-700 hover:bg-yellow-600 text-white rounded-lg text-xs">
                 允許此操作
               </button>
-              <button onClick={() => handleSetMode('acceptEdits')}
+              <button onClick={() => handlePermModeCommitNow('acceptEdits')}
                 className="px-3 py-1.5 bg-orange-700 hover:bg-orange-600 text-white rounded-lg text-xs">
                 允許並記住
               </button>
