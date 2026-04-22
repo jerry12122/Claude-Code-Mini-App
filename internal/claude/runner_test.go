@@ -69,6 +69,69 @@ func TestDispatch_resultEmitsDoneWithResultText(t *testing.T) {
 	}
 }
 
+func TestDispatch_thinkingDeltaAccumulatesFullSnapshotEachEmit(t *testing.T) {
+	t.Parallel()
+	r := &Runner{}
+	var st streamState
+	var thoughts []string
+	cb := func(e agent.Event) {
+		if e.Type == agent.EventThinking {
+			thoughts = append(thoughts, e.Text)
+		}
+	}
+	r.dispatch(&StreamEvent{
+		Type: "stream_event",
+		Event: &APIEvent{
+			Type:  "content_block_delta",
+			Delta: &Delta{Type: "thinking_delta", Text: "步"},
+		},
+	}, cb, &st)
+	r.dispatch(&StreamEvent{
+		Type: "stream_event",
+		Event: &APIEvent{
+			Type:  "content_block_delta",
+			Delta: &Delta{Type: "thinking_delta", Text: "驟一"},
+		},
+	}, cb, &st)
+	if len(thoughts) != 2 || thoughts[0] != "步" || thoughts[1] != "步驟一" {
+		t.Fatalf("thinking 應累積為完整快照，got thoughts=%v", thoughts)
+	}
+}
+
+func TestDispatch_consecutiveThinkingBlocksResetBuffer(t *testing.T) {
+	t.Parallel()
+	r := &Runner{}
+	var st streamState
+	var thoughts []string
+	cb := func(e agent.Event) {
+		if e.Type == agent.EventThinking {
+			thoughts = append(thoughts, e.Text)
+		}
+	}
+	// 第一個 thinking block
+	r.dispatch(&StreamEvent{
+		Type: "stream_event",
+		Event: &APIEvent{Type: "content_block_start", ContentBlock: &ContentBlock{Type: "thinking"}},
+	}, cb, &st)
+	r.dispatch(&StreamEvent{
+		Type: "stream_event",
+		Event: &APIEvent{Type: "content_block_delta", Delta: &Delta{Type: "thinking_delta", Text: "A"}},
+	}, cb, &st)
+	// 第二個 thinking block 開始，應重置 buffer
+	r.dispatch(&StreamEvent{
+		Type: "stream_event",
+		Event: &APIEvent{Type: "content_block_start", ContentBlock: &ContentBlock{Type: "thinking"}},
+	}, cb, &st)
+	r.dispatch(&StreamEvent{
+		Type: "stream_event",
+		Event: &APIEvent{Type: "content_block_delta", Delta: &Delta{Type: "thinking_delta", Text: "B"}},
+	}, cb, &st)
+	// 第二輪應只看到 "B"，不是 "AB"
+	if len(thoughts) != 2 || thoughts[0] != "A" || thoughts[1] != "B" {
+		t.Fatalf("連續 thinking block 間應重置 thinkingBuf，got thoughts=%v", thoughts)
+	}
+}
+
 func TestDispatch_contentBlockStartWithoutDeltaThenAssistant(t *testing.T) {
 	t.Parallel()
 	r := &Runner{}

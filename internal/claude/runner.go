@@ -157,6 +157,8 @@ type streamState struct {
 	streamStartSent bool
 	// gotStreamTextDelta 表示已透過 content_block_delta 送出至少一則文字（與下方 assistant 全文重複）
 	gotStreamTextDelta bool
+	// thinkingBuf 累積 thinking_delta，每次送出 EventThinking 時語意為「當前完整思考快照」（與 Gemini runner 一致）
+	thinkingBuf strings.Builder
 }
 
 // dispatch 將 Claude 專屬 StreamEvent 轉換為 agent.Event 送給 cb。
@@ -173,12 +175,37 @@ func (r *Runner) dispatch(e *StreamEvent, cb agent.EventCallback, st *streamStat
 		}
 		switch e.Event.Type {
 		case "content_block_start":
-			if e.Event.ContentBlock != nil && e.Event.ContentBlock.Type == "text" && !st.streamStartSent {
-				st.streamStartSent = true
-				cb(agent.Event{Type: agent.EventStreamStart})
+			if e.Event.ContentBlock != nil {
+				switch e.Event.ContentBlock.Type {
+				case "thinking":
+					// 每個 thinking block 開始時重置，避免連續兩輪 thinking 跨塊累積。
+					st.thinkingBuf.Reset()
+				case "text":
+					st.thinkingBuf.Reset()
+					if !st.streamStartSent {
+						st.streamStartSent = true
+						cb(agent.Event{Type: agent.EventStreamStart})
+					}
+				}
 			}
 		case "content_block_delta":
-			if e.Event.Delta != nil && e.Event.Delta.Type == "text_delta" && e.Event.Delta.Text != "" {
+			if e.Event.Delta == nil {
+				break
+			}
+			switch e.Event.Delta.Type {
+			case "thinking_delta":
+				if e.Event.Delta.Text == "" {
+					break
+				}
+				// 限制 thinkingBuf 上限（512 KB），防止超長 thinking 造成記憶體壓力。
+				if st.thinkingBuf.Len() < 512*1024 {
+					st.thinkingBuf.WriteString(e.Event.Delta.Text)
+				}
+				cb(agent.Event{Type: agent.EventThinking, Text: st.thinkingBuf.String()})
+			case "text_delta":
+				if e.Event.Delta.Text == "" {
+					break
+				}
 				if !st.streamStartSent {
 					st.streamStartSent = true
 					cb(agent.Event{Type: agent.EventStreamStart})
