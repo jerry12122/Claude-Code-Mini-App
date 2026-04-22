@@ -30,6 +30,8 @@ type StreamEvent struct {
 	// Gemini 用 pointer 區分「assistant delta chunk」與「非 delta 聚合」。
 	// 目前 user message 無此欄位；assistant streaming 時 delta=true。
 	Delta *bool `json:"delta,omitempty"`
+	// Thought=true 表示此 chunk 為模型內部思考鏈，不應直接呈現在對話內容中。
+	Thought *bool `json:"thought,omitempty"`
 
 	// tool_use
 	ToolName   string          `json:"tool_name,omitempty"`

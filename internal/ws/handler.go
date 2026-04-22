@@ -346,6 +346,12 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts) func(*fibe
 					case agent.EventStreamStart:
 						broadcast(serverMsg{Type: "status", Value: StateStreaming})
 
+					case agent.EventThinking:
+						// 思考鏈：不寫 DB、不改狀態，直接廣播給前端覆寫顯示。
+						if e.Text != "" {
+							broadcast(serverMsg{Type: "thinking", Content: e.Text})
+						}
+
 					case agent.EventDelta:
 						if e.Text != "" {
 							if err := database.AppendMessageContent(msgID, e.Text); err != nil {

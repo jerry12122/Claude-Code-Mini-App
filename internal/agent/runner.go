@@ -23,6 +23,7 @@ type EventType string
 
 const (
 	EventDelta         EventType = "delta"
+	EventThinking      EventType = "thinking" // 思考鏈 chunk（覆寫式，不累積）
 	EventDone          EventType = "done"
 	EventError         EventType = "error"
 	EventPermDenied    EventType = "permission_denied"

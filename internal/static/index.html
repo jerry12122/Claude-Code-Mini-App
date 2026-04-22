@@ -6,6 +6,7 @@
   <!-- 選用：反代下 API 與自動推算不一致時設 content="/部署前綴"（無則由目前 index.html 目錄自動推算） -->
   <!-- <meta name="cc-api-base" content="" /> -->
   <title>Claude Code TMA</title>
+  <link rel="icon" href="./favicon.ico" type="image/x-icon" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
@@ -306,6 +307,18 @@ const SLASH_COMMANDS = [
 
 function inputModeStorageKey(sessionId) {
   return INPUT_MODE_STORAGE_PREFIX + String(sessionId || '');
+}
+
+const DRAFT_INPUT_STORAGE_PREFIX = 'cc_draft_input:';
+
+function draftInputStorageKey(sessionId) {
+  return DRAFT_INPUT_STORAGE_PREFIX + String(sessionId || '');
+}
+
+function clearDraftInputForSession(sessionId) {
+  try {
+    localStorage.removeItem(draftInputStorageKey(sessionId));
+  } catch (_) {}
 }
 
 /** 依 session 從 localStorage 讀取輸入模式；該 session 未設定或無效時預設 agent */
@@ -1767,6 +1780,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const chatInputRef = useRef(null);
   const slashInputWrapRef = useRef(null);
   const streamBuf = useRef('');
+  const thinkingMode = useRef(false);
   const connGenRef = useRef(0);
   const activeSessionRef = useRef(session.id);
   const reconnectTimerRef = useRef(null);
@@ -1831,6 +1845,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   useEffect(() => {
     activeSessionRef.current = session.id;
     streamBuf.current = '';
+    thinkingMode.current = false;
     shellBuf.current = [];
     shellRenderPending.current = false;
     setMessages([]);
@@ -1838,7 +1853,11 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     setState('IDLE');
     setPermTools([]);
     setShellRequest(null);
-    setInput('');
+    let draft = '';
+    try {
+      draft = localStorage.getItem(draftInputStorageKey(session.id)) || '';
+    } catch (_) {}
+    setInput(draft);
     setSlashMenuItems([]);
     setSlashActiveIdx(0);
     const im =
@@ -1932,6 +1951,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
           }
           if (msg.value === 'THINKING') {
             streamBuf.current = '';
+            thinkingMode.current = false;
             setMessages((prev) => {
               const last = prev[prev.length - 1];
               if (last && last.role === 'claude' && last.streaming && last.status === 'pending') {
@@ -1982,11 +2002,23 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
           setMessages(prev => [...prev, { role: 'user', content: msg.content }]);
         }
 
+        if (msg.type === 'thinking') {
+          thinkingMode.current = true;
+          const text = msg.content || '';
+          setMessages((prev) => prev.map((m, i) =>
+            i === prev.length - 1 ? { ...m, content: text, html: null, thinking: true, streaming: true, status: 'pending' } : m
+          ));
+        }
+
         if (msg.type === 'delta') {
+          if (thinkingMode.current) {
+            thinkingMode.current = false;
+            streamBuf.current = '';
+          }
           streamBuf.current += msg.content;
           const html = parseMarkdown(streamBuf.current);
           setMessages((prev) => prev.map((m, i) =>
-            i === prev.length - 1 ? { ...m, content: streamBuf.current, html, streaming: true, status: 'pending' } : m
+            i === prev.length - 1 ? { ...m, content: streamBuf.current, html, thinking: false, streaming: true, status: 'pending' } : m
           ));
         }
 
@@ -2159,6 +2191,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       if (state !== 'IDLE' && state !== 'SHELL_IDLE') return;
       if (!flushPendingModes()) return;
       send({ type: 'reset_context' });
+      clearDraftInputForSession(session.id);
       setInput('');
       setSlashMenuItems([]);
       return;
@@ -2167,6 +2200,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       if (state !== 'SHELL_IDLE' && state !== 'IDLE') return;
       if (!flushPendingModes()) return;
       send({ type: 'shell_exec', data: trimmed });
+      clearDraftInputForSession(session.id);
       setInput('');
       setSlashMenuItems([]);
       return;
@@ -2174,6 +2208,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     if (state !== 'IDLE' && state !== 'SHELL_IDLE') return;
     if (!flushPendingModes()) return;
     if (!send({ type: 'input', data: trimmed })) return;
+    clearDraftInputForSession(session.id);
     setInput('');
     setSlashMenuItems([]);
   };
@@ -2459,7 +2494,12 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               </div>
             </div>
             {m.role === 'claude' ? (
-              (m.html || showStreamingTail) ? (
+              m.thinking ? (
+                <div className="flex flex-row items-start gap-1.5">
+                  <span className="text-indigo-400/60 text-xs mt-0.5 shrink-0 select-none">💭</span>
+                  <span className="text-gray-500 text-sm italic leading-relaxed line-clamp-3 min-w-0">{m.content}</span>
+                </div>
+              ) : (m.html || showStreamingTail) ? (
                 <div className="flex flex-row items-center gap-1">
                   {m.html && (
                     <div className="prose text-gray-200 text-sm flex-1 min-w-0" dangerouslySetInnerHTML={{ __html: m.html }} />
@@ -2602,6 +2642,9 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 onChange={(e) => {
                   const value = e.target.value;
                   setInput(value);
+                  try {
+                    localStorage.setItem(draftInputStorageKey(session.id), value);
+                  } catch (_) {}
                   if (value.startsWith('/')) {
                     const q = value.toLowerCase();
                     const filtered = SLASH_COMMANDS.filter(

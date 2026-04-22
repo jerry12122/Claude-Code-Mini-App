@@ -1,4 +1,4 @@
-# Multi-Agent 整合計劃
+# Multi-Agent 整合計劃 (已完成大部分)
 
 > 目標：將現有 Claude 專屬架構抽象化，支援 Codex、Gemini CLI 等多種 AI 工具。
 > 建立 Session 時可指定工具，同一 Session 全程使用同一工具。
@@ -8,13 +8,26 @@
 ## 總覽
 
 ```
-Phase A — 定義共用介面與事件模型（不破壞現有功能）
-Phase B — DB Migration + Session 加入 agent_type 欄位
-Phase C — Claude Runner 重構為介面實作
-Phase D — WS Handler 改用 Runner 介面注入
-Phase E — 新增其他工具的 Runner 實作
-Phase F — 前端 UI 支援建立 Session 時選擇工具
+Phase A — 定義共用介面與事件模型 (Done)
+Phase B — DB Migration + Session 加入 agent_type 欄位 (Done)
+Phase C — Claude Runner 重構為介面實作 (Done)
+Phase D — WS Handler 改用 Runner 介面注入 (Done)
+Phase E — 新增其他工具的 Runner 實作 (Gemini/Cursor Done, Codex Todo)
+Phase F — 前端 UI 支援建立 Session 時選擇工具 (Done)
 ```
+
+---
+
+## 狀態摘要
+
+- [x] **Phase A — 定義共用介面與事件模型**
+- [x] **Phase B — DB Migration**
+- [x] **Phase C — Claude Runner 重構**
+- [x] **Phase D — WS Handler 重構**
+- [x] **Phase E.1 — Cursor Runner 整合**
+- [x] **Phase E.2 — Gemini Runner 整合**
+- [ ] **Phase E.3 — Codex Runner 整合** (待執行，詳見 `docs/plan/todo/codex-integration.md`)
+- [x] **Phase F — 前端 UI 支援**
 
 ---
 

@@ -180,6 +180,11 @@ func (r *Runner) dispatch(e *StreamEvent, cb agent.EventCallback, streamStartSen
 		if e.Content == "" {
 			return
 		}
+		// thought=true：思考鏈 chunk，以覆寫事件送出，不計入對話內容。
+		if e.Thought != nil && *e.Thought {
+			cb(agent.Event{Type: agent.EventThinking, Text: e.Content})
+			return
+		}
 		if !*streamStartSent {
 			*streamStartSent = true
 			cb(agent.Event{Type: agent.EventStreamStart})

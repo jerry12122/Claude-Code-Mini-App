@@ -8,7 +8,7 @@
 ## 項目概述
 Telegram Mini App，讓使用者透過手機遠端操控伺服器上的 `claude code` CLI。
 
-詳細規格：`docs/plan.md`
+詳細規格：`docs/spec/plan.md`
 工作清單：`docs/plan/todo.md`
 
 ---
@@ -79,6 +79,6 @@ claude -p "<prompt>" \
 ---
 
 ## 參考文件
-- `docs/claude-code-cli.md` — CLI 旗標完整參考
-- `docs/headless.md` — `-p` 模式與 stream-json 用法
-- `docs/plan.md` — 完整規格書（Schema、WebSocket 格式、Roadmap）
+- `docs/spec/claude-code-cli.md` — CLI 旗標完整參考
+- `docs/spec/headless.md` — `-p` 模式與 stream-json 用法
+- `docs/spec/plan.md` — 完整規格書（Schema、WebSocket 格式、Roadmap）
