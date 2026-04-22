@@ -13,6 +13,19 @@ Telegram Mini App，讓使用者透過手機遠端操控伺服器上的 `claude 
 
 ---
 
+## 文件架構
+- **docs/spec/**：技術規格書與通訊協議規範 (如：CLI 旗標、WebSocket Schema)
+- **docs/plan/**：專案規劃與進度管理
+    - `todo.md`：目前整體的待辦事項清單
+    - `done/`：已完成任務的詳細實作紀錄與歷史存檔
+- **docs/plan/todo/**：未來擴展功能的詳細規劃草案
+
+### 文件維護規則
+- **歸檔流程**：當計畫實作完成後，須檢查文件位置是否正確，並將該計畫文件從 `docs/plan/` 或 `docs/plan/todo/` 移至 **`docs/plan/done/`**。
+- **狀態同步**：移動文件後，需同步更新 `docs/plan/todo.md`。
+
+---
+
 ## 架構決策（不得更動）
 
 ### CLI 執行模式
