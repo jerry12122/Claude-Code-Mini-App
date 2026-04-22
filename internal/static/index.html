@@ -708,8 +708,10 @@ function ModeToggleBtn({ value, onChange, disabled, showLabel = false }) {
       title={isShell ? '切換到 AI 代理模式' : '切換到 Shell 模式'}
       aria-label={isShell ? 'Shell 模式，點擊切換至 AI 代理' : 'AI 代理模式，點擊切換至 Shell'}
       className={[
-        'shrink-0 self-end flex items-center rounded-lg border transition-colors min-h-[2.75rem]',
-        showLabel ? 'gap-2 px-3 h-10' : 'justify-center w-10 h-10',
+        'shrink-0 flex items-center rounded-lg border transition-colors',
+        showLabel
+          ? 'gap-2 px-3 h-10 min-h-[2.75rem]'
+          : 'justify-center w-10 h-10 min-h-[2.75rem] max-lg:h-12 max-lg:w-12 max-lg:min-h-12',
         disabled ? 'opacity-40 pointer-events-none' : '',
         isShell
           ? 'bg-amber-950/80 border-amber-600/70 text-amber-300 hover:bg-amber-900/80'
@@ -2458,7 +2460,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             </div>
             {m.role === 'claude' ? (
               (m.html || showStreamingTail) ? (
-                <div className="flex flex-row items-end gap-1">
+                <div className="flex flex-row items-center gap-1">
                   {m.html && (
                     <div className="prose text-gray-200 text-sm flex-1 min-w-0" dangerouslySetInnerHTML={{ __html: m.html }} />
                   )}
@@ -2579,14 +2581,14 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             中斷
           </button>
         ) : (
-          <div className="flex gap-2 w-full min-w-0 items-end">
+          <div className="flex gap-2 w-full min-w-0 items-center">
             <ModeToggleBtn
               value={inputMode}
               onChange={handleInputModeChange}
               disabled={modeSwitchDisabled}
               showLabel={!usePermModeDropdown}
             />
-            <div className="relative flex-1 min-w-0" ref={slashInputWrapRef}>
+            <div className="relative flex min-h-[2.75rem] max-lg:min-h-12 flex-1 min-w-0 items-center" ref={slashInputWrapRef}>
               {slashMenuOpen && (
                 <SlashCommandMenu
                   items={slashMenuItems}
@@ -2618,7 +2620,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 placeholder={inputMode === 'shell' ? `輸入 ${shellType || 'Shell'} 指令…` : '輸入指令…'}
                 rows={1}
                 className={[
-                  'flex-1 min-w-0 w-full resize-none overflow-y-auto app-scroll rounded-lg px-3 py-2 text-sm leading-relaxed placeholder-gray-600 focus:outline-none disabled:opacity-40 min-h-[2.75rem] max-h-[min(40vh,12rem)] box-border',
+                  'flex-1 min-w-0 w-full resize-none overflow-y-auto app-scroll rounded-lg px-3 py-2 text-sm leading-relaxed placeholder-gray-600 focus:outline-none disabled:opacity-40 min-h-[2.75rem] max-lg:min-h-12 max-h-[min(40vh,12rem)] box-border',
                   inputMode === 'shell'
                     ? 'bg-[#0d0800] border border-amber-600/70 text-amber-50 focus:border-amber-400 font-mono placeholder-amber-900/60'
                     : 'bg-gray-800 border border-gray-700 text-gray-200 focus:border-indigo-600',
@@ -2628,7 +2630,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             <button type="button" onClick={() => handleSend()} disabled={isDisabled || !input.trim()}
               aria-label="送出"
               title="送出（Enter）"
-              className={`shrink-0 self-end flex items-center justify-center w-10 h-10 min-h-[2.75rem] ${inputMode === 'shell' ? 'bg-amber-700 hover:bg-amber-600' : 'bg-indigo-600 hover:bg-indigo-500'} disabled:opacity-30 text-white rounded-lg transition-colors`}>
+              className={`shrink-0 flex items-center justify-center w-10 h-10 min-h-[2.75rem] max-lg:w-12 max-lg:h-12 max-lg:min-h-12 ${inputMode === 'shell' ? 'bg-amber-700 hover:bg-amber-600' : 'bg-indigo-600 hover:bg-indigo-500'} disabled:opacity-30 text-white rounded-lg transition-colors`}>
               {inputMode === 'shell' ? (
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden>
                   <path fillRule="evenodd" d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z" clipRule="evenodd" />

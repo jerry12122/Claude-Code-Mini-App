@@ -2410,7 +2410,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
           </button>
         ) : (
           <div className="flex flex-col gap-1.5 w-full min-w-0">
-            <div className="flex w-full min-w-0 gap-2.5 items-end">
+            <div className="flex w-full min-w-0 gap-2.5 items-center">
             <button
               type="button"
               onClick={() => setInputModePersist(inputMode === 'shell' ? 'agent' : 'shell')}
@@ -2418,7 +2418,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               title={inputMode === 'shell' ? '切換為 Agent 模式' : '切換為 Shell 模式'}
               aria-label={inputMode === 'shell' ? '切換為 Agent 模式' : '切換為 Shell 模式'}
               aria-pressed={inputMode === 'shell'}
-              className={`shrink-0 flex items-center justify-center w-12 h-12 min-h-[2.75rem] rounded-xl border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900 disabled:opacity-40 ${
+              className={`shrink-0 flex items-center justify-center w-12 h-12 rounded-xl border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900 disabled:opacity-40 ${
                 inputMode === 'shell'
                   ? 'border-orange-500/55 bg-orange-950/35 text-orange-400 hover:bg-orange-950/50 shadow-inner'
                   : 'border-amber-500/25 bg-zinc-950/80 text-amber-400/90 hover:bg-zinc-800/90'
@@ -2434,7 +2434,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 </svg>
               )}
             </button>
-            <div className="relative flex-1 min-w-0" ref={slashInputWrapRef}>
+            <div className="relative flex min-h-12 flex-1 min-w-0 items-center" ref={slashInputWrapRef}>
               {slashMenuOpen && (
                 <SlashCommandMenu
                   items={slashMenuItems}
@@ -2470,13 +2470,13 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                     : '輸入與 Agent 對話…（左側圖示切到 Shell）'
                 }
                 rows={1}
-                className="flex-1 min-w-0 w-full resize-none overflow-y-auto app-scroll bg-zinc-950/80 border border-amber-500/20 rounded-xl px-4 py-3 text-sm leading-relaxed text-stone-100 placeholder-zinc-500 focus:outline-none focus:border-amber-400/50 focus:ring-1 focus:ring-amber-500/15 disabled:opacity-40 min-h-[2.75rem] max-h-[min(40vh,12rem)] box-border shadow-inner shadow-black/25"
+                className="flex-1 min-w-0 w-full resize-none overflow-y-auto app-scroll bg-zinc-950/80 border border-amber-500/20 rounded-xl px-4 py-3 text-sm leading-relaxed text-stone-100 placeholder-zinc-500 focus:outline-none focus:border-amber-400/50 focus:ring-1 focus:ring-amber-500/15 disabled:opacity-40 min-h-12 max-h-[min(40vh,12rem)] box-border shadow-inner shadow-black/25"
               />
             </div>
             <button type="button" onClick={() => handleSend()} disabled={isDisabled || !input.trim()}
               aria-label="送出"
               title="送出（Enter）"
-              className="shrink-0 self-end flex items-center justify-center w-12 h-12 min-h-[2.75rem] rounded-xl bg-gradient-to-br from-amber-500 to-orange-700 hover:brightness-110 disabled:opacity-30 text-stone-950 shadow-lg shadow-amber-950/35 transition-all"
+              className="shrink-0 flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-orange-700 hover:brightness-110 disabled:opacity-30 text-stone-950 shadow-lg shadow-amber-950/35 transition-all"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5" aria-hidden>
                 <path d="M3.478 2.405a.75.75 0 0 0-.926.94l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.405Z" />
