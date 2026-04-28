@@ -1795,6 +1795,21 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     chatNearBottomRef.current = gap < 80;
   }, []);
 
+  /** 進入會話或執行結束後將游標放回輸入框（雙 rAF 以配合 React commit／行動裝置鍵盤） */
+  const focusChatInput = useCallback(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = chatInputRef.current;
+        if (!el || el.disabled) return;
+        try {
+          el.focus({ preventScroll: true });
+        } catch (_) {
+          el.focus();
+        }
+      });
+    });
+  }, []);
+
   // 捲到底
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -1871,6 +1886,22 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     setMode(pm);
     setShellPendingCmd(null);
   }, [session.id, session.permission_mode, agentType, session.input_mode]);
+
+  const prevChatStateRef = useRef(null);
+  // 歷史載入完成＝畫面就緒，將 focus 預設在輸入框
+  useEffect(() => {
+    if (!histLoaded) return;
+    focusChatInput();
+  }, [histLoaded, session.id, focusChatInput]);
+
+  // 狀態切回可輸入時（例如 THINKING／STREAMING 結束）自動 focus
+  useEffect(() => {
+    const prev = prevChatStateRef.current;
+    prevChatStateRef.current = state;
+    if (prev === null) return;
+    if (prev === state) return;
+    focusChatInput();
+  }, [state, focusChatInput]);
 
   // 載入歷史 + 建立 WS
   useEffect(() => {
