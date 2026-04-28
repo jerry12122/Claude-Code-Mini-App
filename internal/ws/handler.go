@@ -790,6 +790,14 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts) func(*fibe
 				}
 				runAgent("please retry the previous operation", once)
 
+			case "deny_once":
+				if !isClaude {
+					log.Printf("[ws] agent=%s: deny_once ignored", agentType)
+					continue
+				}
+				clearPendingDenials(database, sessionID)
+				runAgent("[Permission denied by user. Please acknowledge that you cannot perform the requested operation and stop.]", nil)
+
 			case "set_mode":
 				if agentType != agent.TypeClaude && agentType != agent.TypeCursor && agentType != agent.TypeGemini {
 					log.Printf("[ws] agent=%s: set_mode ignored", agentType)

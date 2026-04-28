@@ -2137,6 +2137,11 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     setPermTools([]);
   };
 
+  const handleDenyOnce = () => {
+    send({ type: 'deny_once' });
+    setPermTools([]);
+  };
+
   const handlePermModeDraftChange = (newMode) => {
     setMode(normalizePermMode(agentType, newMode));
   };
@@ -2367,6 +2372,10 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               <button onClick={() => handlePermModeCommitNow('acceptEdits')}
                 className="px-4 py-2 bg-stone-700 hover:bg-stone-600 text-white rounded-xl text-xs font-semibold">
                 允許並記住
+              </button>
+              <button onClick={handleDenyOnce}
+                className="px-4 py-2 bg-red-900/80 hover:bg-red-800 text-white rounded-xl text-xs font-semibold">
+                拒絕
               </button>
             </div>
           </div>
