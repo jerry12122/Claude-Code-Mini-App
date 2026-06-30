@@ -32,3 +32,6 @@ desktop.ini
 
 # Go 工具
 vendor/
+
+# POC live samples（可能含 OAuth 回應或 token 衍生資料）
+poc/quota-percent/samples/claude-oauth-usage.json

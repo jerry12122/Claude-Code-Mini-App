@@ -310,7 +310,7 @@ const PERM_MODE_LABEL = {
   plan: '規劃模式',
 };
 
-const AGENT_LABEL = { claude: 'Claude', cursor: 'Cursor', codex: 'Codex', gemini: 'Gemini' };
+const AGENT_LABEL = { claude: 'Claude', cursor: 'Cursor', codex: 'Codex', gemini: 'Gemini', kiro: 'Kiro' };
 
 /** 聊天室頂欄狀態角標：中文短標（避免與權限列搶注意力） */
 const SESSION_STATE_LABEL = {
@@ -379,6 +379,9 @@ function permModeOptionsFor(agentType) {
       { value: 'plan', label: '規劃模式' },
       { value: 'yolo', label: 'YOLO（全自動）⚠️' },
     ];
+  }
+  if (t === 'kiro' || t === 'codex') {
+    return [{ value: 'default', label: '預設（固定）' }];
   }
   return [
     { value: 'default', label: '預設' },
@@ -578,6 +581,7 @@ function getAgentBadgeClass(agentType) {
     cursor: 'bg-emerald-950/50 text-emerald-200 ring-1 ring-emerald-500/25',
     codex: 'bg-lime-950/40 text-lime-200 ring-1 ring-lime-500/20',
     gemini: 'bg-sky-950/45 text-sky-200 ring-1 ring-sky-400/25',
+    kiro: 'bg-purple-950/50 text-purple-200 ring-1 ring-purple-400/25',
   };
   return map[t] || 'bg-zinc-700/50 text-zinc-200 ring-1 ring-white/10';
 }
@@ -591,6 +595,7 @@ const AGENT_BADGE_ICON_CDN = {
   cursor: { slug: 'cursor', color: '6ee7b7' },
   codex: { slug: 'openai', color: '86efac' },
   gemini: { slug: 'googlegemini', color: '7dd3fc' },
+  kiro: { slug: 'amazonaws', color: 'd8b4fe' },
 };
 
 function AgentBadgeIcon({ agentType }) {
@@ -612,6 +617,41 @@ function AgentBadgeIcon({ agentType }) {
         e.currentTarget.style.display = 'none';
       }}
     />
+  );
+}
+
+function formatQuotaAge(iso) {
+  if (!iso) return '';
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return '';
+  const sec = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (sec < 60) return '剛剛更新';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return min + ' 分鐘前';
+  return Math.floor(min / 60) + ' 小時前';
+}
+
+function QuotaBadge({ quota, onRefresh, refreshing, className = '' }) {
+  const text = quota && quota.display_text;
+  if (!text || text === '—') return null;
+  const age = formatQuotaAge(quota.updated_at);
+  const title = [text, age, quota.error].filter(Boolean).join(' · ');
+  const textCls = quota.error ? 'text-amber-300' : quota.stale ? 'text-zinc-600' : 'text-zinc-500';
+  return (
+    <span className={'inline-flex items-center gap-0.5 min-w-0 max-w-full ' + className} title={title}>
+      <span className={'text-[10px] sm:text-xs font-mono truncate ' + textCls}>{text}</span>
+      {onRefresh ? (
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={refreshing}
+          className={'shrink-0 text-[10px] px-0.5 ' + (refreshing ? 'text-amber-400 animate-spin' : 'text-zinc-600 hover:text-amber-200')}
+          title="刷新帳戶用量"
+        >
+          ↻
+        </button>
+      ) : null}
+    </span>
   );
 }
 
@@ -680,12 +720,13 @@ function mapMessageRow(m) {
   const role = m.role;
   const status = m.status || 'done';
   const pending = status === 'pending';
-  const content = m.content || '';
+  const resultText = m.result_text || '';
+  const content = (m.content || '').trim() || resultText;
   return {
     id: m.id,
     role,
     content,
-    resultText: m.result_text || '',
+    resultText,
     status,
     html: role === 'claude' ? (content ? parseMarkdown(content) : null) : null,
     streaming: pending,
@@ -996,6 +1037,7 @@ function ForwardModal({
                     <option value="claude">Claude</option>
                     <option value="cursor">Cursor</option>
                     <option value="gemini">Gemini</option>
+                    <option value="kiro">Kiro</option>
                     <option value="codex" disabled>Codex（未支援）</option>
                   </select>
                 </div>
@@ -1024,7 +1066,7 @@ function ForwardModal({
                       agentType={newAgent}
                       value={newMode}
                       onChange={setNewMode}
-                      disabled={newAgent === 'codex'}
+                      disabled={newAgent === 'codex' || newAgent === 'kiro'}
                       id="forward-new-perm-mode-focus"
                       className="w-full py-2 text-xs"
                     />
@@ -1033,7 +1075,7 @@ function ForwardModal({
                       agentType={newAgent}
                       value={newMode}
                       onChange={setNewMode}
-                      disabled={newAgent === 'codex'}
+                      disabled={newAgent === 'codex' || newAgent === 'kiro'}
                     />
                   )}
                 </div>
@@ -1535,6 +1577,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
               <option value="claude">Claude</option>
               <option value="cursor">Cursor</option>
               <option value="gemini">Gemini</option>
+              <option value="kiro">Kiro</option>
               <option value="codex" disabled>Codex（未支援）</option>
             </select>
             <div className="min-w-0">
@@ -1545,7 +1588,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
                     agentType={newAgent}
                     value={newMode}
                     onChange={setNewMode}
-                    disabled={newAgent === 'codex'}
+                    disabled={newAgent === 'codex' || newAgent === 'kiro'}
                     id="session-new-perm-mode-focus"
                     className="flex-1 min-w-0 py-2"
                   />
@@ -1557,7 +1600,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
                     agentType={newAgent}
                     value={newMode}
                     onChange={setNewMode}
-                    disabled={newAgent === 'codex'}
+                    disabled={newAgent === 'codex' || newAgent === 'kiro'}
                   />
                 </>
               )}
@@ -1692,6 +1735,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const [histLoaded, setHistLoaded] = useState(false);
   const [inputMode, setInputMode]   = useState(() => readInputModeForSession(session.id));
   const [shellRequest, setShellRequest] = useState(null);
+  const [quota, setQuota] = useState(null);
+  const [quotaRefreshing, setQuotaRefreshing] = useState(false);
   const [forwardModal, setForwardModal] = useState(null);
   const [forwardHints, setForwardHints] = useState({});
   const [slashMenuItems, setSlashMenuItems] = useState([]);
@@ -1888,6 +1933,13 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             streamBuf.current = lastClaude ? (lastClaude.content || '') : '';
             setMessages(mapped);
           }
+          if (msg.quota) setQuota(msg.quota);
+          return;
+        }
+
+        if (msg.type === 'quota_update' && msg.quota) {
+          setQuota(msg.quota);
+          setQuotaRefreshing(false);
           return;
         }
 
@@ -1978,10 +2030,17 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             }
             if (idx < 0) return prev;
             const copy = [...prev];
+            const prevContent = (copy[idx].content || '').trim();
             copy[idx] = {
               ...copy[idx],
               resultText: rt,
               id: copy[idx].id != null ? copy[idx].id : rid,
+              ...(prevContent ? {} : {
+                content: rt,
+                html: rt ? parseMarkdown(rt) : null,
+                thinking: false,
+                streaming: false,
+              }),
             };
             return copy;
           });
@@ -2059,6 +2118,17 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     ws.send(JSON.stringify(obj));
     return true;
   }, [session.id]);
+
+  const handleQuotaRefresh = useCallback(() => {
+    if (quotaRefreshing) return;
+    if (agentType === 'gemini' || agentType === 'codex') return;
+    setQuotaRefreshing(true);
+    if (!send({ type: 'refresh_quota' })) {
+      setQuotaRefreshing(false);
+      return;
+    }
+    setTimeout(() => setQuotaRefreshing(false), 10000);
+  }, [quotaRefreshing, agentType, send]);
 
   const flushPendingModes = useCallback(() => {
     const wantPerm = normalizePermMode(agentType, mode);
@@ -2422,6 +2492,11 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               {agentType}
             </span>
             <GitBranchBadge branch={session.git_branch} />
+            <QuotaBadge
+              quota={quota}
+              onRefresh={agentType !== 'gemini' && agentType !== 'codex' ? handleQuotaRefresh : null}
+              refreshing={quotaRefreshing}
+            />
             <span
               title={state}
               className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full font-medium shrink-0 ring-1 ring-white/5 ${

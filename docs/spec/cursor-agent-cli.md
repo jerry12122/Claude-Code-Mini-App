@@ -267,3 +267,44 @@ Cursor CLI 原生支援 MCP 管理，包含 `mcp list`、`mcp list-tools <identi
 | Reasoning stream | 不提供，print mode 會 suppress thinking。  |
 | Side effects | 可讀檔、寫檔、執行 bash；`--force` 放寬執行限制。  |
 
+## POC 驗證紀錄（2026-06-30）
+
+### 環境
+
+- CLI 版本：`2026.05.20-2b5dd59`
+- 主命令：`agent`（`cursor-agent` 為 `.cmd` alias，Go runner 仍用 `cursor-agent` 即可）
+- POC 腳本：`poc/cursor-agent/run_stream_json.ps1`、`run_all_poc.ps1`
+
+### 結論：協議未 breaking，主要問題是 headless 認證
+
+| 項目 | 官方 2026 | 我們的實作 | POC 結果 |
+|---|---|---|---|
+| NDJSON 事件型別 | system/user/assistant/tool_call/result | 相同 | 離線測試通過 |
+| `--stream-partial-output` | `timestamp_ms` + `model_call_id` 過濾 | `shouldEmitAssistantText()` | 離線測試通過 |
+| 非 partial assistant | 無 ts 的 segment 應輸出 | 原先全略過 | **已修正** |
+| `result.result` 兜底 | terminal 含完整文字 | 原先未帶入 `EventDone.ResultText` | **已修正** |
+| 前端空 bubble | result 文字應可見 | 原先只存 `resultText` 不渲染 | **已修正** |
+| Headless 認證 | 需 `CURSOR_API_KEY` 或有效 login token | 子進程繼承 env | **live 失敗（未設 key）** |
+
+### 常見誤判
+
+`agent status` 顯示 logged in，但 `agent -p "hi"` 仍可能回：
+
+```
+Authentication required. Please run 'agent login' first, or set CURSOR_API_KEY environment variable.
+```
+
+原因：`--print` headless 子進程不一定能讀到互動式 login 的 token。**伺服器部署請設定 `CURSOR_API_KEY`**（子進程會自動繼承，無需在 argv 帶 `--api-key`）。
+
+### 執行 POC
+
+```powershell
+powershell -ExecutionPolicy Bypass -File poc/cursor-agent/run_all_poc.ps1
+
+$env:CURSOR_API_KEY = "your-key"
+powershell -ExecutionPolicy Bypass -File poc/cursor-agent/run_stream_json.ps1
+```
+
+```bash
+go test ./internal/cursor/... -v
+```

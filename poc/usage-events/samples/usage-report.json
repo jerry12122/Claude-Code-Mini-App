@@ -1,0 +1,49 @@
+{
+    "prompt":  "say hi in one word only",
+    "work_dir":  "C:\\Users\\user\\Documents\\Repo\\claude-miniapp",
+    "captured":  "2026-06-30T11:32:31.6823076+08:00",
+    "providers":  {
+                      "claude":  {
+                                     "provider":  "claude",
+                                     "ok":  true,
+                                     "cost_usd":  0.007412399999999999,
+                                     "credits":  null,
+                                     "input_tokens":  3,
+                                     "output_tokens":  5,
+                                     "cache_read_tokens":  24428,
+                                     "cache_write_tokens":  0,
+                                     "duration_ms":  3461,
+                                     "duration_text":  null,
+                                     "error":  null,
+                                     "raw_source":  "stdout NDJSON type=result"
+                                 },
+                      "cursor":  {
+                                     "provider":  "cursor",
+                                     "ok":  true,
+                                     "cost_usd":  null,
+                                     "credits":  null,
+                                     "input_tokens":  25737,
+                                     "output_tokens":  126,
+                                     "cache_read_tokens":  5792,
+                                     "cache_write_tokens":  0,
+                                     "duration_ms":  8445,
+                                     "duration_text":  null,
+                                     "error":  null,
+                                     "raw_source":  "stdout NDJSON type=result"
+                                 },
+                      "kiro":  {
+                                   "provider":  "kiro",
+                                   "ok":  true,
+                                   "cost_usd":  null,
+                                   "credits":  0.02,
+                                   "input_tokens":  null,
+                                   "output_tokens":  null,
+                                   "cache_read_tokens":  null,
+                                   "cache_write_tokens":  null,
+                                   "duration_ms":  null,
+                                   "duration_text":  "2s",
+                                   "error":  null,
+                                   "raw_source":  "stderr plain text"
+                               }
+                  }
+}

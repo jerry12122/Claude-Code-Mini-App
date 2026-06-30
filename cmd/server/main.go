@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/auth"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/config"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/quota"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/tg"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/ws"
 )
@@ -225,6 +227,13 @@ func main() {
 	app.Delete("/sessions/:id", authMiddleware, sh.Delete)
 	app.Get("/sessions/:id/messages", authMiddleware, sh.Messages)
 
+	quotaSvc := quota.NewService()
+	go quotaSvc.Warmup(context.Background())
+	qh := api.NewQuotaHandler(quotaSvc)
+	app.Get("/quota", authMiddleware, qh.GetAll)
+	app.Get("/quota/:provider", authMiddleware, qh.Get)
+	app.Post("/quota/:provider/refresh", authMiddleware, qh.Refresh)
+
 	// WebSocket
 	app.Use("/sessions/:id/ws", func(c *fiber.Ctx) error {
 		if fiberws.IsWebSocketUpgrade(c) {
@@ -238,7 +247,7 @@ func main() {
 		MaxOutputBytes:  cfg.Shell.MaxOutputBytes,
 		AllowedCommands: cfg.Shell.AllowedCommands,
 	}
-	app.Get("/sessions/:id/ws", authMiddleware, fiberws.New(ws.NewHandler(database, cfg.BotToken, shellOpts)))
+	app.Get("/sessions/:id/ws", authMiddleware, fiberws.New(ws.NewHandler(database, cfg.BotToken, shellOpts, quotaSvc)))
 
 	if cfg.NoAuth {
 		log.Println("⚠️  no_auth: true，已跳過 Telegram 驗證（僅限開發環境）")

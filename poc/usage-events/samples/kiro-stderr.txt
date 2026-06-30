@@ -1,0 +1,19 @@
+kiro-cli : [32mAll tools are now trusted ([0m[31m![0m[32m). Kiro will execute tools without asking for confirmatio
+n.[0m
+位於 C:\Users\user\Documents\Repo\claude-miniapp\poc\usage-events\probe_usage.ps1:147 字元:9
++         kiro-cli chat --no-interactive --trust-all-tools $Prompt 1> $ ...
++         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([32mAll tools ...nfirmation.[0m:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Agents can sometimes do unexpected things so understand the risks.
+
+Learn more at [38;5;141mhttps://kiro.dev/docs/cli/chat/security/#using-tools-trust-all-safely[0m
+
+
+
+[m[0m[?25l[0m[0m
+[m
+ ??Credits: 0.02 ??Time: 2s
+
+[0m[1G[0m[0m[?25h

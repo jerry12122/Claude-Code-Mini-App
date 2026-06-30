@@ -112,9 +112,9 @@ func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventC
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB buffer
 
-	streamStartSent := false
 	sawResult := false
 	lineCount := 0
+	var st dispatchState
 
 	for scanner.Scan() {
 		line := scanner.Bytes()
@@ -138,7 +138,7 @@ func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventC
 			sawResult = true
 		}
 
-		r.dispatch(e, cb, &streamStartSent)
+		r.dispatch(e, cb, &st)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -155,7 +155,7 @@ func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventC
 	// 若被 context 取消，直接回報 waitErr 由上層處理（視為 aborted）。
 	if waitErr != nil {
 		if ctx.Err() == nil && !sawResult && stderr != "" {
-			cb(agent.Event{Type: agent.EventError, Err: &runnerError{stderr: stderr, waitErr: waitErr}})
+			cb(agent.Event{Type: agent.EventError, Err: classifyRunnerError(stderr, waitErr)})
 		}
 		log.Printf("[cursor] 子進程結束，exit error: %v", waitErr)
 	} else {
@@ -165,7 +165,7 @@ func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventC
 }
 
 // dispatch 將 cursor-agent 專屬事件轉換為 agent.Event。
-func (r *Runner) dispatch(e *StreamEvent, cb agent.EventCallback, streamStartSent *bool) {
+func (r *Runner) dispatch(e *StreamEvent, cb agent.EventCallback, st *dispatchState) {
 	switch e.Type {
 	case "system":
 		if e.Subtype == "init" && e.SessionID != "" {
@@ -173,37 +173,97 @@ func (r *Runner) dispatch(e *StreamEvent, cb agent.EventCallback, streamStartSen
 		}
 
 	case "assistant":
-		text := e.Message.Text()
-		if text == "" {
-			return
-		}
-		// 我們固定啟用 --stream-partial-output，assistant 會有三種型態：
-		//   streaming delta: timestamp_ms 有、model_call_id 無 → 附加
-		//   buffered flush : 兩者皆有 → 略過（tool call 前的 duplicate）
-		//   final flush    : 兩者皆無 → 略過（結尾的 duplicate）
-		// 後兩者內容與已送出的 delta 重複，必須略過避免前端出現兩次回覆。
-		isStreamingDelta := e.TimestampMS != nil && e.ModelCallID == nil
-		if !isStreamingDelta {
-			log.Printf("[cursor]   └─ 略過非 streaming delta 的 assistant 事件 (ts=%v mcid=%v)", e.TimestampMS != nil, e.ModelCallID != nil)
-			return
-		}
-		if !*streamStartSent {
-			*streamStartSent = true
-			cb(agent.Event{Type: agent.EventStreamStart})
-		}
-		cb(agent.Event{Type: agent.EventDelta, Text: text})
+		r.dispatchAssistant(e, cb, st)
 
 	case "tool_call":
-		// tool_call 目前僅 log，尚未擴充到 agent.Event 型別。
 		log.Printf("[cursor] tool_call subtype=%s call_id=%s", e.Subtype, e.CallID)
 
 	case "result":
-		if e.IsError {
-			cb(agent.Event{Type: agent.EventError, Err: &providerError{msg: e.Result}, SessionID: e.SessionID})
-		}
-		cb(agent.Event{Type: agent.EventDone, SessionID: e.SessionID})
+		r.dispatchResult(e, cb)
 	}
 }
+
+// classifyRunnerError 將 stderr 轉為更易懂的錯誤訊息。
+func classifyRunnerError(stderr string, waitErr error) error {
+	s := strings.TrimSpace(stderr)
+	if strings.Contains(s, "Authentication required") {
+		return &authError{detail: s}
+	}
+	if s != "" {
+		return &runnerError{stderr: s, waitErr: waitErr}
+	}
+	return waitErr
+}
+
+type authError struct{ detail string }
+
+func (e *authError) Error() string {
+	return "cursor-agent 認證失敗：headless 模式需設定 CURSOR_API_KEY 或在本機執行 agent login。原始訊息：" + e.detail
+}
+
+// dispatchState 追蹤 assistant 串流進度。
+type dispatchState struct {
+	streamStartSent bool
+	gotStreamDelta  bool
+}
+
+// shouldEmitAssistantText 依官方 stream-partial-output 規則判斷是否輸出 assistant 文字。
+// 參考：https://cursor.com/docs/cli/reference/output-format
+func shouldEmitAssistantText(e *StreamEvent, st *dispatchState) (text string, ok bool) {
+	text = e.Message.Text()
+	if text == "" {
+		return "", false
+	}
+
+	hasTS := e.TimestampMS != nil
+	hasMCID := e.ModelCallID != nil
+
+	// buffered flush（兩者皆有）→ 略過
+	if hasTS && hasMCID {
+		return "", false
+	}
+	// streaming delta（有 ts、無 mcid）→ 輸出
+	if hasTS && !hasMCID {
+		return text, true
+	}
+	// 無 ts、無 mcid：非 partial 模式的 segment，或 partial 模式的 final flush
+	if !hasTS && !hasMCID {
+		if st.gotStreamDelta {
+			return "", false // final flush duplicate
+		}
+		return text, true // 非 partial 模式完整 segment
+	}
+	return "", false
+}
+
+// dispatchAssistant 處理 assistant 事件。
+func (r *Runner) dispatchAssistant(e *StreamEvent, cb agent.EventCallback, st *dispatchState) {
+	text, emit := shouldEmitAssistantText(e, st)
+	if !emit {
+		log.Printf("[cursor]   └─ 略過 assistant 事件 (ts=%v mcid=%v gotDelta=%v)",
+			e.TimestampMS != nil, e.ModelCallID != nil, st.gotStreamDelta)
+		return
+	}
+	if !st.streamStartSent {
+		st.streamStartSent = true
+		cb(agent.Event{Type: agent.EventStreamStart})
+	}
+	st.gotStreamDelta = st.gotStreamDelta || e.TimestampMS != nil
+	cb(agent.Event{Type: agent.EventDelta, Text: text})
+}
+
+// dispatchResult 處理 result 事件。
+func (r *Runner) dispatchResult(e *StreamEvent, cb agent.EventCallback) {
+	if e.IsError {
+		cb(agent.Event{Type: agent.EventError, Err: &providerError{msg: e.Result}, SessionID: e.SessionID})
+	}
+	cb(agent.Event{
+		Type:       agent.EventDone,
+		SessionID:  e.SessionID,
+		ResultText: strings.TrimSpace(e.Result),
+	})
+}
+
 
 // runnerError 表示子進程異常結束而沒有 terminal result。
 type runnerError struct {

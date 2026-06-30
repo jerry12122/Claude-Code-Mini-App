@@ -1,0 +1,78 @@
+{
+    "captured":  "2026-06-30T11:45:09.5007139+08:00",
+    "providers":  {
+                      "claude":  {
+                                     "provider":  "claude",
+                                     "ok":  true,
+                                     "plan":  null,
+                                     "source":  "claude -p /usage",
+                                     "windows":  [
+                                                     {
+                                                         "kind":  "session",
+                                                         "label":  "Current session",
+                                                         "percent":  16,
+                                                         "resets_at":  "Jun 30, 3:10pm (Asia/Taipei)"
+                                                     },
+                                                     {
+                                                         "kind":  "weekly",
+                                                         "label":  "Current week",
+                                                         "percent":  9,
+                                                         "resets_at":  "Jul 3, 9:59pm (Asia/Taipei)"
+                                                     }
+                                                 ],
+                                     "error":  null,
+                                     "display_message":  null,
+                                     "api":  null
+                                 },
+                      "cursor":  {
+                                     "provider":  "cursor",
+                                     "ok":  true,
+                                     "plan":  null,
+                                     "source":  "api2.cursor.sh GetCurrentPeriodUsage",
+                                     "windows":  [
+                                                     {
+                                                         "kind":  "billing_auto",
+                                                         "label":  "autoPercentUsed",
+                                                         "percent":  10.086666666666666
+                                                     },
+                                                     {
+                                                         "kind":  "billing_api",
+                                                         "label":  "apiPercentUsed",
+                                                         "percent":  100
+                                                     },
+                                                     {
+                                                         "kind":  "billing_total",
+                                                         "label":  "totalPercentUsed",
+                                                         "percent":  31.851282051282055
+                                                     },
+                                                     {
+                                                         "kind":  "billing_spend",
+                                                         "label":  "plan spend USD",
+                                                         "used":  62.11,
+                                                         "limit":  20
+                                                     }
+                                                 ],
+                                     "error":  null,
+                                     "display_message":  "You\u0027ve hit your usage limit",
+                                     "api":  null
+                                 },
+                      "kiro":  {
+                                   "provider":  "kiro",
+                                   "ok":  true,
+                                   "plan":  "FREE",
+                                   "source":  "kiro-cli chat /usage --no-interactive",
+                                   "windows":  [
+                                                   {
+                                                       "kind":  "credits",
+                                                       "label":  "monthly credits",
+                                                       "percent":  9,
+                                                       "used":  4.52,
+                                                       "limit":  50
+                                                   }
+                                               ],
+                                   "error":  null,
+                                   "display_message":  null,
+                                   "api":  null
+                               }
+                  }
+}

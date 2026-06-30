@@ -8,6 +8,7 @@ const (
 	TypeCursor = "cursor"
 	TypeCodex  = "codex"
 	TypeGemini = "gemini"
+	TypeKiro   = "kiro"
 )
 
 // runnerBuilder 由各工具套件在 init() 時註冊，避免 agent 套件反向依賴 claude/codex 等套件。

@@ -19,6 +19,8 @@ import (
 	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/cursor"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
 	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/gemini"
+	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/kiro"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/quota"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/shell"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/tg"
 )
@@ -83,6 +85,7 @@ type serverMsg struct {
 	Stream       string            `json:"stream,omitempty"`
 	ExitCode     int               `json:"exit_code,omitempty"`
 	ShellPending *shellPendingInfo `json:"shell_pending,omitempty"`
+	Quota        *quota.Payload    `json:"quota,omitempty"`
 }
 
 type shellPendingPayload struct {
@@ -99,7 +102,7 @@ type ShellOpts struct {
 	AllowedCommands []string // 非空時啟用指令白名單（見 internal/shell/allowlist.go）
 }
 
-func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts) func(*fiberws.Conn) {
+func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *quota.Service) func(*fiberws.Conn) {
 	return func(c *fiberws.Conn) {
 		sessionID := c.Params("id")
 		tgUserID, _ := c.Locals("tg_id").(int64)
@@ -147,6 +150,11 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts) func(*fibe
 			InputMode:    syncData.InputMode,
 			ShellType:    syncData.ShellType,
 			ShellPending: syncData.ShellPendingCmd,
+		}
+		if quotaSvc != nil {
+			q := quotaSvc.Get(agentType)
+			p := q.ToPayload()
+			syncMsg.Quota = &p
 		}
 		send(syncMsg)
 
@@ -417,6 +425,16 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts) func(*fibe
 							}
 							broadcast(serverMsg{Type: "status", Value: idleUIStatus(database, sessionID)})
 							go tg.Notify(botToken, tgUserID, fmt.Sprintf("✅ *%s* 任務完成", sess.Name))
+							if quotaSvc != nil {
+								go func(at string) {
+									snap, err := quotaSvc.RefreshAfterRun(context.Background(), at)
+									if err != nil {
+										log.Printf("[quota] refresh after run %s: %v", at, err)
+									}
+									p := snap.ToPayload()
+									broadcast(serverMsg{Type: "quota_update", Quota: &p})
+								}(agentType)
+							}
 						}
 
 					case agent.EventError:
@@ -799,7 +817,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts) func(*fibe
 				runAgent("[Permission denied by user. Please acknowledge that you cannot perform the requested operation and stop.]", nil)
 
 			case "set_mode":
-				if agentType != agent.TypeClaude && agentType != agent.TypeCursor && agentType != agent.TypeGemini {
+				if agentType != agent.TypeClaude && agentType != agent.TypeCursor && agentType != agent.TypeGemini && agentType != agent.TypeKiro {
 					log.Printf("[ws] agent=%s: set_mode ignored", agentType)
 					continue
 				}
@@ -893,6 +911,16 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts) func(*fibe
 				}
 				log.Printf("[ws] 收到 shell_exec，長度=%d", len(line))
 				runShell(line)
+
+			case "refresh_quota":
+				if quotaSvc == nil {
+					continue
+				}
+				go func(at string) {
+					snap, _ := quotaSvc.RefreshManual(context.Background(), at)
+					p := snap.ToPayload()
+					broadcast(serverMsg{Type: "quota_update", Quota: &p})
+				}(agentType)
 			}
 		}
 	}

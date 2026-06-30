@@ -1,0 +1,19 @@
+kiro-cli : 
+位於 C:\Users\user\Documents\Repo\claude-miniapp\poc\quota-percent\probe_quota.ps1:216 字元:9
++         kiro-cli chat "/usage" --no-interactive 1> $null 2> $errFile
++         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[1mEstimated Usage[0m | resets on 2026-07-01 | [mKIRO FREE[0m
+[1mCredits[0m (4.52 of 50 covered in plan)
+[m????????[m?????????????????????????????????????????????????????????????????????
+?????[0m 9%
+
+Overages: [1mDisabled[0m
+
+To manage your plan or configure overages navigate to [mhttps://app.kiro.dev/account/usage[0m
+
+Tip: to see context window usage, run [m/context[0m
+
+[1G[0m[0m[?25h

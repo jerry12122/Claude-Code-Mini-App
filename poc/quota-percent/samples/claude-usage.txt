@@ -1,0 +1,16 @@
+You are currently using your subscription to power your Claude Code usage
+
+Current session: 16% used 繚 resets Jun 30, 3:10pm (Asia/Taipei)
+Current week (all models): 9% used 繚 resets Jul 3, 9:59pm (Asia/Taipei)
+
+What's contributing to your limits usage?
+Approximate, based on local sessions on this machine ??does not include other devices or claude.ai. Behaviors are independent characteristics, not a breakdown.
+
+Last 24h 繚 131 requests 繚 11 sessions
+  89% of your usage came from subagent-heavy sessions
+  Top subagents: Explore 2%
+
+Last 7d 繚 737 requests 繚 24 sessions
+  70% of your usage came from subagent-heavy sessions
+  Top skills: /code-review 2%
+  Top subagents: code-review 4%, Explore 1%
