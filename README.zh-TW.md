@@ -1,226 +1,69 @@
 # Claude Code Mini App
 
-**v0.2.0** · [English](README.md)
+> 用手機 Telegram 遠端操控伺服器上的 AI 編碼 CLI。**單一 Go 二進位**同時提供 REST、WebSocket 與 UI，無需獨立前端建置。
 
-Telegram Mini App，讓你在手機上遠端操控伺服器上的 AI 編碼 CLI。以**單一 Go 二進位**同時提供 REST API、WebSocket 與單檔 React 前端（無獨立建置步驟）。
+[![Version](https://img.shields.io/badge/version-0.2.0-blue)](#) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white)](#)
 
-## 功能概覽
+[English](README.md)
 
-- **多種後端工具** — 建立 Session 時可選 **Claude Code**、**Cursor Agent**、**Kiro CLI** 或 **Gemini CLI**（Codex 為預留選項，尚未實作 Runner）
-- **帳戶用量 %** — Session header 顯示各 provider 已組好的用量字串（如 Claude `5h 16% · Week 9%`、Cursor 帳單 %、Kiro credits）；伺服器端 global cache，支援手動 ↻ 刷新（60 秒冷卻）
-- **遠端對話** — 透過 Telegram Mini App 或內網瀏覽器送出提示詞，於伺服器執行對應 CLI
-- **Session 管理** — 建立、重新命名、刪除多個對話；每個 Session 綁定 `work_dir`、權限模式與 `agent_type`
-- **即時串流** — WebSocket 雙向通訊，Markdown 串流顯示；支援多分頁／多連線廣播同步
-- **權限流程** — Claude 的 `stream-json` 若回傳 `permission_denials`，會進入授權狀態；可「允許一次」或切換 `permission_mode`（Cursor／Gemini 亦支援模式切換，語意依各 CLI）
-- **Telegram 驗證** — 以 Mini App `initData` HMAC 驗證 + 白名單 `tg_id`
-- **網頁登入** — 內網 IP 範圍內可用密碼登入（HttpOnly Cookie），並可綁定白名單使用者以接收 **Telegram 完成／需授權通知**
-- **直連 Shell（選用）** — 聊天輸入列**左側圖示**在 Agent 與 Shell 之間切換（偏好**依各 Session** 存於瀏覽器 `localStorage`，**該 Session 未設定時預設 Agent**）；於該 Session 的 `work_dir` 執行系統指令（如 `git status`）；預設關閉，需於 `config.yaml` 明確啟用（見下方安全說明）
+## 快速開始
 
-## 架構
-
-```
-Telegram Mini App / 瀏覽器
-        ↕ WebSocket（/sessions/:id/ws）
-┌─────────────────────────────────────────┐
-│           單一 Go 程式                     │
-│  Fiber 路由 │ SQLite (WAL) sessions/messages│
-│       每則使用者訊息 spawn 一個子進程       │
-│  agent.Runner（claude / cursor / kiro / gemini） │
-│  QuotaService（global cache、headless 擷取）     │
-│  非互動 + 串流事件 → 前端狀態機             │
-└─────────────────────────────────────────┘
-```
-
-- 每條訊息 **spawn 一個子進程**，用完即結束；**不使用 PTY**。
-- Claude 路徑使用 `-p`、`--output-format stream-json`、`--resume <agent_session_id>` 等（詳見 `docs/spec/headless.md`、`docs/spec/claude-code-cli.md`）。
-- Cursor、Kiro、Gemini 各有對應 Runner 與事件轉換（見 `docs/spec/cursor-agent-cli.md`、`docs/spec/kiro-cli.md`、`docs/spec/gemini-cli.md`）。
-
-## 需求
-
-- Go 1.25+
-- 伺服器已安裝並登入你要使用的 CLI（例如 `claude`、`cursor agent`、`kiro-cli`、`gemini` 等）
-- Telegram Bot Token（[@BotFather](https://t.me/BotFather)）
-
-## 建置與執行
-
-### 1. 複製並編譯
+**需求：** Go 1.25+、Telegram Bot Token（[@BotFather](https://t.me/BotFather)）、伺服器上已安裝並登入要用的 CLI（`claude`、`cursor agent`、`kiro-cli`、`gemini` 等）。
 
 ```bash
 git clone https://github.com/jerry12122/Claude-Code-Mini-App
 cd claude-miniapp
 go build -o claude-miniapp ./cmd/server
+cp config.example.yaml config.yaml   # 填 bot_token、whitelist_tg_ids
+./claude-miniapp                     # → http://localhost:8080
 ```
 
-### 2. 設定
+## 功能
 
-```bash
-cp config.example.yaml config.yaml
+- **多代理** — Claude Code、Cursor Agent、Kiro CLI、Gemini CLI（依 Session 選擇）
+- **即時串流** — WebSocket 對話與 Markdown 串流；多分頁同步
+- **用量徽章** — Session header 顯示帳戶用量（如 Claude `5h 16% · Week 9%`）
+- **Session 管理** — 多對話、各自綁定 `work_dir` 與權限模式
+- **權限流程** — Claude 遭拒時可「允許一次」或切換模式
+- **驗證** — Telegram `initData` + 白名單；可選內網密碼登入
+- **選用 Shell** — 於 `work_dir` 執行指令（預設關閉）
+
+## 為什麼用這個？
+
+| | SSH + 終端機 | 一般 Telegram Bot | **本專案** |
+|---|---|---|---|
+| 手機體驗 | 差 | 純文字 | Mini App UI + 串流 |
+| Session / 工作目錄 | 手動 | 通常沒有 | 內建、可持久 |
+| 多 CLI | 自己接 | 一 bot 一工具 | Claude / Cursor / Kiro / Gemini |
+| 部署 | SSH 金鑰 | Bot + 自寫邏輯 | 單一二進位 |
+
+## 架構
+
+```
+Telegram Mini App / 瀏覽器
+        ↕ WebSocket
+┌──────────────────────────────┐
+│  Go 二進位（Fiber + SQLite）   │
+│  每則訊息 spawn CLI（無 PTY）   │
+│  QuotaService（快取擷取）      │
+└──────────────────────────────┘
 ```
 
-**`config.yaml` 重點：**
+每則使用者訊息 spawn 一個子進程。詳細規格：[`docs/spec/plan.md`](docs/spec/plan.md)、[`docs/spec/headless.md`](docs/spec/headless.md)。
 
-```yaml
-bot_token: "YOUR_BOT_TOKEN_HERE"
+## 安全
 
-whitelist_tg_ids:
-  - 123456789  # 允許的 Telegram 使用者 ID
+- 勿將含真實憑證的設定提交版本庫；生產環境勿開 `no_auth`。
+- **`shell.enabled`** 會讓已驗證使用者在主機上執行 shell — 僅在可信網路啟用。白名單規則：[`docs/spec/shell-allowlist-schema.md`](docs/spec/shell-allowlist-schema.md)。
 
-web:
-  # 網頁登入密碼（POST /auth/login 的 JSON body，勿放 query）
-  password: "change-me"
-  # 僅允許此 CIDR 範圍使用網頁密碼登入（真實 IP：CF-Connecting-IP > X-Forwarded-For > 直連）
-  allowed_cidrs:
-    - "127.0.0.0/8"
-    - "10.0.0.0/8"
-    - "172.16.0.0/12"
-    - "192.168.0.0/16"
-  session_ttl: "24h"
-  # 網頁登入時預設綁定的通知對象（須在白名單）；多人時建議填寫
-  # default_notify_tg_id: 123456789
+## 文件
 
-no_auth: false  # true = 跳過驗證，僅限本機開發
-
-server:
-  port: 8080
-
-db:
-  path: "./claude-miniapp.db"
-
-# 直連 Shell（預設關閉；啟用後等同允許已驗證使用者在伺服器上執行任意指令）
-# shell:
-#   enabled: true
-#   timeout: 60s
-#   max_output_bytes: 524288
-#   # 與 DB 依 work_dir 累積者聯集；聯集為空則每道指令皆需先確認（見下方「有效指令集合」）
-#   allowed_commands:
-#     - git
-#     - ls
-```
-
-> **安全：** 勿將含真實憑證的 `config.yaml` 提交版本庫；生產環境勿開啟 `no_auth`。
-
-> **直連 Shell：** 若設定 `shell.enabled: true`，任何能通過 Telegram 白名單或網頁登入的使用者，皆可在伺服器上執行 shell 指令（於各 Session 的 `work_dir` 內）。等同把該主機的 shell 存取權交給信任使用者；請僅在內網、私有部署或嚴格控管帳號的環境下啟用。  
-> **有效指令集合：** 後端將 **`shell.allowed_commands`（全域）** 與 **該 `work_dir` 在資料庫累積的指令**（使用者曾選「允許並記住此目錄」）做**聯集**，再依**第一個指令名稱**（正規化後）判斷。  
-> - **聯集為空**（設定未列出任何指令，且該目錄尚無累積）：**任何**指令都**不會**自動執行，**一律先顯示待確認**（與程式 `internal/shell/effective.go` 的 `ClassifyShellLine` 一致）。  
-> - **聯集非空**：第一個指令名稱在聯集內 → 通過字元檢查後**直接執行**；不在聯集內 → **待確認**。  
-> 名稱比對不分大小寫（可寫 `git` 或 `git.exe`）。並會拒絕含 `&&`、`||`、`|`、`;`、換行、反引號、`$(` 等字串，以降低指令串接風險。
-
-### 3. 啟動
-
-```bash
-./claude-miniapp
-```
-
-預設監聽 `:8080`。靜態前端由 `./internal/static` 提供。
-
-## 設定欄位說明
-
-| 欄位 | 說明 | 預設 |
-|---|---|---|
-| `bot_token` | Telegram Bot API Token | 必填（`no_auth` 時可略） |
-| `whitelist_tg_ids` | 允許的 Telegram 使用者 ID | `[]` |
-| `web.password` | 網頁登入密碼 | `""`（未設定則無法用密碼登入） |
-| `web.allowed_cidrs` | 允許使用網頁登入的來源 IP 範圍 | 內網私有位址 |
-| `web.session_ttl` | 登入 Cookie 有效時間 | `24h` |
-| `web.default_notify_tg_id` | 網頁登入預設綁定的通知對象 | `0`（未指定） |
-| `no_auth` | 關閉所有驗證 | `false` |
-| `server.port` | HTTP 埠號 | `8080` |
-| `db.path` | SQLite 檔案路徑 | `./claude-miniapp.db` |
-| `shell.enabled` | 是否允許 WebSocket `shell_exec`（直連 shell） | `false` |
-| `shell.timeout` | 單次指令逾時 | `60s` |
-| `shell.max_output_bytes` | 單次回傳輸出上限（位元組） | `524288` |
-| `shell.allowed_commands` | 全域指令名稱清單，與 DB 依 `work_dir` 累積者**聯集**為有效集合；**聯集為空則每道指令皆需先確認**；聯集非空時僅清單內名稱可直接執行（仍阻擋串接字元） | `[]` |
-
-## REST API
-
-| 方法 | 路徑 | 說明 |
-|---|---|---|
-| `GET` | `/sessions` | 列出所有 Session |
-| `POST` | `/sessions` | 建立 Session（JSON 可含 `name`、`description`、`work_dir`、`permission_mode`、`agent_type`） |
-| `PATCH` | `/sessions/:id` | 重新命名（`{"name":"..."}`） |
-| `DELETE` | `/sessions/:id` | 刪除 Session |
-| `GET` | `/sessions/:id/messages` | 訊息歷史 |
-| `GET` | `/quota` | 各 provider 帳戶用量 cache |
-| `GET` | `/quota/:provider` | 單一 provider 用量（`claude`、`cursor`、`kiro` 等） |
-| `POST` | `/quota/:provider/refresh` | 手動刷新用量（每 provider 60 秒冷卻） |
-| `POST` | `/auth/login` | 網頁登入（僅限 `allowed_cidrs` 內 IP） |
-| `POST` | `/auth/logout` | 登出並清除 Cookie |
-| `WS` | `/sessions/:id/ws` | WebSocket 對話 |
-
-除靜態檔與登入外，上述端點需通過驗證：Telegram `initData`（標頭 `X-Telegram-Init-Data` 或 query）或有效之網頁 Session Cookie。
-
-## WebSocket 協議摘要
-
-**Client → Server：**
-
-```json
-{ "type": "input", "data": "使用者提示" }
-{ "type": "shell_exec", "data": "git status" }
-{ "type": "allow_once", "tools": ["Write"] }
-{ "type": "set_mode", "mode": "acceptEdits" }
-{ "type": "interrupt" }
-{ "type": "reset_context" }
-{ "type": "refresh_quota" }
-```
-
-**Server → Client：**
-
-```json
-{ "type": "sync", "value": "IDLE", "messages": [...], "quota": { "display_text": "5h 16% · Week 9%", "updated_at": "..." } }
-{ "type": "quota_update", "quota": { "display_text": "...", "updated_at": "..." } }
-{ "type": "status", "value": "STREAMING" }
-{ "type": "status", "value": "SHELL_EXEC" }
-{ "type": "delta", "content": "..." }
-{ "type": "user_message", "content": "..." }
-{ "type": "shell_result", "id": 123, "content": "指令輸出文字" }
-{ "type": "permission_request", "tools": [...] }
-{ "type": "reset" }
-{ "type": "error", "content": "..." }
-```
-
-連線建立時會收到 `sync`（還原 UI 狀態、歷史與 cache 中的 quota）。Agent 跑完一輪後會在背景依 TTL 刷新用量；前端亦可送 `refresh_quota` 手動刷新。
-
-## 更新紀錄
-
-### v0.2.0
-
-- **Kiro CLI** Runner 與 `docs/spec/kiro-cli.md`
-- **帳戶用量 %** 顯示於 Session header（Claude / Cursor / Kiro）；`GET /quota`、WS `quota_update`
-- Cursor Runner 修正（stream-json 認證／partial 文字）
-- `poc/` 下新增 cursor-agent、kiro-cli、usage-events、quota-percent POC 腳本
-
-## 權限模式（Claude / Cursor / Gemini）
-
-| 模式 | 說明 |
+| 主題 | 路徑 |
 |---|---|
-| `default` | 預設；寫入／執行等依 CLI 觸發授權或確認 |
-| `acceptEdits` | 較寬鬆的檔案編輯（Claude 對應 `--permission-mode acceptEdits`） |
-| `bypassPermissions` | 跳過權限檢查（高風險；Cursor 在 bypass 時會帶額外 force 行為） |
-
-Claude 遭拒時可於前端選擇「允許一次」或永久切換模式；非 Claude 代理不處理 `allow_once`。
-
-## Telegram 通知
-
-若請求已綁定 `tg_id`（Telegram 內開啟或網頁登入綁定白名單使用者），工作完成或需要授權時會透過 Bot API 推送簡短訊息。
-
-## 技術棧
-
-| 層級 | 技術 |
-|---|---|
-| 後端 | Go、[Fiber](https://gofiber.io/) |
-| 資料庫 | SQLite（WAL）`modernc.org/sqlite` |
-| WebSocket | `gofiber/contrib/websocket` |
-| 設定 | [Viper](https://github.com/spf13/viper)（`config.yaml`） |
-| 前端 | 單檔 React SPA（`internal/static`） |
-| 驗證 | Telegram `initData` HMAC-SHA256；網頁 Session Cookie + IP CIDR |
-
-## 說明文件
-
-- `docs/spec/plan.md` — 規格與路線圖  
-- `docs/spec/headless.md` — Claude `-p` 與 stream-json  
-- `docs/spec/claude-code-cli.md`、`docs/spec/cursor-agent-cli.md`、`docs/spec/kiro-cli.md`、`docs/spec/gemini-cli.md` — 各 CLI 參考  
-- `docs/spec/shell-allowlist-schema.md` — Shell 白名單、待確認與 WebSocket 約定  
-- `poc/quota-percent/README.md`、`poc/usage-events/README.md` — 用量／quota POC 說明  
+| 規格、API / WebSocket | [`docs/spec/plan.md`](docs/spec/plan.md) |
+| 設定欄位 | [`config.example.yaml`](config.example.yaml) |
+| 各 CLI 參考 | [`docs/spec/`](docs/spec/) |
+| 用量 POC | [`poc/quota-percent/README.md`](poc/quota-percent/README.md) |
 
 ## 授權
 
