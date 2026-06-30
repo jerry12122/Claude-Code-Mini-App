@@ -8,7 +8,7 @@
 
 ## Quick Start
 
-**Requires:** Go 1.25+, Telegram bot token ([@BotFather](https://t.me/BotFather)), and the CLI(s) you use (`claude`, `cursor agent`, `kiro-cli`, `gemini`) installed on the server.
+**Requires:** Go 1.25+, Telegram bot token ([@BotFather](https://t.me/BotFather)), and the CLI(s) you use (`claude`, `cursor agent`, `kiro-cli`) installed on the server.
 
 ```bash
 git clone https://github.com/jerry12122/Claude-Code-Mini-App
@@ -20,7 +20,7 @@ cp config.example.yaml config.yaml   # set bot_token, whitelist_tg_ids
 
 ## Features
 
-- **Multi-agent** — Claude Code, Cursor Agent, Kiro CLI, Gemini CLI (per session)
+- **Multi-agent** — Claude Code, Cursor Agent, Kiro CLI (per session; Gemini / Antigravity paused due to headless limits)
 - **Live streaming** — WebSocket chat with Markdown; multi-tab sync
 - **Quota badge** — Session header shows usage (e.g. Claude `5h 16% · Week 9%`)
 - **Sessions** — Multiple conversations, each with its own `work_dir` and permission mode
@@ -34,7 +34,7 @@ cp config.example.yaml config.yaml   # set bot_token, whitelist_tg_ids
 |---|---|---|---|
 | Mobile UX | Poor | Text-only | Mini App UI + streaming |
 | Session / `work_dir` | Manual | Usually none | Built-in, persisted |
-| Multi CLI | You wire it | One bot, one tool | Claude / Cursor / Kiro / Gemini |
+| Multi CLI | You wire it | One bot, one tool | Claude / Cursor / Kiro / Antigravity |
 | Deploy | SSH keys | Bot + custom code | Single binary |
 
 ## Architecture
@@ -62,7 +62,7 @@ Each user message spawns a short-lived subprocess. Details: [`docs/spec/plan.md`
 |---|---|
 | Spec & API / WebSocket | [`docs/spec/plan.md`](docs/spec/plan.md) |
 | Config reference | [`config.example.yaml`](config.example.yaml) |
-| Claude / Cursor / Kiro / Gemini CLI | [`docs/spec/`](docs/spec/) |
+| Claude / Cursor / Kiro / Antigravity CLI | [`docs/spec/`](docs/spec/) |
 | Quota POC notes | [`poc/quota-percent/README.md`](poc/quota-percent/README.md) |
 
 ## License

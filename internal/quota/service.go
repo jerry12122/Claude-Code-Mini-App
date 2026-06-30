@@ -42,7 +42,7 @@ func NewService() *Service {
 		agent.TypeClaude: &ClaudeFetcher{},
 		agent.TypeCursor: &CursorFetcher{},
 		agent.TypeKiro:   &KiroFetcher{},
-		agent.TypeGemini: &GeminiFetcher{},
+		agent.TypeAntigravity: &AntigravityFetcher{},
 	}
 	return &Service{
 		cache:      make(map[string]*cacheEntry),
@@ -59,9 +59,9 @@ func (s *Service) ttl(provider string) time.Duration {
 	return 5 * time.Minute
 }
 
-func (s *Service) geminiSnapshot() Snapshot {
+func (s *Service) antigravitySnapshot() Snapshot {
 	return Snapshot{
-		Provider:    agent.TypeGemini,
+		Provider:    agent.TypeAntigravity,
 		DisplayText: "未實作",
 		UpdatedAt:   time.Now(),
 	}
@@ -72,8 +72,8 @@ func (s *Service) Get(provider string) Snapshot {
 	if provider == "" {
 		provider = agent.TypeClaude
 	}
-	if provider == agent.TypeGemini {
-		return s.geminiSnapshot()
+	if provider == agent.TypeAntigravity || provider == agent.TypeGemini {
+		return s.antigravitySnapshot()
 	}
 	s.mu.RLock()
 	ent, ok := s.cache[provider]
@@ -92,7 +92,7 @@ func (s *Service) Get(provider string) Snapshot {
 // GetAll 回傳已知 provider 的 cache。
 func (s *Service) GetAll() map[string]Snapshot {
 	out := map[string]Snapshot{
-		agent.TypeGemini: s.geminiSnapshot(),
+		agent.TypeAntigravity: s.antigravitySnapshot(),
 	}
 	for _, p := range []string{agent.TypeClaude, agent.TypeCursor, agent.TypeKiro} {
 		out[p] = s.Get(p)
@@ -114,7 +114,7 @@ func (s *Service) Warmup(ctx context.Context) {
 
 // RefreshAfterRun agent 完成後若 cache 過期則背景更新。
 func (s *Service) RefreshAfterRun(ctx context.Context, provider string) (Snapshot, error) {
-	if provider == agent.TypeGemini || provider == "" {
+	if provider == agent.TypeAntigravity || provider == agent.TypeGemini || provider == "" {
 		return s.Get(provider), nil
 	}
 	s.mu.RLock()
@@ -128,8 +128,8 @@ func (s *Service) RefreshAfterRun(ctx context.Context, provider string) (Snapsho
 
 // RefreshManual 手動刷新（60s cooldown，force fetch）。
 func (s *Service) RefreshManual(ctx context.Context, provider string) (Snapshot, error) {
-	if provider == agent.TypeGemini {
-		return s.geminiSnapshot(), nil
+	if provider == agent.TypeAntigravity || provider == agent.TypeGemini {
+		return s.antigravitySnapshot(), nil
 	}
 	s.mu.Lock()
 	if t, ok := s.lastManual[provider]; ok && time.Since(t) < ManualCooldown {

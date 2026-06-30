@@ -18,7 +18,7 @@ import (
 	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/claude"
 	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/cursor"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
-	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/gemini"
+	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/antigravity"
 	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/kiro"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/quota"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/shell"
@@ -817,7 +817,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				runAgent("[Permission denied by user. Please acknowledge that you cannot perform the requested operation and stop.]", nil)
 
 			case "set_mode":
-				if agentType != agent.TypeClaude && agentType != agent.TypeCursor && agentType != agent.TypeGemini && agentType != agent.TypeKiro {
+				if agentType != agent.TypeClaude && agentType != agent.TypeCursor && agentType != agent.TypeAntigravity && agentType != agent.TypeGemini && agentType != agent.TypeKiro {
 					log.Printf("[ws] agent=%s: set_mode ignored", agentType)
 					continue
 				}

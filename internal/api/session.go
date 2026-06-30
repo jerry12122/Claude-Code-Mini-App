@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/agent"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/gitinfo"
 
@@ -83,6 +84,13 @@ func (h *SessionHandler) Create(c *fiber.Ctx) error {
 	}
 	if body.AgentType == "" {
 		body.AgentType = "claude"
+	}
+	if !agent.IsEnabled(body.AgentType) {
+		reason := agent.DisabledReason(body.AgentType)
+		if reason == "" {
+			reason = "不支援的 agent_type"
+		}
+		return c.Status(400).JSON(fiber.Map{"error": reason})
 	}
 	cliExtra, err := normalizeCliExtraArgs(body.CliExtraArgs)
 	if err != nil {

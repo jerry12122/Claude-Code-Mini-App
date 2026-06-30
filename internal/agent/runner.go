@@ -70,7 +70,7 @@ type Runner interface {
 	// Run 啟動子進程並串流事件，子進程結束後函式才返回。
 	Run(ctx context.Context, opts RunOptions, cb EventCallback) error
 
-	// Name 回傳工具名稱，例如 "claude"、"codex"、"gemini"。
+	// Name 回傳工具名稱，例如 "claude"、"antigravity"、"kiro"。
 	Name() string
 }
 
@@ -79,7 +79,8 @@ const (
 	// 共用語意：授權/權限模式
 	// Claude 值：default / acceptEdits / bypassPermissions / plan
 	// Cursor 值：default / bypassPermissions（僅決定是否加 --force）
-	// Gemini 值：default / auto_edit / yolo / plan（Gemini runner 另外接受 acceptEdits → auto_edit、bypassPermissions → yolo 的向下相容 mapping）
+	// Antigravity（agy）值：default；bypassPermissions → --dangerously-skip-permissions
+	// legacy Gemini 值仍經 UI 映射為 antigravity
 	ArgPermissionMode = "permission_mode"
 
 	// Claude 專屬

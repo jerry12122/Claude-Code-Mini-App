@@ -35,10 +35,15 @@ func TestFormatKiroDisplay(t *testing.T) {
 	}
 }
 
-func TestServiceGetGemini(t *testing.T) {
+func TestServiceGetAntigravity(t *testing.T) {
 	s := NewService()
-	snap := s.Get("gemini")
+	snap := s.Get("antigravity")
 	if snap.DisplayText != "未實作" {
 		t.Fatalf("got %q", snap.DisplayText)
+	}
+	// 舊 agent_type 別名
+	snap = s.Get("gemini")
+	if snap.DisplayText != "未實作" {
+		t.Fatalf("gemini alias got %q", snap.DisplayText)
 	}
 }

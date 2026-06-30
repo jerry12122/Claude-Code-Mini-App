@@ -1,0 +1,6 @@
+Antigravity POC 2026-06-30 14:58:45
+CC_AGY_BIN=C:\Users\user\AppData\Local\agy\bin\agy.exe
+
+probe_flags: PASS (exit 0)
+probe_headless: FAIL (exit 1)
+probe_stream_json: SKIP (unsupported) (exit 3)

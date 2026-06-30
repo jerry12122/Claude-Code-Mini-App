@@ -1,5 +1,7 @@
 把 Gemini CLI 當成一個 **CLI-based provider** 即可；你要補進既有 AI agent framework 的，核心仍是 **transport contract、session contract、stream contract、error contract、capability contract** 這五塊。
 
+> **已棄用：** 請改用 **Antigravity CLI（`agy`）**。見 [`antigravity-cli.md`](antigravity-cli.md) 與 `poc/antigravity-cli/`。本文保留 stream-json 事件細節供 `internal/antigravity` 參考。
+
 ## Provider 介面定位
 
 Gemini CLI 不是 HTTP API，而是 **本機 subprocess provider**；啟動方式是呼叫 `gemini`，在 non-interactive 情境要以 `-p/--prompt` 指定 prompt 或透過 stdin pipe，並且可選 `--output-format text|json|stream-json`，其中 `stream-json` 是結構化串流格式。

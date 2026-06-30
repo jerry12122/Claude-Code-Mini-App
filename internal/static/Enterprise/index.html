@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
   <!-- 選用：與主站相同，API 前綴不一致時設 cc-api-base 或 window.__CC_API_BASE__ -->
   <!-- <meta name="cc-api-base" content="" /> -->
-  <title>Claude Code · Nexus UI</title>
+  <title>Claude Code · Enterprise</title>
   <link rel="icon" href="../favicon.ico" type="image/x-icon" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
@@ -22,28 +22,37 @@
   <style>
     :root {
       --tg-content-safe-top: 0px;
-      --nexus-bg0: #05080f;
-      --nexus-bg1: #0a101c;
-      --nexus-accent: #22d3ee;
-      --nexus-accent-dim: rgba(34, 211, 238, 0.12);
+      --ent-bg0: #0c1117;
+      --ent-bg1: #151b24;
+      --ent-surface: #1c2430;
+      --ent-accent: #2563eb;
+      --ent-accent-dim: rgba(37, 99, 235, 0.12);
+      --ent-border: rgba(148, 163, 184, 0.14);
     }
-    body.nexus-body {
-      background: var(--nexus-bg0);
-      color: #e8eef7;
-      font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
-      font-optical-sizing: auto;
+    body.enterprise-body {
+      background: var(--ent-bg0);
+      color: #e2e8f0;
+      font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
     }
-    .nexus-display { font-family: "Outfit", "DM Sans", sans-serif; }
-    body.nexus-body::before {
+    .enterprise-display {
+      font-family: "IBM Plex Sans", ui-sans-serif, sans-serif;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    body.enterprise-body::before {
       content: "";
       position: fixed;
       inset: 0;
       z-index: 0;
       pointer-events: none;
       background:
-        radial-gradient(ellipse 120% 80% at 10% -10%, rgba(34, 211, 238, 0.14), transparent 55%),
-        radial-gradient(ellipse 90% 60% at 100% 0%, rgba(99, 102, 241, 0.09), transparent 50%),
-        linear-gradient(180deg, var(--nexus-bg1) 0%, var(--nexus-bg0) 65%);
+        linear-gradient(180deg, var(--ent-bg1) 0%, var(--ent-bg0) 48%);
+      box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.06);
+    }
+    .ent-topbar {
+      border-top: 2px solid var(--ent-accent);
+      background: rgba(21, 27, 36, 0.92);
+      backdrop-filter: blur(12px);
     }
     #root { position: relative; z-index: 1; }
     /* 寬螢幕沿用 Tailwind text-sm；僅窄螢幕強制 16px，避免 iOS 聚焦輸入時自動縮放 */
@@ -53,26 +62,32 @@
     .prose pre { margin: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
     .prose pre code { white-space: pre; }
     .prose code:not(pre code) {
-      background: rgba(34, 211, 238, 0.08); padding: 0.12em 0.45em; border-radius: 6px; font-size: 0.9em; border: 1px solid rgba(255,255,255,0.06);
+      background: rgba(59, 130, 246, 0.08); padding: 0.12em 0.45em; border-radius: 6px; font-size: 0.9em; border: 1px solid rgba(255,255,255,0.06);
     }
     .prose p { margin: 0.5em 0; }
     .prose ul, .prose ol { padding-left: 1.5em; margin: 0.5em 0; }
     .prose h1,.prose h2,.prose h3 { font-weight: 600; margin: 0.75em 0 0.25em; }
     .prose table { border-collapse: collapse; min-width: 100%; }
-    .prose table th, .prose table td { border: 1px solid rgba(34, 211, 238, 0.15); padding: 0.3em 0.75em; white-space: nowrap; }
-    .prose table th { background: rgba(34, 211, 238, 0.06); font-weight: 600; }
+    .prose table th, .prose table td { border: 1px solid rgba(59, 130, 246, 0.15); padding: 0.3em 0.75em; white-space: nowrap; }
+    .prose table th { background: rgba(59, 130, 246, 0.06); font-weight: 600; }
     .prose .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0.5em 0; }
     .bubble-claude {
-      background: linear-gradient(145deg, rgba(15, 23, 42, 0.92) 0%, rgba(8, 12, 22, 0.88) 100%);
-      border: 1px solid rgba(34, 211, 238, 0.14);
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      background: var(--ent-surface);
+      border: 1px solid var(--ent-border);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.24);
       overflow: hidden;
       min-width: 0;
     }
     .bubble-user {
-      background: linear-gradient(145deg, rgba(13, 45, 42, 0.85) 0%, rgba(8, 30, 28, 0.9) 100%);
-      border: 1px solid rgba(45, 212, 191, 0.2);
-      box-shadow: 0 10px 32px rgba(0, 0, 0, 0.28);
+      background: rgba(30, 41, 59, 0.88);
+      border: 1px solid rgba(59, 130, 246, 0.18);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+      overflow: hidden;
+      min-width: 0;
+    }
+    .bubble-shell {
+      background: #0f172a;
+      border: 1px solid rgba(148, 163, 184, 0.16);
       overflow: hidden;
       min-width: 0;
     }
@@ -84,41 +99,144 @@
       display: inline-block;
       margin-left: 0.1em;
       letter-spacing: 0.02em;
-      color: #67e8f9;
+      color: #93c5fd;
       animation: streaming-dots 1s ease-in-out infinite;
     }
     @keyframes pulse-dot {
       0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; }
     }
-    .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #22d3ee; margin: 0 2px; animation: pulse-dot 1.2s infinite; }
+    .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #3b82f6; margin: 0 2px; animation: pulse-dot 1.2s infinite; }
     .dot:nth-child(2) { animation-delay: 0.2s; }
     .dot:nth-child(3) { animation-delay: 0.4s; }
     .app-scroll {
       -webkit-overflow-scrolling: touch;
       scrollbar-width: thin;
-      scrollbar-color: rgba(34, 211, 238, 0.38) rgba(10, 16, 28, 0.8);
+      scrollbar-color: rgba(59, 130, 246, 0.38) rgba(10, 16, 28, 0.8);
       overscroll-behavior-y: contain;
     }
     .app-scroll::-webkit-scrollbar { width: 6px; }
     .app-scroll::-webkit-scrollbar-track { background: rgba(5, 8, 15, 0.5); border-radius: 6px; }
     .app-scroll::-webkit-scrollbar-thumb {
-      background: linear-gradient(180deg, rgba(34, 211, 238, 0.45), rgba(99, 102, 241, 0.35));
+      background: linear-gradient(180deg, rgba(59, 130, 246, 0.45), rgba(99, 102, 241, 0.35));
       border-radius: 6px;
       border: 1px solid rgba(0, 0, 0, 0.25);
     }
     .app-scroll::-webkit-scrollbar-thumb:hover {
-      background: rgba(34, 211, 238, 0.6);
+      background: rgba(59, 130, 246, 0.6);
     }
-    @keyframes nexus-fade-in {
+    @keyframes enterprise-fade-in {
       from { opacity: 0; transform: translateY(6px); }
       to { opacity: 1; transform: translateY(0); }
     }
-    .nexus-card-enter { animation: nexus-fade-in 0.4s ease-out both; }
+    .enterprise-card-enter { animation: enterprise-fade-in 0.4s ease-out both; }
+    /* Enterprise 拓撲：表格式 Session、thread 聊天、command bar */
+    .ent-session-rows { flex: 1; min-height: 0; overflow-y: auto; }
+    .ent-session-row {
+      display: grid;
+      grid-template-columns: 3px minmax(0, 1fr) auto;
+      gap: 0 0.75rem;
+      align-items: center;
+      padding: 0.625rem 0.75rem;
+      border-bottom: 1px solid var(--ent-border);
+      cursor: pointer;
+      transition: background-color 0.15s ease;
+    }
+    .ent-session-row:hover { background: rgba(30, 41, 59, 0.35); }
+    .ent-session-row:active { background: rgba(30, 41, 59, 0.5); }
+    .ent-session-accent {
+      align-self: stretch;
+      width: 3px;
+      border-radius: 2px;
+      background: transparent;
+    }
+    .ent-session-row.is-running .ent-session-accent { background: var(--ent-accent); }
+    .ent-session-row.is-awaiting .ent-session-accent { background: #f59e0b; }
+    .ent-toolbar {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      padding: 0.625rem 0.75rem;
+      border-bottom: 1px solid var(--ent-border);
+      background: rgba(21, 27, 36, 0.65);
+    }
+    @media (min-width: 640px) {
+      .ent-toolbar {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .ent-toolbar-search { flex: 1 1 12rem; min-width: 0; }
+      .ent-toolbar-actions { display: flex; gap: 0.5rem; align-items: center; shrink: 0; }
+    }
+    .ent-chat-primary {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      min-height: 2.75rem;
+    }
+    .ent-chat-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      overflow-x: auto;
+      padding: 0.375rem 1rem 0.5rem;
+      border-bottom: 1px solid var(--ent-border);
+      background: rgba(15, 23, 42, 0.35);
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .ent-chat-meta::-webkit-scrollbar { display: none; }
+    .ent-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      flex-shrink: 0;
+      white-space: nowrap;
+      font-size: 10px;
+      line-height: 1.2;
+      padding: 0.2rem 0.5rem;
+      border-radius: 0.25rem;
+      border: 1px solid var(--ent-border);
+      background: rgba(30, 41, 59, 0.55);
+      color: #cbd5e1;
+    }
+    .ent-chat-column {
+      width: 100%;
+      max-width: 48rem;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .ent-thread {
+      width: 100%;
+      max-width: none;
+      border-left: 3px solid var(--ent-accent);
+      border-radius: 0 0.375rem 0.375rem 0;
+      padding: 0.75rem 1rem;
+      background: var(--ent-surface);
+    }
+    .ent-thread-user {
+      width: auto;
+      max-width: min(88%, 28rem);
+      margin-left: auto;
+      border-left: none;
+      border-radius: 0.375rem;
+    }
+    .ent-thread-shell { border-left-color: #64748b; }
+    .ent-command-bar {
+      border-top: 2px solid var(--ent-accent);
+      background: var(--ent-bg1);
+    }
+    .ent-perm-row {
+      padding: 0.375rem 1rem 0.5rem;
+      border-bottom: 1px solid var(--ent-border);
+      background: rgba(15, 23, 42, 0.25);
+    }
     /* 用 Telegram 提供的視口高度變數；鍵盤彈出時自動縮小，解決 iOS 空白間隙問題 */
     .h-app { height: var(--tg-viewport-height, 100svh); }
   </style>
 </head>
-<body class="h-app nexus-body">
+<body class="h-app enterprise-body">
 
 <script type="text/babel" data-presets="react-classic">
 const { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } = React;
@@ -215,7 +333,7 @@ function readApiBaseOverride() {
 }
 
 /**
- * 與主站 internal/static/index.html 完全相同：pathname 推導 + Nexus／Focus 目錄剝除。
+ * 與主站 internal/static/index.html 完全相同：pathname 推導 + Nexus／Focus／Enterprise 目錄剝除。
  */
 function inferApiBaseFromPathname() {
   let p = window.location.pathname || '/';
@@ -250,7 +368,7 @@ function resolveApiUrl(url) {
 }
 
 console.log(
-  '[nexus init] isTMA:', isTMA,
+  '[enterprise init] isTMA:', isTMA,
   'isTelegram:', isTelegram,
   'initData len:', initData.length,
   'protocol:', location.protocol,
@@ -509,7 +627,7 @@ function PermModeSwitch({ agentType, value, onChange, disabled, title }) {
     <div
       role="radiogroup"
       aria-label={ariaLabel}
-      className={`inline-flex max-w-full flex-wrap items-stretch gap-0.5 rounded-2xl border border-cyan-500/15 bg-slate-950/80 p-0.5 shadow-[inset_0_1px_0_rgba(34,211,238,0.06)] backdrop-blur-sm ${
+      className={`inline-flex max-w-full flex-wrap items-stretch gap-0.5 rounded-2xl border border-blue-600/15 bg-slate-950/80 p-0.5 shadow-[inset_0_1px_0_rgba(59,130,246,0.06)] backdrop-blur-sm ${
         disabled ? 'pointer-events-none opacity-45' : ''
       }`}
     >
@@ -526,11 +644,11 @@ function PermModeSwitch({ agentType, value, onChange, disabled, title }) {
             onClick={() => onChange(opt.value)}
             className={[
               'min-h-[2rem] shrink-0 grow-0 px-2 sm:px-2.5 py-1.5 text-center text-[10px] sm:text-xs font-medium leading-tight rounded-xl transition-[color,background-color,box-shadow] duration-150 whitespace-nowrap',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-950',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/60 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-950',
               active
                 ? danger
                   ? 'bg-amber-950/95 text-amber-100 ring-1 ring-amber-500/55 shadow-sm'
-                  : 'bg-gradient-to-br from-cyan-600 to-teal-600 text-white shadow-md shadow-cyan-950/50'
+                  : 'bg-gradient-to-br from-blue-700 to-blue-700 text-white shadow-md shadow-blue-950/50'
                 : 'text-slate-400 hover:bg-white/[0.06] hover:text-slate-100 border border-transparent',
             ].join(' ')}
           >
@@ -563,7 +681,7 @@ function PermModeSelect({ agentType, value, onChange, disabled, title, id, class
         'min-w-0 rounded-lg px-3 py-1.5 text-sm focus:outline-none disabled:opacity-45 transition-[color,background-color,border-color,box-shadow] duration-150',
         danger
           ? 'border border-amber-500/65 bg-amber-950/50 text-amber-50 shadow-sm shadow-amber-950/30 focus:border-amber-400 focus:ring-1 focus:ring-amber-500/30'
-          : 'border border-cyan-500/20 bg-slate-900/90 text-slate-100 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/25',
+          : 'border border-blue-600/20 bg-slate-900/90 text-slate-100 focus:border-blue-600/50 focus:ring-1 focus:ring-blue-600/25',
         className || '',
       ].join(' ').replace(/\s+/g, ' ').trim()}
     >
@@ -579,7 +697,7 @@ function getAgentBadgeClass(agentType) {
   const t = String(agentType || 'claude').toLowerCase();
   const map = {
     claude: 'bg-amber-500/15 text-amber-200 ring-1 ring-amber-400/25',
-    cursor: 'bg-teal-500/15 text-teal-200 ring-1 ring-teal-400/25',
+    cursor: 'bg-blue-700/15 text-slate-300 ring-1 ring-blue-500/25',
     codex: 'bg-lime-500/12 text-lime-200 ring-1 ring-lime-400/20',
     antigravity: 'bg-sky-500/15 text-sky-200 ring-1 ring-sky-400/25',
     kiro: 'bg-purple-500/15 text-purple-200 ring-1 ring-purple-400/25',
@@ -646,7 +764,7 @@ function QuotaBadge({ quota, onRefresh, refreshing, className = '' }) {
           type="button"
           onClick={onRefresh}
           disabled={refreshing}
-          className={'shrink-0 text-[10px] px-0.5 ' + (refreshing ? 'text-cyan-400 animate-spin' : 'text-slate-600 hover:text-cyan-300')}
+          className={'shrink-0 text-[10px] px-0.5 ' + (refreshing ? 'text-blue-500 animate-spin' : 'text-slate-600 hover:text-blue-400')}
           title="刷新帳戶用量"
         >
           ↻
@@ -661,7 +779,7 @@ function GitBranchBadge({ branch }) {
   if (!branch) return null;
   return (
     <span
-      className="inline-flex items-center gap-1 max-w-full min-w-0 text-[10px] px-2 py-0.5 rounded-full font-mono bg-teal-950/55 text-teal-100 border border-teal-500/25"
+      className="inline-flex items-center gap-1 max-w-full min-w-0 text-[10px] px-2 py-0.5 rounded-full font-mono bg-slate-800/80 text-slate-200 border border-slate-600/40"
       title="Git 分支"
     >
       <img
@@ -974,7 +1092,7 @@ function ForwardModal({
                       onClick={() => setSelectedId(s.id)}
                       className={`w-full flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-sm transition-colors ${
                         active
-                          ? 'border-cyan-400/50 bg-cyan-500/10 ring-2 ring-cyan-400/35'
+                          ? 'border-blue-500/50 bg-blue-600/10 ring-2 ring-blue-500/35'
                           : 'border-slate-700/80 bg-slate-900/40 hover:bg-slate-800/50'
                       }`}
                     >
@@ -995,8 +1113,8 @@ function ForwardModal({
                   onClick={() => setSelectedId('new')}
                   className={`w-full rounded-lg border px-2.5 py-2 text-left text-sm transition-colors ${
                     selectedId === 'new'
-                      ? 'border-cyan-400/50 bg-cyan-500/10 ring-2 ring-cyan-400/35 text-cyan-200'
-                      : 'border-dashed border-slate-600 bg-slate-900/30 text-slate-400 hover:border-cyan-500/30 hover:text-cyan-300'
+                      ? 'border-blue-500/50 bg-blue-600/10 ring-2 ring-blue-500/35 text-slate-200'
+                      : 'border-dashed border-slate-600 bg-slate-900/30 text-slate-400 hover:border-blue-600/30 hover:text-blue-400'
                   }`}
                 >
                   ＋ 新建會話
@@ -1109,7 +1227,7 @@ function ForwardModal({
                 onChange={(e) => setNote(e.target.value)}
                 rows={3}
                 placeholder="加上備註給目標會話（可選）"
-                className="w-full bg-slate-900/70 border border-slate-600 rounded-lg px-2 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500/45"
+                className="w-full bg-slate-900/70 border border-slate-600 rounded-lg px-2 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-600/45"
               />
             </div>
 
@@ -1128,7 +1246,7 @@ function ForwardModal({
                 type="button"
                 onClick={runForward}
                 disabled={busy || loadingSessions}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-cyan-500 to-teal-600 text-slate-950 hover:brightness-110 disabled:opacity-40"
+                className="px-4 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-40"
               >
                 {busy ? '送出中…' : 'Forward'}
               </button>
@@ -1381,15 +1499,17 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
   };
 
   const renderSessionRow = (s, groupIndent) => (
-    <div
-      key={s.id}
-      className={groupIndent ? 'pl-3 border-l border-cyan-500/10' : ''}
-    >
+    <div key={s.id} className={groupIndent ? 'pl-3 border-l border-slate-700/50' : ''}>
       <div
         onClick={() => renamingId !== s.id && onEnter(s)}
-        className="group flex items-center justify-between gap-3 rounded-2xl border border-cyan-500/10 bg-slate-950/50 px-3.5 py-3.5 hover:border-cyan-400/25 hover:bg-slate-900/60 active:scale-[0.99] cursor-pointer transition-all shadow-sm shadow-black/20"
+        className={
+          'ent-session-row group ' +
+          (s.status === 'running' ? 'is-running ' : '') +
+          (s.status === 'awaiting_confirm' ? 'is-awaiting ' : '')
+        }
       >
-        <div className="min-w-0 flex-1 mr-2">
+        <div className="ent-session-accent" aria-hidden="true" />
+        <div className="min-w-0">
           {renamingId === s.id ? (
             <input
               ref={renameInputRef}
@@ -1398,70 +1518,68 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
               onKeyDown={(e) => handleRenameKey(e, s.id)}
               onBlur={() => commitRename(s.id)}
               onClick={(e) => e.stopPropagation()}
-              className="w-full bg-slate-800 border border-cyan-500/50 rounded-lg px-2 py-1 text-sm text-slate-100 focus:outline-none"
+              className="w-full bg-slate-800 border border-blue-600/50 rounded px-2 py-1 text-sm text-slate-100 focus:outline-none"
             />
           ) : (
-            <div className="space-y-1.5 min-w-0">
-              <div className="text-sm font-semibold text-slate-50 break-words [overflow-wrap:anywhere] leading-snug nexus-display tracking-tight">
-                {s.name || '未命名'}
+            <>
+              <div className="flex items-start justify-between gap-2 min-w-0">
+                <div className="text-sm font-semibold text-slate-100 break-words [overflow-wrap:anywhere] leading-snug enterprise-display min-w-0">
+                  {s.name || '未命名'}
+                </div>
+                {(s.status === 'awaiting_confirm') && (
+                  <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-amber-400" title="待授權">待授權</span>
+                )}
               </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className={`inline-flex items-center gap-1 shrink-0 text-[10px] px-2 py-0.5 rounded-full font-mono uppercase ${getAgentBadgeClass(s.agent_type)}`}>
+              <div className="flex flex-wrap items-center gap-1 mt-1">
+                <span className={`inline-flex items-center gap-1 shrink-0 text-[10px] px-1.5 py-0.5 rounded font-mono uppercase ${getAgentBadgeClass(s.agent_type)}`}>
                   <AgentBadgeIcon agentType={s.agent_type} />
                   {AGENT_LABEL[s.agent_type] || s.agent_type || 'claude'}
                 </span>
                 <GitBranchBadge branch={s.git_branch} />
                 {((s.agent_type || 'claude') !== 'codex') && s.permission_mode && (
-                  <span
-                    className="inline-flex items-center shrink-0 text-[10px] px-2 py-0.5 rounded-full font-mono text-slate-300 bg-slate-800/90 border border-white/10"
-                    title="權限模式"
-                  >
+                  <span className="ent-chip font-mono" title="權限模式">
                     {PERM_MODE_LABEL[s.permission_mode] || s.permission_mode}
                   </span>
                 )}
                 {Array.isArray(s.cli_extra_args) && s.cli_extra_args.length > 0 && (
-                  <span
-                    className="inline-flex items-center shrink-0 text-[10px] px-2 py-0.5 rounded-full font-mono text-cyan-200/90 bg-cyan-950/40 border border-cyan-500/25"
-                    title="已設定自訂 CLI 引數"
-                  >
+                  <span className="ent-chip font-mono" title="已設定自訂 CLI 引數">
                     +{s.cli_extra_args.length} argv
                   </span>
                 )}
               </div>
-            </div>
-          )}
-          {s.work_dir && (
-            <div className="text-xs text-slate-500 font-mono mt-0.5 truncate">{s.work_dir}</div>
+              {s.work_dir && (
+                <div className="text-[11px] text-slate-500 font-mono mt-1 truncate" title={s.work_dir}>{s.work_dir}</div>
+              )}
+            </>
           )}
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex flex-col items-end justify-center gap-1 shrink-0">
           {(s.status === 'running') && (
-            <span className="relative flex h-2 w-2 shrink-0" title="執行中">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500" />
+            <span className="relative flex h-2 w-2 shrink-0 mb-0.5" title="執行中">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-500 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600" />
             </span>
           )}
-          {(s.status === 'awaiting_confirm') && (
-            <span className="text-amber-400 text-sm shrink-0 font-bold" title="待授權">!</span>
-          )}
-          <button
-            type="button"
-            onClick={(e) => startRename(s, e)}
-            aria-label="重新命名"
-            title="重新命名"
-            className="text-slate-600 hover:text-cyan-400 p-1.5 rounded-lg transition-colors inline-flex items-center justify-center"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0" aria-hidden="true">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-            </svg>
-          </button>
-          <button
-            onClick={(e) => del(s.id, e)}
-            className="text-slate-500 hover:text-red-400 px-2 py-1 text-xs rounded-lg transition-colors"
-          >
-            刪除
-          </button>
+          <div className="flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+            <button
+              type="button"
+              onClick={(e) => startRename(s, e)}
+              aria-label="重新命名"
+              title="重新命名"
+              className="text-slate-500 hover:text-blue-400 p-1.5 rounded transition-colors inline-flex items-center justify-center"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 shrink-0" aria-hidden="true">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+            </button>
+            <button
+              onClick={(e) => del(s.id, e)}
+              className="text-slate-500 hover:text-red-400 p-1.5 text-[10px] rounded transition-colors"
+            >
+              刪
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1471,21 +1589,24 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
     <div className="flex flex-col h-app min-w-0 overflow-hidden">
       {/* 頂欄：玻璃質感 + 雙行標題 */}
       <div
-        className="flex items-center justify-between px-4 py-3 shrink-0 border-b border-cyan-500/10 bg-slate-950/40 backdrop-blur-xl"
+        className="flex items-center justify-between px-4 py-3 shrink-0 border-b border-slate-700/60 ent-topbar"
         style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top) + var(--tg-content-safe-top))' }}
       >
-        <div className="min-w-0">
-          <div className="nexus-display text-lg font-semibold tracking-tight bg-gradient-to-r from-cyan-200 via-teal-100 to-cyan-300 bg-clip-text text-transparent">
+        <div className="min-w-0 flex items-baseline gap-2">
+          <div className="enterprise-display text-lg font-semibold tracking-tight text-slate-100">
             Claude Code
           </div>
-          <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-500/70 font-medium mt-0.5">Nexus 介面</div>
+          {sessions.length > 0 && (
+            <span className="ent-chip text-slate-400">{sessions.length}</span>
+          )}
         </div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500 font-medium mt-0.5">Enterprise · Workspaces</div>
         <button
           type="button"
           onClick={() => setShowForm(!showForm)}
           aria-label={showForm ? '關閉建立表單' : '建立新 Session'}
           title={showForm ? '關閉' : '新 Session'}
-          className="group relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500 via-teal-500 to-cyan-600 text-slate-950 shadow-lg shadow-cyan-950/40 ring-1 ring-white/20 transition hover:scale-[1.04] hover:shadow-cyan-500/25 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+          className="group relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white shadow-sm ring-1 ring-blue-500/30 transition hover:bg-blue-500 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
         >
           <span className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/15 to-transparent opacity-0 transition group-hover:opacity-100" aria-hidden />
           <svg
@@ -1505,65 +1626,66 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
 
       {/* 搜尋／排序（有 Session 時顯示） */}
       {sessions.length > 0 && (
-        <div className="px-3 py-2.5 shrink-0 flex gap-2 min-w-0 items-center border-b border-white/[0.04] bg-slate-950/25">
+        <div className="ent-toolbar shrink-0">
           <input
             type="search"
             value={sessionSearch}
             onChange={(e) => setSessionSearch(e.target.value)}
-            placeholder="搜尋…"
+            placeholder="搜尋 Session…"
             autoComplete="off"
-            className="flex-1 min-w-0 bg-slate-900/70 border border-cyan-500/15 rounded-xl px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500/40 focus:ring-1 focus:ring-cyan-500/20"
+            className="ent-toolbar-search w-full min-w-0 bg-slate-900/70 border border-slate-600/40 rounded-md px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-600/50 focus:ring-1 focus:ring-blue-600/20"
           />
-          <button
-            type="button"
-            onClick={() => {
-              setGroupByDir((v) => {
-                const next = !v;
-                try {
-                  localStorage.setItem(SESSION_LIST_GROUP_BY_DIR_KEY, next ? '1' : '0');
-                } catch (_) {}
-                return next;
-              });
-            }}
-            aria-pressed={groupByDir}
-            title={groupByDir ? '關閉依目錄分組' : '依工作目錄分組'}
-            aria-label={groupByDir ? '關閉依目錄分組' : '依工作目錄分組'}
-            className={`shrink-0 flex h-10 w-10 items-center justify-center rounded-xl border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-950 ${
-              groupByDir
-                ? 'border-cyan-500/45 bg-cyan-500/15 text-cyan-300 shadow-[inset_0_1px_0_rgba(34,211,238,0.12)]'
-                : 'border-cyan-500/15 bg-slate-900/80 text-slate-400 hover:text-cyan-200/90 hover:border-cyan-500/30'
-            }`}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5" aria-hidden>
-              <path d="M3 7.5h7L10.5 6h11v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8.5Z" />
-              <path d="M3 7.5V6a2 2 0 0 1 2-2h3l1.5 1.5" />
-            </svg>
-          </button>
-          <span className="shrink-0 text-xs text-slate-500 whitespace-nowrap" id="session-sort-label">排序</span>
-          <select
-            id="session-sort"
-            value={sessionSort}
-            onChange={(e) => setSessionSort(e.target.value)}
-            title="左側 Session 列表的排序方式"
-            aria-labelledby="session-sort-label"
-            className="shrink-0 bg-slate-900/80 border border-cyan-500/15 rounded-xl px-2.5 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-500/40 cursor-pointer max-w-[9.5rem]"
-          >
-            {sortOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
+          <div className="ent-toolbar-actions w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => {
+                setGroupByDir((v) => {
+                  const next = !v;
+                  try {
+                    localStorage.setItem(SESSION_LIST_GROUP_BY_DIR_KEY, next ? '1' : '0');
+                  } catch (_) {}
+                  return next;
+                });
+              }}
+              aria-pressed={groupByDir}
+              title={groupByDir ? '關閉依目錄分組' : '依工作目錄分組'}
+              aria-label={groupByDir ? '關閉依目錄分組' : '依工作目錄分組'}
+              className={`shrink-0 flex h-9 w-9 items-center justify-center rounded-md border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/50 ${
+                groupByDir
+                  ? 'border-blue-600/45 bg-blue-600/15 text-blue-400'
+                  : 'border-slate-600/40 bg-slate-900/80 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden>
+                <path d="M3 7.5h7L10.5 6h11v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8.5Z" />
+                <path d="M3 7.5V6a2 2 0 0 1 2-2h3l1.5 1.5" />
+              </svg>
+            </button>
+            <select
+              id="session-sort"
+              value={sessionSort}
+              onChange={(e) => setSessionSort(e.target.value)}
+              title="Session 列表排序"
+              aria-label="Session 列表排序"
+              className="flex-1 sm:flex-none min-w-0 sm:min-w-[9.5rem] bg-slate-900/80 border border-slate-600/40 rounded-md px-2.5 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-600/50 cursor-pointer"
+            >
+              {sortOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
       )}
 
       {/* 建立表單 */}
       {showForm && (
-        <div className="px-4 py-4 space-y-3 shrink-0 min-w-0 border-b border-cyan-500/10 bg-gradient-to-b from-slate-900/50 to-transparent nexus-card-enter">
+        <div className="px-4 py-4 space-y-3 shrink-0 min-w-0 border-b border-blue-600/10 bg-gradient-to-b from-slate-900/50 to-transparent enterprise-card-enter">
           <input value={newName} onChange={e => setNewName(e.target.value)}
             placeholder="Session 名稱（必填）"
-            className="w-full min-w-0 bg-slate-900/60 border border-cyan-500/15 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500/45 focus:ring-1 focus:ring-cyan-500/15" />
+            className="w-full min-w-0 bg-slate-900/60 border border-blue-600/15 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-600/45 focus:ring-1 focus:ring-blue-600/15" />
           <input value={newDir} onChange={e => setNewDir(e.target.value)}
             placeholder="工作目錄（選填，如 /home/user/project）"
-            className="w-full min-w-0 bg-slate-900/60 border border-cyan-500/15 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500/45 font-mono" />
+            className="w-full min-w-0 bg-slate-900/60 border border-blue-600/15 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-600/45 font-mono" />
           <div className="min-w-0 space-y-2">
             <select
               value={newAgent}
@@ -1572,7 +1694,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
                 setNewAgent(next);
                 setNewMode((prev) => normalizePermMode(next, prev));
               }}
-              className="w-full min-w-0 bg-slate-900/70 border border-cyan-500/15 rounded-xl px-3 py-2.5 text-sm text-slate-200"
+              className="w-full min-w-0 bg-slate-900/70 border border-blue-600/15 rounded-xl px-3 py-2.5 text-sm text-slate-200"
             >
               <option value="claude">Claude</option>
               <option value="cursor">Cursor</option>
@@ -1588,7 +1710,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
                     value={newMode}
                     onChange={setNewMode}
                     disabled={newAgent === 'codex' || newAgent === 'kiro'}
-                    id="session-new-perm-mode-nexus"
+                    id="session-new-perm-mode-enterprise"
                     className="flex-1 min-w-0 py-2"
                   />
                 </div>
@@ -1614,13 +1736,13 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
                 placeholder={'每行一個引數，例如：\n--plugin-dir\n./.claude/plugins/crm\n--plugin-dir\n./.claude/plugins/crm2\n含空格的路徑請寫在同一行。'}
                 rows={5}
                 spellCheck={false}
-                className="w-full min-w-0 bg-slate-900/60 border border-cyan-500/15 rounded-xl px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500/45 font-mono leading-relaxed overflow-y-auto app-scroll"
+                className="w-full min-w-0 bg-slate-900/60 border border-blue-600/15 rounded-xl px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-600/45 font-mono leading-relaxed overflow-y-auto app-scroll"
               />
             </div>
           )}
           <div className="flex flex-wrap gap-2 justify-end">
             <button onClick={create} disabled={loading || !newName.trim()}
-              className="px-5 py-2.5 rounded-xl text-sm font-semibold shrink-0 bg-gradient-to-r from-cyan-500 to-teal-600 text-slate-950 hover:brightness-110 disabled:opacity-40 shadow-lg shadow-cyan-950/40">
+              className="px-5 py-2.5 rounded-lg text-sm font-semibold shrink-0 bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-40 shadow-sm">
               建立
             </button>
             <button onClick={() => setShowForm(false)}
@@ -1631,8 +1753,8 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
         </div>
       )}
 
-      {/* Session 列表（卡片式） */}
-      <div className="flex-1 overflow-y-auto app-scroll px-3 py-3 space-y-2.5">
+      {/* Session 列表（表格式） */}
+      <div className="ent-session-rows app-scroll">
         {sessions.length === 0 ? (
           <div className="text-center text-slate-500 mt-24 text-sm px-4">尚無 Session，點右上角按鈕建立</div>
         ) : displaySessions.length === 0 ? (
@@ -1642,12 +1764,12 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
             const expanded = sessionSearchActive || !collapsedDirs.has(dirKey);
             const shortLabel = workDirGroupShortLabel(dirKey);
             return (
-              <div key={dirKey} className="space-y-2">
-                <div className="flex w-full min-w-0 items-center gap-1 rounded-xl px-0.5 py-0.5 transition-colors hover:bg-white/[0.04]">
+              <div key={dirKey}>
+                <div className="flex w-full min-w-0 items-center gap-1 px-2 py-1.5 border-b border-slate-700/50 bg-slate-900/40 sticky top-0 z-[1]">
                   <button
                     type="button"
                     onClick={() => toggleDirCollapsed(dirKey)}
-                    className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-0.5 py-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/45 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-950"
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-0.5 py-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/45 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-950"
                   >
                     <span className="shrink-0 text-slate-500 w-4 text-center" aria-hidden>
                       {expanded ? '▼' : '▶'}
@@ -1665,7 +1787,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
                   <button
                     type="button"
                     onClick={() => openNewSessionForDir(dirKey)}
-                    className="shrink-0 rounded-lg px-2 py-1 text-[10px] font-semibold text-cyan-400/95 hover:bg-cyan-500/10 hover:text-cyan-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/45 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-950"
+                    className="shrink-0 rounded-lg px-2 py-1 text-[10px] font-semibold text-blue-500/95 hover:bg-blue-600/10 hover:text-blue-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/45 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-950"
                   >
                     ＋新 Session
                   </button>
@@ -1682,7 +1804,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
   );
 }
 
-/** Slash 命令選單（Nexus 主題） */
+/** Slash 命令選單（Enterprise 主題） */
 function SlashCommandMenu({ items, activeIndex, onSelect }) {
   const listRef = useRef(null);
   useLayoutEffect(() => {
@@ -1697,7 +1819,7 @@ function SlashCommandMenu({ items, activeIndex, onSelect }) {
       ref={listRef}
       role="listbox"
       aria-label="Slash 命令"
-      className="absolute bottom-full left-0 right-0 z-20 mb-1 max-h-48 overflow-y-auto app-scroll rounded-2xl border border-cyan-500/20 bg-slate-950/95 py-1 shadow-lg backdrop-blur-sm"
+      className="absolute bottom-full left-0 right-0 z-20 mb-1 max-h-48 overflow-y-auto app-scroll rounded-2xl border border-blue-600/20 bg-slate-950/95 py-1 shadow-lg backdrop-blur-sm"
     >
       {items.map((c, i) => (
         <button
@@ -1709,10 +1831,10 @@ function SlashCommandMenu({ items, activeIndex, onSelect }) {
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => onSelect(c.command)}
           className={`flex w-full items-start gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-slate-800/90 ${
-            i === activeIndex ? 'bg-cyan-950/40' : ''
+            i === activeIndex ? 'bg-blue-950/40' : ''
           }`}
         >
-          <span className="shrink-0 font-mono text-cyan-300">{c.command}</span>
+          <span className="shrink-0 font-mono text-blue-400">{c.command}</span>
           <span className="min-w-0 flex-1 text-slate-400">{c.description}</span>
         </button>
       ))}
@@ -2280,61 +2402,56 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   return (
     <div className={`flex flex-col ${fullHeight ? 'h-app' : 'h-full'}`}>
       <div
-        className="flex flex-col gap-1.5 px-4 py-2.5 shrink-0 border-b border-cyan-500/10 bg-slate-950/35 backdrop-blur-md sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+        className="shrink-0 ent-topbar border-b border-slate-700/60"
         style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top) + var(--tg-content-safe-top))' }}
       >
-        <div className="flex items-start gap-2 min-w-0 w-full sm:min-w-0 sm:flex-1 sm:items-center">
+        <div className="ent-chat-primary">
           {showBack && (
             <button type="button" onClick={onBack}
-              className="shrink-0 text-cyan-500/80 hover:text-cyan-300 text-xl leading-none px-1.5 py-1 rounded-xl hover:bg-white/[0.06] mt-0.5 sm:mt-0 transition-colors">
+              className="shrink-0 text-slate-400 hover:text-slate-100 text-lg leading-none px-1.5 py-1 rounded-md hover:bg-slate-800/80 transition-colors">
               ←
             </button>
           )}
-          <div className="min-w-0 flex-1 space-y-1">
-            <div className="nexus-display font-semibold text-base text-transparent bg-clip-text bg-gradient-to-r from-cyan-200 to-teal-200 break-words [overflow-wrap:anywhere] leading-snug">
-              {session.name || '未命名'}
-            </div>
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
-              <span className={`inline-flex items-center gap-1 shrink-0 text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full font-mono uppercase ${getAgentBadgeClass(agentType)}`}>
-                <AgentBadgeIcon agentType={agentType} />
-                {agentType}
-              </span>
-              <GitBranchBadge branch={session.git_branch} />
-              <QuotaBadge
-                quota={quota}
-                onRefresh={agentType !== 'antigravity' && agentType !== 'codex' ? handleQuotaRefresh : null}
-                refreshing={quotaRefreshing}
-              />
-              <span
-                title={state}
-                className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full font-medium shrink-0 ring-1 ring-white/5 ${
-                  state === 'IDLE'            ? 'bg-emerald-950/80 text-emerald-300' :
-                  state === 'THINKING'        ? 'bg-cyan-950/80 text-cyan-300' :
-                  state === 'STREAMING'       ? 'bg-sky-950/80 text-sky-300' :
-                  state === 'SHELL_EXEC'      ? 'bg-fuchsia-950/80 text-fuchsia-200' :
-                  state === 'AWAITING_SHELL_CONFIRM' ? 'bg-orange-950/85 text-orange-200' :
-                  'bg-amber-950/80 text-amber-200'
-                }`}
-              >
-                {SESSION_STATE_LABEL[state] || state}
-              </span>
-            </div>
-            {session.work_dir && (
-              <div className="text-xs text-slate-500 font-mono truncate">{session.work_dir}</div>
-            )}
+          <div className="enterprise-display font-semibold text-base text-slate-100 break-words [overflow-wrap:anywhere] leading-snug min-w-0 flex-1">
+            {session.name || '未命名'}
           </div>
+          <span
+            title={state}
+            className={`text-[10px] sm:text-xs px-2 py-0.5 rounded font-semibold uppercase tracking-wide shrink-0 ${
+              state === 'IDLE'            ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/50' :
+              state === 'THINKING'        ? 'bg-blue-950/80 text-blue-400 border border-blue-800/50' :
+              state === 'STREAMING'       ? 'bg-sky-950/80 text-sky-300 border border-sky-800/50' :
+              state === 'SHELL_EXEC'      ? 'bg-fuchsia-950/80 text-fuchsia-200 border border-fuchsia-800/50' :
+              state === 'AWAITING_SHELL_CONFIRM' ? 'bg-orange-950/85 text-orange-200 border border-orange-800/50' :
+              'bg-amber-950/80 text-amber-200 border border-amber-800/50'
+            }`}
+          >
+            {SESSION_STATE_LABEL[state] || state}
+          </span>
+        </div>
+        <div className="ent-chat-meta">
+          <span className={`ent-chip font-mono uppercase ${getAgentBadgeClass(agentType)}`}>
+            <AgentBadgeIcon agentType={agentType} />
+            {agentType}
+          </span>
+          <GitBranchBadge branch={session.git_branch} />
+          <QuotaBadge
+            quota={quota}
+            onRefresh={agentType !== 'antigravity' && agentType !== 'codex' ? handleQuotaRefresh : null}
+            refreshing={quotaRefreshing}
+            className="!rounded !px-2 !py-0.5"
+          />
+          {session.work_dir && (
+            <span className="ent-chip font-mono max-w-[min(14rem,45vw)] truncate" title={session.work_dir}>
+              {session.work_dir}
+            </span>
+          )}
         </div>
         {showPermModeSelect && inputMode === 'agent' && (
-          <div
-            className={
-              usePermModeDropdown
-                ? 'w-full min-w-0 shrink-0 border-t border-cyan-500/10 pt-2.5 mt-1 -mx-4 px-4 sm:border-t-0 sm:pt-0 sm:mt-0 sm:px-0 sm:mx-0 sm:w-auto sm:max-w-[min(100%,20rem)] sm:self-center'
-                : 'w-fit max-w-full min-w-0 shrink-0 self-end sm:self-center sm:ml-auto'
-            }
-          >
+          <div className="ent-perm-row">
             {usePermModeDropdown ? (
-              <div className="flex items-center gap-2 min-w-0 w-full sm:justify-end">
-                <span className="shrink-0 text-xs text-slate-500">權限</span>
+              <div className="flex items-center gap-2 min-w-0 w-full">
+                <span className="shrink-0 text-xs text-slate-500 w-10">權限</span>
                 <PermModeSelect
                   agentType={agentType}
                   value={mode}
@@ -2347,8 +2464,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                       ? '權限模式（bypass：Cursor 會加 --force）'
                       : '權限模式'
                   }
-                  id="chat-perm-mode-nexus"
-                  className="flex-1 min-w-0 sm:min-w-[11rem]"
+                  id="chat-perm-mode-enterprise"
+                  className="flex-1 min-w-0"
                 />
               </div>
             ) : (
@@ -2374,10 +2491,11 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       <div
         ref={chatScrollRef}
         onScroll={syncChatNearBottom}
-        className="flex-1 overflow-y-auto app-scroll px-3 sm:px-5 py-5 space-y-4"
+        className="flex-1 overflow-y-auto app-scroll px-3 sm:px-5 py-4"
       >
+        <div className="ent-chat-column space-y-3">
         {histLoaded && messages.length === 0 && (
-          <div className="text-center text-slate-500 mt-20 text-sm">輸入指令開始對話</div>
+          <div className="text-center text-slate-500 mt-16 text-sm border border-dashed border-slate-700/60 rounded-lg py-10">輸入指令開始對話</div>
         )}
         {messages.map((m, i) => {
           const msgKey = m.id != null ? String(m.id) : `idx-${i}`;
@@ -2399,8 +2517,12 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             className={`flex w-full min-w-0 ${m.role === 'user' ? 'justify-end' : 'justify-start'} ${m.role === 'claude' || m.role === 'shell' ? 'group' : ''}`}
           >
             <div
-              className={`rounded-2xl px-4 py-3 text-sm w-fit max-w-[88%] min-w-0 ${
-                m.role === 'user' ? 'bubble-user' : m.role === 'shell' ? 'bg-slate-900/90 border border-cyan-500/20' : 'bubble-claude'
+              className={`text-sm min-w-0 ${
+                m.role === 'user'
+                  ? 'ent-thread ent-thread-user bubble-user'
+                  : m.role === 'shell'
+                  ? 'ent-thread ent-thread-shell bg-slate-900/90 border border-slate-700/50'
+                  : 'ent-thread bubble-claude'
               }`}
             >
             <div className="flex items-start justify-between gap-2 mb-1.5 min-w-0">
@@ -2436,7 +2558,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                     }}
                     disabled={!canForwardShellOrAgent}
                     title="轉發到其他會話"
-                    className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded-md text-slate-400 hover:text-cyan-400 disabled:opacity-30 disabled:pointer-events-none"
+                    className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded-md text-slate-400 hover:text-blue-500 disabled:opacity-30 disabled:pointer-events-none"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5" aria-hidden>
                       <path d="M15 14v5l6-6-6-6v5H3v2z" />
@@ -2483,7 +2605,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 已 Forward 到「{forwardHints[msgKey].label}」
                 <button
                   type="button"
-                  className="ml-1 text-cyan-400 hover:text-cyan-300 font-medium"
+                  className="ml-1 text-blue-500 hover:text-blue-400 font-medium"
                   onClick={() => jumpToSession(forwardHints[msgKey].session)}
                 >
                   前往查看 →
@@ -2498,7 +2620,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         {/* 授權確認 */}
         {state === 'AWAITING_CONFIRM' && permTools.length > 0 && (
           <div className="rounded-2xl border border-amber-500/35 bg-gradient-to-br from-amber-950/55 to-slate-950/80 px-4 py-4 text-sm mr-4 shadow-xl shadow-amber-950/30">
-            <div className="text-amber-300 font-semibold mb-2 nexus-display">需要授權</div>
+            <div className="text-amber-300 font-semibold mb-2 enterprise-display">需要授權</div>
             {permTools.map((t, i) => (
               <div key={i} className="text-slate-300 text-xs font-mono mb-1">
                 {t.tool_name}
@@ -2513,7 +2635,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 允許此操作
               </button>
               <button onClick={() => handlePermModeCommitNow('acceptEdits')}
-                className="px-4 py-2 bg-teal-700/90 hover:bg-teal-600 text-white rounded-xl text-xs font-semibold">
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold">
                 允許並記住
               </button>
               <button onClick={handleDenyOnce}
@@ -2526,7 +2648,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
 
         {state === 'AWAITING_SHELL_CONFIRM' && shellRequest && (
           <div className="rounded-2xl border border-orange-600/50 bg-gradient-to-br from-orange-950/55 to-slate-950/85 px-4 py-4 text-sm mr-4 shadow-xl">
-            <div className="text-orange-300 font-semibold mb-2 nexus-display">允許執行 Shell 指令？</div>
+            <div className="text-orange-300 font-semibold mb-2 enterprise-display">允許執行 Shell 指令？</div>
             <div className="text-slate-200 text-xs font-mono break-words mb-1 whitespace-pre-wrap">{shellRequest.line}</div>
             <div className="text-slate-500 text-[10px] font-mono mb-2">
               指令名稱：<span className="text-orange-200/90">{shellRequest.command}</span>
@@ -2552,10 +2674,11 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         )}
 
         <div ref={bottomRef} />
+        </div>
       </div>
 
       <div
-        className="shrink-0 px-3 sm:px-4 py-3 border-t border-cyan-500/10 bg-slate-950/60 backdrop-blur-xl"
+        className="shrink-0 ent-command-bar px-3 sm:px-4 py-3"
         style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
       >
         {state === 'STREAMING' || state === 'THINKING' || state === 'SHELL_EXEC' ? (
@@ -2573,10 +2696,10 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               title={inputMode === 'shell' ? '切換為 Agent 模式' : '切換為 Shell 模式'}
               aria-label={inputMode === 'shell' ? '切換為 Agent 模式' : '切換為 Shell 模式'}
               aria-pressed={inputMode === 'shell'}
-              className={`shrink-0 flex items-center justify-center w-12 h-12 rounded-2xl border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:opacity-40 ${
+              className={`shrink-0 flex items-center justify-center w-10 h-10 rounded-md border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:opacity-40 ${
                 inputMode === 'shell'
                   ? 'border-orange-500/55 bg-orange-950/35 text-orange-400 hover:bg-orange-950/50'
-                  : 'border-cyan-500/20 bg-slate-900/80 text-cyan-400/90 hover:bg-slate-800/90'
+                  : 'border-blue-600/20 bg-slate-900/80 text-blue-500/90 hover:bg-slate-800/90'
               }`}
             >
               {inputMode === 'shell' ? (
@@ -2628,13 +2751,13 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                     : '輸入與 Agent 對話…（左側圖示切到 Shell）'
                 }
                 rows={1}
-                className="flex-1 min-w-0 w-full resize-none overflow-y-auto app-scroll bg-slate-900/75 border border-cyan-500/15 rounded-2xl px-4 py-3 text-sm leading-relaxed text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400/45 focus:ring-1 focus:ring-cyan-500/20 disabled:opacity-40 min-h-12 max-h-[min(40vh,12rem)] box-border shadow-inner shadow-black/20"
+                className="flex-1 min-w-0 w-full resize-none overflow-y-auto app-scroll bg-slate-900/75 border border-slate-600/40 rounded-md px-3 py-2.5 text-sm leading-relaxed text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-600/20 disabled:opacity-40 min-h-10 max-h-[min(40vh,12rem)] box-border"
               />
             </div>
             <button type="button" onClick={() => handleSend()} disabled={isDisabled || !input.trim()}
               aria-label="送出"
               title="送出（Enter）"
-              className="shrink-0 flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-500 to-teal-600 hover:brightness-110 disabled:opacity-30 text-slate-950 shadow-lg shadow-cyan-950/40 transition-all"
+              className="shrink-0 flex items-center justify-center w-10 h-10 rounded-md bg-blue-600 hover:bg-blue-500 disabled:opacity-30 text-white transition-colors"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5" aria-hidden>
                 <path d="M3.478 2.405a.75.75 0 0 0-.926.94l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.405Z" />
@@ -2702,10 +2825,10 @@ function PasswordView({ onSuccess }) {
 
   return (
     <div className="flex items-center justify-center min-h-full px-4">
-      <div className="w-full max-w-sm space-y-5 rounded-3xl border border-cyan-500/15 bg-slate-950/60 backdrop-blur-xl p-8 shadow-2xl shadow-cyan-950/20">
+      <div className="w-full max-w-sm space-y-5 rounded-xl border border-slate-700/80 bg-slate-900/90 backdrop-blur-sm p-8 shadow-xl shadow-black/30">
         <div className="text-center space-y-1">
-          <div className="nexus-display text-2xl font-bold bg-gradient-to-r from-cyan-200 to-teal-300 bg-clip-text text-transparent">Claude Code</div>
-          <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-500/60">Nexus</div>
+          <div className="enterprise-display text-2xl font-bold text-slate-100">Claude Code</div>
+          <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Enterprise</div>
           <div className="text-slate-500 text-sm pt-2">請輸入存取密碼</div>
         </div>
         <input
@@ -2715,11 +2838,11 @@ function PasswordView({ onSuccess }) {
           onKeyDown={handleKey}
           placeholder="密碼"
           autoFocus
-          className="w-full bg-slate-900/70 border border-cyan-500/20 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400/50 focus:ring-1 focus:ring-cyan-500/20"
+          className="w-full bg-slate-900/70 border border-blue-600/20 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-600/20"
         />
         {error && <div className="text-red-400 text-xs text-center">{error}</div>}
         <button onClick={submit} disabled={loading || !pwd.trim()}
-          className="w-full py-3 rounded-xl text-sm font-semibold bg-gradient-to-r from-cyan-500 to-teal-600 text-slate-950 hover:brightness-110 disabled:opacity-40 shadow-lg shadow-cyan-950/30">
+          className="w-full py-3 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-40 shadow-sm">
           {loading ? '驗證中…' : '進入'}
         </button>
       </div>
@@ -2853,8 +2976,8 @@ function App() {
   if (checking) {
     return (
       <div className="flex items-center justify-center h-app">
-        <div className="flex items-center gap-2 text-cyan-400/80 text-sm font-medium">
-          <span className="inline-flex h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+        <div className="flex items-center gap-2 text-blue-500/80 text-sm font-medium">
+          <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
           載入中…
         </div>
       </div>
@@ -2869,10 +2992,10 @@ function App() {
     }
 
     return (
-      <div className="h-app flex bg-[#05080f] min-w-0">
+      <div className="h-app flex bg-[var(--ent-bg0)] min-w-0">
         <aside
           style={{ width: sidebarWidthPx, flexShrink: 0 }}
-          className="min-w-0 flex flex-col border-r border-cyan-500/10 bg-slate-950/50 backdrop-blur-sm"
+          className="min-w-0 flex flex-col border-r border-slate-700/60 bg-[var(--ent-bg1)]"
         >
           <SessionView onEnter={setSession} onSessionsLoaded={mergeSessionMetaFromList} onSortedSessionsChange={setSidebarSortedSessions} />
         </aside>
@@ -2888,17 +3011,17 @@ function App() {
           onTouchStart={handleSidebarResizeStart}
         >
           <span
-            className="pointer-events-none absolute left-1/2 top-0 bottom-0 w-px -translate-x-1/2 bg-cyan-500/15 group-hover:bg-cyan-400/40"
+            className="pointer-events-none absolute left-1/2 top-0 bottom-0 w-px -translate-x-1/2 bg-blue-600/15 group-hover:bg-blue-500/40"
             aria-hidden
           />
         </div>
-        <main className="flex-1 min-w-0 min-h-0 bg-[#060a12]/90">
+        <main className="flex-1 min-w-0 min-h-0 bg-[var(--ent-bg0)]">
           {session ? (
             <ChatView session={session} onBack={() => setSession(null)} showBack={false} fullHeight={false} onJumpToSession={setSession} allSessions={sidebarSortedSessions} />
           ) : (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-slate-500 text-sm px-6">
-              <div className="nexus-display text-lg font-semibold text-slate-400">選擇 Session</div>
-              <p className="text-center text-xs text-slate-600 max-w-xs">從左側列表點選一段對話即可在此開始</p>
+            <div className="h-full flex flex-col items-center justify-center gap-2 text-slate-500 text-sm px-6 border-l border-slate-800/50">
+              <div className="enterprise-display text-base font-semibold text-slate-400">選擇 Workspace Session</div>
+              <p className="text-center text-xs text-slate-600 max-w-sm">左側列表採表格式排列；點選一列即可在此面板開始對話</p>
             </div>
           )}
         </main>

@@ -8,7 +8,7 @@
 
 ## 快速開始
 
-**需求：** Go 1.25+、Telegram Bot Token（[@BotFather](https://t.me/BotFather)）、伺服器上已安裝並登入要用的 CLI（`claude`、`cursor agent`、`kiro-cli`、`gemini` 等）。
+**需求：** Go 1.25+、Telegram Bot Token（[@BotFather](https://t.me/BotFather)）、伺服器上已安裝並登入要用的 CLI（`claude`、`cursor agent`、`kiro-cli` 等）。
 
 ```bash
 git clone https://github.com/jerry12122/Claude-Code-Mini-App
@@ -20,7 +20,7 @@ cp config.example.yaml config.yaml   # 填 bot_token、whitelist_tg_ids
 
 ## 功能
 
-- **多代理** — Claude Code、Cursor Agent、Kiro CLI、Gemini CLI（依 Session 選擇）
+- **多代理** — Claude Code、Cursor Agent、Kiro CLI（依 Session 選擇；Gemini / Antigravity 因 headless 限制暫停）
 - **即時串流** — WebSocket 對話與 Markdown 串流；多分頁同步
 - **用量徽章** — Session header 顯示帳戶用量（如 Claude `5h 16% · Week 9%`）
 - **Session 管理** — 多對話、各自綁定 `work_dir` 與權限模式
@@ -34,7 +34,7 @@ cp config.example.yaml config.yaml   # 填 bot_token、whitelist_tg_ids
 |---|---|---|---|
 | 手機體驗 | 差 | 純文字 | Mini App UI + 串流 |
 | Session / 工作目錄 | 手動 | 通常沒有 | 內建、可持久 |
-| 多 CLI | 自己接 | 一 bot 一工具 | Claude / Cursor / Kiro / Gemini |
+| 多 CLI | 自己接 | 一 bot 一工具 | Claude / Cursor / Kiro / Antigravity |
 | 部署 | SSH 金鑰 | Bot + 自寫邏輯 | 單一二進位 |
 
 ## 架構

@@ -179,7 +179,7 @@ function readApiBaseOverride() {
 
 /**
  * 與 Go Fiber 同掛一條反代前綴時：目前 index 所在目錄為 API 前綴。
- * 若在 …/Nexus/、…/Focus/ 測試主題底下，再剝除該目錄，與同層主介面共用前綴。
+ * 若在 …/Nexus/、…/Focus/、…/Enterprise/ 測試主題底下，再剝除該目錄，與同層主介面共用前綴。
  */
 function inferApiBaseFromPathname() {
   let p = window.location.pathname || '/';
@@ -187,7 +187,7 @@ function inferApiBaseFromPathname() {
     p = p.replace(/\/[^/]+\.html$/i, '');
   }
   p = p.replace(/\/+$/, '');
-  p = p.replace(/\/nexus$/i, '').replace(/\/focus$/i, '');
+  p = p.replace(/\/nexus$/i, '').replace(/\/focus$/i, '').replace(/\/enterprise$/i, '');
   p = p.replace(/\/+$/, '');
   if (p === '' || p === '/') return '';
   return p;
@@ -275,7 +275,7 @@ const PERM_MODE_LABEL = {
   plan: '規劃模式',
 };
 
-const AGENT_LABEL = { claude: 'Claude', cursor: 'Cursor', codex: 'Codex', gemini: 'Gemini', kiro: 'Kiro' };
+const AGENT_LABEL = { claude: 'Claude', cursor: 'Cursor', codex: 'Codex', antigravity: 'Antigravity', kiro: 'Kiro' };
 
 /** 聊天室頂欄狀態角標：中文短標（避免與權限列搶注意力） */
 const SESSION_STATE_LABEL = {
@@ -336,13 +336,13 @@ function readInputModeForSession(sessionId) {
 /**
  * 依 agent_type 回傳可用的 permission_mode 下拉選項。
  * - Claude / Cursor: default / acceptEdits / bypassPermissions
- * - Gemini: default / auto_edit / plan / yolo（對應 CLI --approval-mode）
+ * - Antigravity: default / auto_edit / plan / yolo（對應 CLI --approval-mode）
  * - Codex: 暫不支援
  * 所有值共用 DB 欄位 `permission_mode`，後端各 runner 自行解釋。
  */
 function permModeOptionsFor(agentType) {
   const t = String(agentType || 'claude').toLowerCase();
-  if (t === 'gemini') {
+  if (t === 'antigravity') {
     return [
       { value: 'default', label: '預設' },
       { value: 'auto_edit', label: '自動編輯' },
@@ -473,7 +473,7 @@ function PermModeSwitch({ agentType, value, onChange, disabled, title }) {
   const opts = permModeOptionsFor(agentType);
   const t = String(agentType || 'claude').toLowerCase();
   const ariaLabel =
-    title || (t === 'gemini' ? 'Gemini 核准模式' : '權限模式');
+    title || (t === 'antigravity' ? 'Antigravity 核准模式' : '權限模式');
   return (
     <div
       role="radiogroup"
@@ -516,7 +516,7 @@ function PermModeSelect({ agentType, value, onChange, disabled, title, id, class
   const opts = permModeOptionsFor(agentType);
   const t = String(agentType || 'claude').toLowerCase();
   const ariaLabel =
-    title || (t === 'gemini' ? 'Gemini 核准模式' : '權限模式');
+    title || (t === 'antigravity' ? 'Antigravity 核准模式' : '權限模式');
   const selectId = id || `perm-mode-select-${t}`;
   const danger = value === 'bypassPermissions' || value === 'yolo';
   const widthClass = className != null && String(className).trim() !== '' ? '' : 'w-full ';
@@ -550,7 +550,7 @@ function getAgentBadgeClass(agentType) {
     claude: 'bg-orange-900/60 text-orange-200',
     cursor: 'bg-emerald-900/60 text-emerald-300',
     codex: 'bg-green-900/60 text-green-300',
-    gemini: 'bg-sky-900/60 text-sky-300',
+    antigravity: 'bg-sky-900/60 text-sky-300',
     kiro: 'bg-purple-900/60 text-purple-300',
   };
   return map[t] || 'bg-gray-700/60 text-gray-300';
@@ -564,7 +564,7 @@ const AGENT_BADGE_ICON_CDN = {
   claude: { slug: 'claude', color: 'fed7aa' },
   cursor: { slug: 'cursor', color: '6ee7b7' },
   codex: { slug: 'openai', color: '86efac' },
-  gemini: { slug: 'googlegemini', color: '7dd3fc' },
+  antigravity: { slug: 'google', color: '7dd3fc' },
   kiro: { slug: 'amazonaws', color: 'd8b4fe' },
 };
 
@@ -1118,7 +1118,6 @@ function ForwardModal({
                   >
                     <option value="claude">Claude</option>
                     <option value="cursor">Cursor</option>
-                    <option value="gemini">Gemini</option>
                     <option value="kiro">Kiro</option>
                     <option value="codex" disabled>Codex（未支援）</option>
                   </select>
@@ -1651,7 +1650,6 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
             >
               <option value="claude">Claude</option>
               <option value="cursor">Cursor</option>
-              <option value="gemini">Gemini</option>
               <option value="kiro">Kiro</option>
               <option value="codex" disabled>Codex（未支援）</option>
             </select>
@@ -1800,7 +1798,7 @@ function SlashCommandMenu({ items, activeIndex, onSelect }) {
 function ChatView({ session, onBack, showBack = true, fullHeight = true, usePermModeDropdown = false, onJumpToSession, allSessions }) {
   const jumpToSession = typeof onJumpToSession === 'function' ? onJumpToSession : () => {};
   const agentType = session.agent_type || 'claude';
-  // Claude / Cursor / Gemini 皆支援 mode 切換（Codex 暫無對應概念）
+  // Claude / Cursor / Antigravity 皆支援 mode 切換（Codex 暫無對應概念）
   const showPermModeSelect = agentType !== 'codex';
   const [messages, setMessages]   = useState([]);
   const [input, setInput]         = useState('');
@@ -2263,7 +2261,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
 
   const handleQuotaRefresh = useCallback(() => {
     if (quotaRefreshing) return;
-    if (agentType === 'gemini' || agentType === 'codex') return;
+    if (agentType === 'antigravity' || agentType === 'codex') return;
     setQuotaRefreshing(true);
     if (!send({ type: 'refresh_quota' })) {
       setQuotaRefreshing(false);
@@ -2461,7 +2459,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               <GitBranchBadge branch={session.git_branch} />
               <QuotaBadge
                 quota={quota}
-                onRefresh={agentType !== 'gemini' && agentType !== 'codex' ? handleQuotaRefresh : null}
+                onRefresh={agentType !== 'antigravity' && agentType !== 'codex' ? handleQuotaRefresh : null}
                 refreshing={quotaRefreshing}
               />
               <span
@@ -2500,8 +2498,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                   onChange={handlePermModeDraftChange}
                   disabled={modeSwitchDisabled}
                   title={
-                    agentType === 'gemini'
-                      ? 'Gemini 核准模式（--approval-mode）'
+                    agentType === 'antigravity'
+                      ? 'Antigravity 核准模式（--approval-mode）'
                       : agentType === 'cursor'
                       ? '權限模式（bypass：Cursor 會加 --force）'
                       : '權限模式'
@@ -2517,8 +2515,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 onChange={handlePermModeDraftChange}
                 disabled={modeSwitchDisabled}
                 title={
-                  agentType === 'gemini'
-                    ? 'Gemini 核准模式（--approval-mode）'
+                  agentType === 'antigravity'
+                    ? 'Antigravity 核准模式（--approval-mode）'
                     : agentType === 'cursor'
                     ? '權限模式（bypass：Cursor 會加 --force）'
                     : '權限模式'
