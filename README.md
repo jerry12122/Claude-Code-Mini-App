@@ -1,12 +1,13 @@
 # Claude Code Mini App
 
-[繁體中文](README.zh-TW.md)
+**v0.2.0** · [繁體中文](README.zh-TW.md)
 
 A Telegram Mini App that lets you remotely drive AI coding CLIs on your server from your phone. Shipped as a **single Go binary** that serves a REST API, WebSocket, and a single-file React SPA (no separate frontend build).
 
 ## Features
 
-- **Multiple backends** — When creating a session, choose **Claude Code**, **Cursor Agent**, or **Gemini CLI** (Codex is reserved in the UI; no runner yet)
+- **Multiple backends** — When creating a session, choose **Claude Code**, **Cursor Agent**, **Kiro CLI**, or **Gemini CLI** (Codex is reserved in the UI; no runner yet)
+- **Account quota** — Session header shows per-provider usage text (e.g. Claude `5h 16% · Week 9%`, Cursor billing %, Kiro credits); global server-side cache with manual refresh (60s cooldown)
 - **Remote sessions** — Send prompts via the Telegram Mini App or a browser on your LAN; each backend runs the corresponding CLI on the server
 - **Session management** — Create, rename, and delete conversations; each session has `work_dir`, permission mode, and `agent_type`
 - **Real-time streaming** — Bidirectional WebSocket with streamed Markdown; multi-tab / multi-connection broadcast sync
@@ -24,19 +25,20 @@ Telegram Mini App / browser
 │           Single Go binary               │
 │  Fiber │ SQLite (WAL) sessions/messages │
 │  One subprocess per user message         │
-│  agent.Runner (claude / cursor / gemini) │
+│  agent.Runner (claude / cursor / kiro / gemini) │
+│  QuotaService (global cache, headless fetch)   │
 │  Non-interactive + stream events → UI    │
 └─────────────────────────────────────────┘
 ```
 
 - Each message **spawns a short-lived subprocess**; **no PTY**.
-- Claude uses `-p`, `--output-format stream-json`, `--resume <agent_session_id>`, etc. (see `docs/headless.md`, `docs/claude-code-cli.md`).
-- Cursor and Gemini use dedicated runners and event mapping (see `docs/cursor-agent-cli.md`, `docs/gemini-cli.md`).
+- Claude uses `-p`, `--output-format stream-json`, `--resume <agent_session_id>`, etc. (see `docs/spec/headless.md`, `docs/spec/claude-code-cli.md`).
+- Cursor, Kiro, and Gemini use dedicated runners and event mapping (see `docs/spec/cursor-agent-cli.md`, `docs/spec/kiro-cli.md`, `docs/spec/gemini-cli.md`).
 
 ## Prerequisites
 
 - Go 1.25+
-- The CLI(s) you plan to use installed and authenticated on the server (e.g. `claude`, `cursor agent`, `gemini`)
+- The CLI(s) you plan to use installed and authenticated on the server (e.g. `claude`, `cursor agent`, `kiro-cli`, `gemini`)
 - A Telegram bot token from [@BotFather](https://t.me/BotFather)
 
 ## Setup
@@ -138,6 +140,9 @@ Listens on `:8080` by default. Static UI is served from `./internal/static`.
 | `PATCH` | `/sessions/:id` | Rename (`{"name":"..."}`) |
 | `DELETE` | `/sessions/:id` | Delete session |
 | `GET` | `/sessions/:id/messages` | Message history |
+| `GET` | `/quota` | Cached account quota for all providers |
+| `GET` | `/quota/:provider` | Cached quota for one provider (`claude`, `cursor`, `kiro`, …) |
+| `POST` | `/quota/:provider/refresh` | Manual quota refresh (60s cooldown per provider) |
 | `POST` | `/auth/login` | Web login (only from `allowed_cidrs`) |
 | `POST` | `/auth/logout` | Log out and clear cookie |
 | `WS` | `/sessions/:id/ws` | WebSocket chat |
@@ -155,12 +160,14 @@ Except static files and auth routes, endpoints require Telegram `initData` (head
 { "type": "set_mode", "mode": "acceptEdits" }
 { "type": "interrupt" }
 { "type": "reset_context" }
+{ "type": "refresh_quota" }
 ```
 
 **Server → Client:**
 
 ```json
-{ "type": "sync", "value": "IDLE", "messages": [...] }
+{ "type": "sync", "value": "IDLE", "messages": [...], "quota": { "display_text": "5h 16% · Week 9%", "updated_at": "..." } }
+{ "type": "quota_update", "quota": { "display_text": "...", "updated_at": "..." } }
 { "type": "status", "value": "STREAMING" }
 { "type": "status", "value": "SHELL_EXEC" }
 { "type": "delta", "content": "..." }
@@ -171,7 +178,24 @@ Except static files and auth routes, endpoints require Telegram `initData` (head
 { "type": "error", "content": "..." }
 ```
 
-On connect, the client receives `sync` (UI state + history). Background work and approval state are reflected in the session `status` field (e.g. `idle`, `running`, `awaiting_confirm`, `awaiting_shell_confirm`).
+On connect, the client receives `sync` (UI state + history + cached quota). Quota is refreshed in the background after each agent run completes (respecting per-provider TTL); the UI can also send `refresh_quota`.
+
+## Changelog
+
+### v0.2.0
+
+- **Kiro CLI** runner and `docs/spec/kiro-cli.md`
+- **Account quota %** in session header (Claude / Cursor / Kiro); `GET /quota`, WS `quota_update`
+- Cursor runner fixes (stream-json auth / partial text)
+- POC scripts under `poc/` (cursor-agent, kiro-cli, usage-events, quota-percent)
+
+## Further docs
+
+- `docs/spec/plan.md` — Specification and roadmap  
+- `docs/spec/headless.md` — Claude `-p` and stream-json  
+- `docs/spec/claude-code-cli.md`, `docs/spec/cursor-agent-cli.md`, `docs/spec/kiro-cli.md`, `docs/spec/gemini-cli.md` — CLI references  
+- `docs/spec/shell-allowlist-schema.md` — Shell allowlist, pending confirmation, and WebSocket shapes  
+- `poc/quota-percent/README.md`, `poc/usage-events/README.md` — Usage / quota POC notes  
 
 ## Permission modes (Claude / Cursor / Gemini)
 
@@ -197,13 +221,6 @@ If the request is tied to a `tg_id` (in-app Telegram or web login bound to an al
 | Config | [Viper](https://github.com/spf13/viper) (`config.yaml`) |
 | Frontend | Single-file React SPA (`internal/static`) |
 | Auth | Telegram `initData` HMAC-SHA256; web session cookie + IP CIDR |
-
-## Further docs
-
-- `docs/plan.md` — Specification and roadmap  
-- `docs/headless.md` — Claude `-p` and stream-json  
-- `docs/claude-code-cli.md`, `docs/cursor-agent-cli.md`, `docs/gemini-cli.md` — CLI references  
-- `docs/shell-allowlist-schema.md` — Shell allowlist, pending confirmation, and WebSocket shapes  
 
 ## License
 

@@ -1,12 +1,13 @@
 # Claude Code Mini App
 
-[English](README.md)
+**v0.2.0** · [English](README.md)
 
 Telegram Mini App，讓你在手機上遠端操控伺服器上的 AI 編碼 CLI。以**單一 Go 二進位**同時提供 REST API、WebSocket 與單檔 React 前端（無獨立建置步驟）。
 
 ## 功能概覽
 
-- **多種後端工具** — 建立 Session 時可選 **Claude Code**、**Cursor Agent** 或 **Gemini CLI**（Codex 為預留選項，尚未實作 Runner）
+- **多種後端工具** — 建立 Session 時可選 **Claude Code**、**Cursor Agent**、**Kiro CLI** 或 **Gemini CLI**（Codex 為預留選項，尚未實作 Runner）
+- **帳戶用量 %** — Session header 顯示各 provider 已組好的用量字串（如 Claude `5h 16% · Week 9%`、Cursor 帳單 %、Kiro credits）；伺服器端 global cache，支援手動 ↻ 刷新（60 秒冷卻）
 - **遠端對話** — 透過 Telegram Mini App 或內網瀏覽器送出提示詞，於伺服器執行對應 CLI
 - **Session 管理** — 建立、重新命名、刪除多個對話；每個 Session 綁定 `work_dir`、權限模式與 `agent_type`
 - **即時串流** — WebSocket 雙向通訊，Markdown 串流顯示；支援多分頁／多連線廣播同步
@@ -24,19 +25,20 @@ Telegram Mini App / 瀏覽器
 │           單一 Go 程式                     │
 │  Fiber 路由 │ SQLite (WAL) sessions/messages│
 │       每則使用者訊息 spawn 一個子進程       │
-│  agent.Runner（claude / cursor / gemini） │
+│  agent.Runner（claude / cursor / kiro / gemini） │
+│  QuotaService（global cache、headless 擷取）     │
 │  非互動 + 串流事件 → 前端狀態機             │
 └─────────────────────────────────────────┘
 ```
 
 - 每條訊息 **spawn 一個子進程**，用完即結束；**不使用 PTY**。
-- Claude 路徑使用 `-p`、`--output-format stream-json`、`--resume <agent_session_id>` 等（詳見 `docs/headless.md`、`docs/claude-code-cli.md`）。
-- Cursor、Gemini 各有對應 Runner 與事件轉換（見 `docs/cursor-agent-cli.md`、`docs/gemini-cli.md`）。
+- Claude 路徑使用 `-p`、`--output-format stream-json`、`--resume <agent_session_id>` 等（詳見 `docs/spec/headless.md`、`docs/spec/claude-code-cli.md`）。
+- Cursor、Kiro、Gemini 各有對應 Runner 與事件轉換（見 `docs/spec/cursor-agent-cli.md`、`docs/spec/kiro-cli.md`、`docs/spec/gemini-cli.md`）。
 
 ## 需求
 
 - Go 1.25+
-- 伺服器已安裝並登入你要使用的 CLI（例如 `claude`、`cursor agent`、`gemini` 等）
+- 伺服器已安裝並登入你要使用的 CLI（例如 `claude`、`cursor agent`、`kiro-cli`、`gemini` 等）
 - Telegram Bot Token（[@BotFather](https://t.me/BotFather)）
 
 ## 建置與執行
@@ -138,6 +140,9 @@ db:
 | `PATCH` | `/sessions/:id` | 重新命名（`{"name":"..."}`） |
 | `DELETE` | `/sessions/:id` | 刪除 Session |
 | `GET` | `/sessions/:id/messages` | 訊息歷史 |
+| `GET` | `/quota` | 各 provider 帳戶用量 cache |
+| `GET` | `/quota/:provider` | 單一 provider 用量（`claude`、`cursor`、`kiro` 等） |
+| `POST` | `/quota/:provider/refresh` | 手動刷新用量（每 provider 60 秒冷卻） |
 | `POST` | `/auth/login` | 網頁登入（僅限 `allowed_cidrs` 內 IP） |
 | `POST` | `/auth/logout` | 登出並清除 Cookie |
 | `WS` | `/sessions/:id/ws` | WebSocket 對話 |
@@ -155,12 +160,14 @@ db:
 { "type": "set_mode", "mode": "acceptEdits" }
 { "type": "interrupt" }
 { "type": "reset_context" }
+{ "type": "refresh_quota" }
 ```
 
 **Server → Client：**
 
 ```json
-{ "type": "sync", "value": "IDLE", "messages": [...] }
+{ "type": "sync", "value": "IDLE", "messages": [...], "quota": { "display_text": "5h 16% · Week 9%", "updated_at": "..." } }
+{ "type": "quota_update", "quota": { "display_text": "...", "updated_at": "..." } }
 { "type": "status", "value": "STREAMING" }
 { "type": "status", "value": "SHELL_EXEC" }
 { "type": "delta", "content": "..." }
@@ -171,7 +178,16 @@ db:
 { "type": "error", "content": "..." }
 ```
 
-連線建立時會收到 `sync`（還原 UI 狀態與歷史）。背景任務與授權狀態會反映在 Session 的 `status` 欄位（如 `idle`、`running`、`awaiting_confirm`）。
+連線建立時會收到 `sync`（還原 UI 狀態、歷史與 cache 中的 quota）。Agent 跑完一輪後會在背景依 TTL 刷新用量；前端亦可送 `refresh_quota` 手動刷新。
+
+## 更新紀錄
+
+### v0.2.0
+
+- **Kiro CLI** Runner 與 `docs/spec/kiro-cli.md`
+- **帳戶用量 %** 顯示於 Session header（Claude / Cursor / Kiro）；`GET /quota`、WS `quota_update`
+- Cursor Runner 修正（stream-json 認證／partial 文字）
+- `poc/` 下新增 cursor-agent、kiro-cli、usage-events、quota-percent POC 腳本
 
 ## 權限模式（Claude / Cursor / Gemini）
 
@@ -200,10 +216,11 @@ Claude 遭拒時可於前端選擇「允許一次」或永久切換模式；非 
 
 ## 說明文件
 
-- `docs/plan.md` — 規格與路線圖  
-- `docs/headless.md` — Claude `-p` 與 stream-json  
-- `docs/claude-code-cli.md`、`docs/cursor-agent-cli.md`、`docs/gemini-cli.md` — 各 CLI 參考  
-- `docs/shell-allowlist-schema.md` — Shell 白名單、待確認與 WebSocket 約定  
+- `docs/spec/plan.md` — 規格與路線圖  
+- `docs/spec/headless.md` — Claude `-p` 與 stream-json  
+- `docs/spec/claude-code-cli.md`、`docs/spec/cursor-agent-cli.md`、`docs/spec/kiro-cli.md`、`docs/spec/gemini-cli.md` — 各 CLI 參考  
+- `docs/spec/shell-allowlist-schema.md` — Shell 白名單、待確認與 WebSocket 約定  
+- `poc/quota-percent/README.md`、`poc/usage-events/README.md` — 用量／quota POC 說明  
 
 ## 授權
 

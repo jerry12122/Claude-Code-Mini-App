@@ -16,6 +16,7 @@ import (
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/quota"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/tg"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/version"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/ws"
 )
 
@@ -254,5 +255,6 @@ func main() {
 	}
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
+	log.Printf("Claude Code Mini App v%s listening on %s", version.Version, addr)
 	log.Fatal(app.Listen(addr))
 }
