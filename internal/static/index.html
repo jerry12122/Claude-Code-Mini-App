@@ -221,8 +221,34 @@ console.log(
   'spaBase:', getSpaBasePath() || '(root)',
 );
 
+// Web session 過期時統一登出（僅 Web 密碼登入，TMA 不受影響）
+let onSessionExpired = null;
+const registerSessionExpiredHandler = (fn) => { onSessionExpired = fn; };
+
+const clearWebSession = () => {
+  try {
+    const t = localStorage.getItem(WEB_SESSION_STORAGE_KEY);
+    localStorage.removeItem(WEB_SESSION_STORAGE_KEY);
+    if (t) {
+      fetch(resolveApiUrl('/auth/logout'), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${t}` },
+      }).catch(() => {});
+    }
+  } catch (_) {}
+  onSessionExpired?.();
+};
+
+const handleUnauthorized = (res) => {
+  if (!isTelegram && res.status === 401) {
+    clearWebSession();
+    return true;
+  }
+  return false;
+};
+
 // 統一 fetch：TMA 帶 initData；Web 帶 Bearer（localStorage），舊版仍相容後端 Cookie
-const apiFetch = (url, opts = {}) => {
+const apiFetch = async (url, opts = {}) => {
   const headers = { ...(opts.headers || {}) };
   if (isTelegram) {
     headers['X-Telegram-Init-Data'] = initData;
@@ -232,7 +258,9 @@ const apiFetch = (url, opts = {}) => {
       if (t) headers['Authorization'] = `Bearer ${t}`;
     } catch (_) {}
   }
-  return fetch(resolveApiUrl(url), { ...opts, headers });
+  const res = await fetch(resolveApiUrl(url), { ...opts, headers });
+  handleUnauthorized(res);
+  return res;
 };
 
 // WebSocket：同源 ws/wss；TMA 用 query initData；Web 用 query token（瀏覽器無法自訂 WS Header）
@@ -1273,7 +1301,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
   const create = async () => {
     if (!newName.trim()) return;
     setLoading(true);
-    await apiFetch('/sessions', {
+    const res = await apiFetch('/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1284,9 +1312,10 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
         cli_extra_args: newAgent === 'claude' ? parseCliExtraArgs(newCliExtra) : [],
       }),
     });
+    setLoading(false);
+    if (!res.ok) return;
     setNewName(''); setNewDir(''); setNewMode('default'); setNewAgent('claude'); setNewCliExtra('');
     setShowForm(false);
-    setLoading(false);
     load();
   };
 
@@ -1998,6 +2027,9 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       ws._sessionId = session.id;
       ws._gen = effectGen;
       wsRef.current = ws;
+      let everConnected = false;
+
+      ws.onopen = () => { everConnected = true; };
 
       ws.onmessage = (evt) => {
         if (!isCurrent() || wsRef.current !== ws) return;
@@ -2239,10 +2271,29 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       ws.onclose = (evt) => {
         console.warn('[ws] 連線關閉', evt.code, evt.reason);
         if (!isCurrent() || wsRef.current !== ws) return;
-        reconnectTimerRef.current = setTimeout(() => {
-          reconnectTimerRef.current = null;
-          connectWS();
-        }, 2000);
+        const scheduleReconnect = () => {
+          reconnectTimerRef.current = setTimeout(() => {
+            reconnectTimerRef.current = null;
+            connectWS();
+          }, 2000);
+        };
+        if (!everConnected && !isTelegram) {
+          apiFetch('/sessions').then((res) => {
+            if (!isCurrent() || wsRef.current !== ws) return;
+            if (!res.ok) return;
+            try {
+              if (!localStorage.getItem(WEB_SESSION_STORAGE_KEY)) return;
+            } catch (_) { return; }
+            scheduleReconnect();
+          }).catch(() => {});
+          return;
+        }
+        if (!isTelegram) {
+          try {
+            if (!localStorage.getItem(WEB_SESSION_STORAGE_KEY)) return;
+          } catch (_) { return; }
+        }
+        scheduleReconnect();
       };
     };
 
@@ -2986,13 +3037,14 @@ function App() {
 
   useEffect(() => {
     if (isTelegram) return;
+    registerSessionExpiredHandler(() => setAuthed(false));
+    return () => registerSessionExpiredHandler(null);
+  }, []);
+
+  useEffect(() => {
+    if (isTelegram) return;
     apiFetch('/sessions').then((res) => {
       if (res.ok) setAuthed(true);
-      else if (res.status === 401) {
-        try {
-          localStorage.removeItem(WEB_SESSION_STORAGE_KEY);
-        } catch (_) {}
-      }
     }).finally(() => setChecking(false));
   }, []);
 

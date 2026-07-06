@@ -16,7 +16,7 @@ web:
     - "192.168.0.0/16"
 
   # Session cookie 有效期（登入後免重新輸入密碼的時間）
-  session_ttl: "24h"
+  session_ttl: "168h"
 
   # 網頁密碼登入時，預設要把 TG 通知發給哪位使用者（須在白名單內）。
   # 若省略且 whitelist 僅一人，會自動綁定該人；多人時請填此欄或改 API 帶 tg_user_id。

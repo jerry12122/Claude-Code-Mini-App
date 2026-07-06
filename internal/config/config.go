@@ -48,7 +48,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("no_auth", false)
 	viper.SetDefault("server.port", 8080)
 	viper.SetDefault("db.path", "./claude-miniapp.db")
-	viper.SetDefault("web.session_ttl", "24h")
+	viper.SetDefault("web.session_ttl", "168h")
 	viper.SetDefault("web.allowed_cidrs", []string{
 		"127.0.0.0/8",
 		"10.0.0.0/8",
