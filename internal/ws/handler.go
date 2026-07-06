@@ -19,6 +19,7 @@ import (
 	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/cursor"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
 	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/antigravity"
+	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/codex"
 	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/kiro"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/quota"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/shell"
@@ -358,6 +359,11 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 						// 思考鏈：不寫 DB、不改狀態，直接廣播給前端覆寫顯示。
 						if e.Text != "" {
 							broadcast(serverMsg{Type: "thinking", Content: e.Text})
+						}
+
+					case agent.EventActivity:
+						if e.Text != "" {
+							broadcast(serverMsg{Type: "activity", Content: e.Text})
 						}
 
 					case agent.EventDelta:

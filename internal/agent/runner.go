@@ -29,6 +29,7 @@ const (
 	EventPermDenied    EventType = "permission_denied"
 	EventSessionInit   EventType = "session_init"
 	EventStreamStart   EventType = "stream_start"
+	EventActivity      EventType = "activity" // Codex item.started 活動提示（THINKING 期間）
 	EventToolStarted   EventType = "tool_started"
 	EventToolCompleted EventType = "tool_completed"
 )

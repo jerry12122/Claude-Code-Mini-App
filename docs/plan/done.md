@@ -35,6 +35,8 @@
 - [x] **Runner 抽象化**：定義統一的 `agent.Runner` 介面。
 - [x] **Gemini 整合**：支援 `gemini` CLI 串流執行。
 - [x] **Cursor 整合**：支援 `cursor-agent` CLI 串流執行。
+- [x] **Codex 整合**：支援 `codex exec --json` headless 執行。
+- [x] **Kiro 整合**：支援 `kiro-cli` headless 執行。
 - [x] **動態工廠**：依 Session 設定自動建立對應工具實例。
 
 ### 🐚 Shell 執行模式

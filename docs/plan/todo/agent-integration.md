@@ -26,7 +26,7 @@ Phase F — 前端 UI 支援建立 Session 時選擇工具 (Done)
 - [x] **Phase D — WS Handler 重構**
 - [x] **Phase E.1 — Cursor Runner 整合**
 - [x] **Phase E.2 — Gemini Runner 整合**
-- [ ] **Phase E.3 — Codex Runner 整合** (待執行，詳見 `docs/plan/todo/codex-integration.md`)
+- [x] **Phase E.3 — Codex Runner 整合**（詳見 `docs/plan/done/codex-integration.md`）
 - [x] **Phase F — 前端 UI 支援**
 
 ---

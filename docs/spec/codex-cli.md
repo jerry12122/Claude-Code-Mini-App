@@ -3,6 +3,36 @@
 Codex 的非互動模式是 `codex exec`，官方明確說這是給 script、CI、pipeline 用的，並且 `--json` 會把 stdout 變成 JSON Lines 事件流。 
 因此在你的系統裡，Codex 至少應拆成兩種可選 transport：**CLI subprocess transport**（先做這個）與 **app-server protocol transport**（後續若你要更原生的雙向通訊再做）。 
 
+## 實測整合結論（codex-cli 0.142.5，POC 2026-07-06）
+
+### Headless 啟動模板
+
+```bash
+# 新 thread
+codex exec --json --skip-git-repo-check -C <work_dir> \
+  -s workspace-write -c 'approval_policy="never"' "<prompt>"
+
+# Resume（注意：resume 子命令不支援 -C，工作目錄由 Go cmd.Dir 設定）
+codex exec resume <thread_id> --json --skip-git-repo-check \
+  -c 'approval_policy="never"' "<prompt>"
+```
+
+### 與官方文件的差異
+
+| 項目 | 官方文件 | 實測（v0.142.5） |
+|------|----------|------------------|
+| 免互動授權 | `--ask-for-approval never`（頂層 `codex`） | `codex exec` 需用 `-c 'approval_policy="never"'` |
+| Trust-all 語意 | 無 `--trust-all-tools` | `-s workspace-write` + `approval_policy="never"` |
+| stdin | 可選 | **必須關閉 stdin**（否則等待 stdin 或 stderr 提示 Reading additional input） |
+| TERM 環境變數 | — | headless spawn 時應移除 `TERM=dumb` |
+| thread_id | `thread.started` | 確認可用 |
+| 逐字 delta | — | **無**；`item.completed (agent_message)` 一次送出 |
+| Quota | `/status` TUI | headless `/status` 可能觸發 sandbox 錯誤；quota fetch 改以 status prompt + `turn.completed.usage` fallback |
+
+### POC 樣本
+
+見 [`poc/codex-cli/samples/capture.jsonl`](../../poc/codex-cli/samples/capture.jsonl)。
+
 ## 啟動契約
 
 非互動執行的主命令是 `codex exec`，prompt 可以是 positional argument，也可以用 `-` 表示從 stdin 讀完整 prompt。 

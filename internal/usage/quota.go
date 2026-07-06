@@ -29,6 +29,8 @@ var (
 	claudeWeeklyRe  = regexp.MustCompile(`(?i)Current week \(all models\):\s*(\d+(?:\.\d+)?)%\s*used\s+[^\r\n]*?resets\s*(.+)`)
 	kiroQuotaCreditsRe = regexp.MustCompile(`Credits\s*\(([\d.]+)\s+of\s+([\d.]+)`)
 	kiroQuotaPercentRe = regexp.MustCompile(`(\d+(?:\.\d+)?)%`)
+	codexSessionPctRe  = regexp.MustCompile(`(?i)(?:5[- ]?hour|session)[^\d%]{0,40}(\d+(?:\.\d+)?)\s*%`)
+	codexWeeklyPctRe   = regexp.MustCompile(`(?i)(?:week(?:ly)?)[^\d%]{0,40}(\d+(?:\.\d+)?)\s*%`)
 )
 
 // FromClaudeUsageText 解析 `claude -p "/usage"` 的純文字輸出。
@@ -162,6 +164,44 @@ func FromKiroUsageText(text string) *QuotaInfo {
 		out.Plan = plan[1]
 	}
 	return out
+}
+
+// FromCodexStatusText 解析 codex exec 回覆中的用量百分比文字。
+func FromCodexStatusText(text string) *QuotaInfo {
+	clean := strings.TrimSpace(text)
+	if clean == "" {
+		return nil
+	}
+	out := &QuotaInfo{Provider: "codex", Source: "codex exec status prompt"}
+	if m := codexSessionPctRe.FindStringSubmatch(clean); len(m) == 2 {
+		out.Windows = append(out.Windows, QuotaWindow{
+			Kind: "session", Label: "5-hour", Percent: floatPtr(parseFloat(m[1])),
+		})
+	}
+	if m := codexWeeklyPctRe.FindStringSubmatch(clean); len(m) == 2 {
+		out.Windows = append(out.Windows, QuotaWindow{
+			Kind: "weekly", Label: "weekly", Percent: floatPtr(parseFloat(m[1])),
+		})
+	}
+	if len(out.Windows) == 0 {
+		return nil
+	}
+	return out
+}
+
+// FromCodexTurnUsage 以 token 統計作為 quota fallback 顯示。
+func FromCodexTurnUsage(inputTokens, outputTokens int64) *QuotaInfo {
+	if inputTokens == 0 && outputTokens == 0 {
+		return nil
+	}
+	return &QuotaInfo{
+		Provider: "codex",
+		Source:   "turn.completed.usage",
+		Windows: []QuotaWindow{{
+			Kind: "tokens", Label: "last turn",
+			Used: floatPtr(float64(inputTokens + outputTokens)),
+		}},
+	}
 }
 
 func floatPtr(f float64) *float64 { return &f }

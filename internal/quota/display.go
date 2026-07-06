@@ -3,29 +3,38 @@ package quota
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/usage"
 )
 
 // FormatDisplay 依 provider 將 QuotaInfo 組成 UI 顯示字串。
 func FormatDisplay(provider string, info *usage.QuotaInfo) string {
+	return FormatDisplayAt(provider, info, time.Now())
+}
+
+// FormatDisplayAt 同 FormatDisplay，可指定 now 供測試。
+func FormatDisplayAt(provider string, info *usage.QuotaInfo, now time.Time) string {
 	if info == nil {
 		return "—"
 	}
 	switch provider {
 	case "claude":
-		return formatClaudeDisplay(info)
+		return formatClaudeDisplayAt(info, now)
 	case "cursor":
 		return formatCursorDisplay(info)
 	case "kiro":
 		return formatKiroDisplay(info)
+	case "codex":
+		return formatCodexDisplay(info)
 	default:
 		return "—"
 	}
 }
 
-func formatClaudeDisplay(info *usage.QuotaInfo) string {
+func formatClaudeDisplayAt(info *usage.QuotaInfo, now time.Time) string {
 	var sessPct, weekPct *float64
+	var sessReset string
 	for _, w := range info.Windows {
 		if w.Percent == nil {
 			continue
@@ -33,15 +42,27 @@ func formatClaudeDisplay(info *usage.QuotaInfo) string {
 		switch w.Kind {
 		case "session":
 			sessPct = w.Percent
+			sessReset = w.ResetsAt
 		case "weekly":
 			weekPct = w.Percent
 		}
 	}
-	if sessPct != nil && weekPct != nil {
-		return fmt.Sprintf("5h %.0f%% · Week %.0f%%", roundPct(*sessPct), roundPct(*weekPct))
-	}
+
+	var sessPart string
 	if sessPct != nil {
-		return fmt.Sprintf("5h %.0f%%", roundPct(*sessPct))
+		sessPart = fmt.Sprintf("5h %.0f%%", roundPct(*sessPct))
+		if until, ok := usage.ParseResetsAt(sessReset, now); ok {
+			if left := usage.FormatDurationUntil(until, now); left != "" {
+				sessPart += " · " + left
+			}
+		}
+	}
+
+	if sessPart != "" && weekPct != nil {
+		return sessPart + fmt.Sprintf(" · Week %.0f%%", roundPct(*weekPct))
+	}
+	if sessPart != "" {
+		return sessPart
 	}
 	if weekPct != nil {
 		return fmt.Sprintf("Week %.0f%%", roundPct(*weekPct))
@@ -105,6 +126,34 @@ func formatKiroDisplay(info *usage.QuotaInfo) string {
 	}
 	if pct != nil {
 		return fmt.Sprintf("Credits %.0f%%", roundPct(*pct))
+	}
+	return "—"
+}
+
+func formatCodexDisplay(info *usage.QuotaInfo) string {
+	var sessPct, weekPct *float64
+	var tokens *float64
+	for _, w := range info.Windows {
+		switch w.Kind {
+		case "session":
+			sessPct = w.Percent
+		case "weekly":
+			weekPct = w.Percent
+		case "tokens":
+			tokens = w.Used
+		}
+	}
+	if sessPct != nil && weekPct != nil {
+		return fmt.Sprintf("5h %.0f%% · Week %.0f%%", roundPct(*sessPct), roundPct(*weekPct))
+	}
+	if sessPct != nil {
+		return fmt.Sprintf("5h %.0f%%", roundPct(*sessPct))
+	}
+	if weekPct != nil {
+		return fmt.Sprintf("Week %.0f%%", roundPct(*weekPct))
+	}
+	if tokens != nil {
+		return fmt.Sprintf("Tokens %.0f", *tokens)
 	}
 	return "—"
 }

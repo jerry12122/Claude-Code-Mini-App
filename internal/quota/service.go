@@ -15,6 +15,7 @@ var defaultTTL = map[string]time.Duration{
 	agent.TypeClaude: 5 * time.Minute,
 	agent.TypeCursor: 3 * time.Minute,
 	agent.TypeKiro:   5 * time.Minute,
+	agent.TypeCodex:  5 * time.Minute,
 }
 
 type cacheEntry struct {
@@ -42,6 +43,7 @@ func NewService() *Service {
 		agent.TypeClaude: &ClaudeFetcher{},
 		agent.TypeCursor: &CursorFetcher{},
 		agent.TypeKiro:   &KiroFetcher{},
+		agent.TypeCodex:  &CodexFetcher{},
 		agent.TypeAntigravity: &AntigravityFetcher{},
 	}
 	return &Service{

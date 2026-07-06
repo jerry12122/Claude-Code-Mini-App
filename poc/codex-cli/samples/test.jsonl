@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"019f35d0-3478-75f2-8b3b-bae66cd70763"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"POC_OK"}}
+{"type":"turn.completed","usage":{"input_tokens":8270,"cached_input_tokens":0,"output_tokens":2,"reasoning_output_tokens":0}}

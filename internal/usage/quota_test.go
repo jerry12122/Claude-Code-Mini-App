@@ -67,6 +67,16 @@ func TestFromKiroUsageText(t *testing.T) {
 	}
 }
 
+func TestFromCodexStatusText(t *testing.T) {
+	q := FromCodexStatusText("5-hour limit: 16% used\nWeekly limit: 9% used")
+	if q == nil || len(q.Windows) != 2 {
+		t.Fatalf("windows: %+v", q)
+	}
+	if *q.Windows[0].Percent != 16 || *q.Windows[1].Percent != 9 {
+		t.Fatalf("percent: %+v", q.Windows)
+	}
+}
+
 func TestQuotaFixtureSamplesIfPresent(t *testing.T) {
 	root := filepath.Join("..", "..", "poc", "quota-percent", "samples")
 	if _, err := os.Stat(filepath.Join(root, "quota-report.json")); err != nil {

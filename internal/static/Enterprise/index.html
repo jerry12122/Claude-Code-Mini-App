@@ -1156,7 +1156,7 @@ function ForwardModal({
                     <option value="claude">Claude</option>
                     <option value="cursor">Cursor</option>
                     <option value="kiro">Kiro</option>
-                    <option value="codex" disabled>Codex（未支援）</option>
+                    <option value="codex">Codex</option>
                   </select>
                 </div>
                 <div className="space-y-1">
@@ -1699,7 +1699,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
               <option value="claude">Claude</option>
               <option value="cursor">Cursor</option>
               <option value="kiro">Kiro</option>
-              <option value="codex" disabled>Codex（未支援）</option>
+              <option value="codex">Codex</option>
             </select>
             <div className="min-w-0">
               {usePermModeDropdown ? (
@@ -1847,7 +1847,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const jumpToSession = typeof onJumpToSession === 'function' ? onJumpToSession : () => {};
   const agentType = session.agent_type || 'claude';
   // Claude / Cursor / Antigravity 皆支援 mode 切換（Codex 暫無對應概念）
-  const showPermModeSelect = agentType !== 'codex';
+  const showPermModeSelect = agentType !== 'codex' && agentType !== 'kiro';
   const [messages, setMessages]   = useState([]);
   const [input, setInput]         = useState('');
   const [state, setState]         = useState('IDLE');
@@ -1870,6 +1870,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const slashInputWrapRef = useRef(null);
   const streamBuf = useRef('');
   const thinkingMode = useRef(false);
+  const [activityHint, setActivityHint] = useState('');
   const connGenRef = useRef(0);
   const activeSessionRef = useRef(session.id);
   const reconnectTimerRef = useRef(null);
@@ -2072,6 +2073,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
           if (msg.value === 'THINKING') {
             streamBuf.current = '';
             thinkingMode.current = false;
+            setActivityHint('');
             setMessages((prev) => {
               const last = prev[prev.length - 1];
               if (last && last.role === 'claude' && last.streaming && last.status === 'pending') {
@@ -2110,6 +2112,11 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
 
         if (msg.type === 'user_message') {
           setMessages(prev => [...prev, { role: 'user', content: msg.content }]);
+        }
+
+        if (msg.type === 'activity') {
+          if (msg.content) setActivityHint(msg.content);
+          return;
         }
 
         if (msg.type === 'thinking') {
@@ -2242,7 +2249,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
 
   const handleQuotaRefresh = useCallback(() => {
     if (quotaRefreshing) return;
-    if (agentType === 'antigravity' || agentType === 'codex') return;
+    if (agentType === 'antigravity') return;
     setQuotaRefreshing(true);
     if (!send({ type: 'refresh_quota' })) {
       setQuotaRefreshing(false);
@@ -2426,7 +2433,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               'bg-amber-950/80 text-amber-200 border border-amber-800/50'
             }`}
           >
-            {SESSION_STATE_LABEL[state] || state}
+            {state === 'THINKING' && activityHint ? activityHint : (SESSION_STATE_LABEL[state] || state)}
           </span>
         </div>
         <div className="ent-chat-meta">
@@ -2437,7 +2444,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
           <GitBranchBadge branch={session.git_branch} />
           <QuotaBadge
             quota={quota}
-            onRefresh={agentType !== 'antigravity' && agentType !== 'codex' ? handleQuotaRefresh : null}
+            onRefresh={agentType !== 'antigravity' ? handleQuotaRefresh : null}
             refreshing={quotaRefreshing}
             className="!rounded !px-2 !py-0.5"
           />
