@@ -27,8 +27,7 @@ func (f *CodexFetcher) Fetch(ctx context.Context) (Snapshot, error) {
 	}
 	args := []string{
 		"exec", "--json", "--skip-git-repo-check",
-		"-s", "workspace-write",
-		"-c", `approval_policy="never"`,
+		"--yolo",
 		"Reply with ONLY your current Codex usage limits as plain text. Include 5-hour and weekly percent used if available.",
 	}
 	cmd := exec.CommandContext(ctx, codexBin, args...)

@@ -15,6 +15,7 @@ type StreamEvent struct {
 	IsError           bool               `json:"is_error,omitempty"`
 	Result            string             `json:"result,omitempty"`
 	SessionID         string             `json:"session_id,omitempty"`
+	Model             string             `json:"model,omitempty"`
 	StopReason        string             `json:"stop_reason,omitempty"`
 	PermissionDenials []PermissionDenial `json:"permission_denials,omitempty"`
 }

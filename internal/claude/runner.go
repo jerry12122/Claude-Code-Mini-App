@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/agent"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/model"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/proc"
 )
 
@@ -165,8 +166,14 @@ type streamState struct {
 func (r *Runner) dispatch(e *StreamEvent, cb agent.EventCallback, st *streamState) {
 	switch e.Type {
 	case "system":
-		if e.Subtype == "init" && e.SessionID != "" {
-			cb(agent.Event{Type: agent.EventSessionInit, SessionID: e.SessionID})
+		if e.Subtype == "init" {
+			ev := agent.Event{Type: agent.EventSessionInit, SessionID: e.SessionID}
+			if m := strings.TrimSpace(e.Model); m != "" {
+				ev.Model = model.AgentSnapshot(model.InfoFromStream(agent.TypeClaude, m))
+			}
+			if ev.SessionID != "" || ev.Model != nil {
+				cb(ev)
+			}
 		}
 
 	case "stream_event":

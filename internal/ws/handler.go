@@ -21,6 +21,7 @@ import (
 	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/antigravity"
 	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/codex"
 	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/kiro"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/model"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/quota"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/shell"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/tg"
@@ -87,6 +88,7 @@ type serverMsg struct {
 	ExitCode     int               `json:"exit_code,omitempty"`
 	ShellPending *shellPendingInfo `json:"shell_pending,omitempty"`
 	Quota        *quota.Payload    `json:"quota,omitempty"`
+	Model        *model.Payload    `json:"model,omitempty"`
 }
 
 type shellPendingPayload struct {
@@ -157,6 +159,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 			p := q.ToPayload()
 			syncMsg.Quota = &p
 		}
+		syncMsg.Model = sessionModelPayload(sess)
 		send(syncMsg)
 
 		shellTimeoutSec := 60
@@ -320,6 +323,9 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 			if agentType == agent.TypeCursor && pm == "bypassPermissions" {
 				extra[agent.ArgForce] = "true"
 			}
+			if m := model.ParseModelFromCliArgs(cliExtra); m != "" {
+				extra[agent.ArgModel] = m
+			}
 
 			opts := agent.RunOptions{
 				Prompt:       prompt,
@@ -346,6 +352,14 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				defer taskEnd(sessionID)
 
 				permDenied := false
+
+				// Kiro / Codex stream 不含 model，run 前解析並推送。
+				if agentType == agent.TypeKiro || agentType == agent.TypeCodex {
+					info := model.ResolveForSession(agentType, opts.CliExtraArgs, "", "")
+					if p := persistInfoUpdate(database, sessionID, info); p != nil {
+						broadcast(serverMsg{Type: "model_update", Model: p})
+					}
+				}
 
 				err := runner.Run(ctx, opts, func(e agent.Event) {
 					if ctx.Err() != nil {
@@ -375,17 +389,23 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 						}
 
 					case agent.EventSessionInit:
-						if e.SessionID == "" {
+						if e.SessionID == "" && e.Model == nil {
 							return
 						}
 						mu.Lock()
-						if e.SessionID != agentSessionID {
+						if e.SessionID != "" && e.SessionID != agentSessionID {
 							agentSessionID = e.SessionID
 							if err := database.UpdateAgentSessionID(sessionID, agentSessionID); err != nil {
 								log.Printf("[ws] UpdateAgentSessionID: %v", err)
 							}
 						}
 						mu.Unlock()
+						if e.Model != nil {
+							p := persistModelUpdate(database, sessionID, e.Model)
+							if p.DisplayText != "" && p.DisplayText != "—" {
+								broadcast(serverMsg{Type: "model_update", Model: &p})
+							}
+						}
 
 					case agent.EventPermDenied:
 						if !isClaude {

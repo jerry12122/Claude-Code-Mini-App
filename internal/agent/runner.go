@@ -52,12 +52,20 @@ type ToolCall struct {
 	ErrMessage string          `json:"err_message,omitempty"`
 }
 
+// ModelSnapshot 是 session 目前 model 的快照（由 runner 或 ws 層填入）。
+type ModelSnapshot struct {
+	Model       string `json:"model,omitempty"`
+	DisplayText string `json:"display_text,omitempty"`
+	Source      string `json:"source,omitempty"`
+}
+
 // Event 是 Runner 透過 callback 回傳的統一事件結構。
 type Event struct {
 	Type       EventType
 	Text       string             // delta 文字
 	SessionID  string             // session_init / done 時帶入
 	ResultText string             // 僅 done：CLI 最終 result 行若帶純文字摘要／輸出（stream-json 之 result 欄位）
+	Model      *ModelSnapshot     // session_init 時若 stream 帶 model
 	Denials    []PermissionDenial // 僅 Claude 有
 	Tool       *ToolCall          // tool_started / tool_completed 時帶入
 	Err        error              // error 時帶入

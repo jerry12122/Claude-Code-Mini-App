@@ -197,6 +197,15 @@ func TestBuildArgs(t *testing.T) {
 			t.Error("--effort should be followed by effort value")
 		}
 	})
+	t.Run("model extra arg", func(t *testing.T) {
+		extra := map[string]string{agent.ArgModel: "claude-haiku-4.5"}
+		opts := buildArgsForTest("hello", "", extra)
+		expectContains(t, opts, "--model")
+		idx := indexOf(opts, "--model")
+		if idx < 0 || opts[idx+1] != "claude-haiku-4.5" {
+			t.Error("--model should be followed by model value")
+		}
+	})
 }
 
 // buildArgsForTest 建構 RunOptions 並呼叫 buildArgs 的測試輔助函式。

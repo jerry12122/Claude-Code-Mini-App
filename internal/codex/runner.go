@@ -158,22 +158,11 @@ func (r *Runner) dispatch(ev *StreamEvent, cb agent.EventCallback, st *dispatchS
 }
 
 func buildArgs(opts agent.RunOptions) []string {
-	sandbox := "workspace-write"
-	approval := `approval_policy="never"`
-	if opts.ExtraArgs != nil {
-		if m := strings.TrimSpace(opts.ExtraArgs["sandbox_mode"]); m != "" {
-			sandbox = m
-		}
-		if m := strings.TrimSpace(opts.ExtraArgs["approval_mode"]); m != "" {
-			approval = fmt.Sprintf(`approval_policy="%s"`, m)
-		}
-	}
-
 	if opts.SessionID != "" {
 		args := []string{
 			"exec", "resume", opts.SessionID,
 			"--json", "--skip-git-repo-check",
-			"-c", approval,
+			"--yolo",
 		}
 		if opts.ExtraArgs != nil {
 			if m := strings.TrimSpace(opts.ExtraArgs[agent.ArgModel]); m != "" {
@@ -186,9 +175,8 @@ func buildArgs(opts agent.RunOptions) []string {
 
 	args := []string{
 		"exec", "--json", "--skip-git-repo-check",
+		"--yolo",
 		"-C", opts.WorkDir,
-		"-s", sandbox,
-		"-c", approval,
 	}
 	if opts.ExtraArgs != nil {
 		if m := strings.TrimSpace(opts.ExtraArgs[agent.ArgModel]); m != "" {

@@ -179,6 +179,9 @@ func buildArgs(opts agent.RunOptions) []string {
 		if agentProfile := strings.TrimSpace(opts.ExtraArgs["agent"]); agentProfile != "" {
 			args = append(args, "--agent", agentProfile)
 		}
+		if m := strings.TrimSpace(opts.ExtraArgs[agent.ArgModel]); m != "" {
+			args = append(args, "--model", m)
+		}
 	}
 
 	// prompt 必須是最後一個 positional argument

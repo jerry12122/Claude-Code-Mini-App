@@ -470,6 +470,143 @@ const SESSION_STATE_LABEL = {
   SHELL_EXEC: 'Shell 執行中',
 };
 
+const CHAT_HEADER_COLLAPSED_KEY = 'cc_chat_header_collapsed';
+
+function readChatHeaderCollapsedPref() {
+  try {
+    const v = localStorage.getItem(CHAT_HEADER_COLLAPSED_KEY);
+    if (v === '1') return true;
+    if (v === '0') return false;
+  } catch (_) {}
+  return null;
+}
+
+function writeChatHeaderCollapsedPref(collapsed) {
+  try {
+    localStorage.setItem(CHAT_HEADER_COLLAPSED_KEY, collapsed ? '1' : '0');
+  } catch (_) {}
+}
+
+function useMediaQuery(query) {
+  const [matches, setMatches] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia(query).matches : false
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const mq = window.matchMedia(query);
+    const onChange = () => setMatches(mq.matches);
+    mq.addEventListener('change', onChange);
+    onChange();
+    return () => mq.removeEventListener('change', onChange);
+  }, [query]);
+  return matches;
+}
+
+function useChatHeaderCollapsed() {
+  const isMobile = useMediaQuery('(max-width: 639px)');
+  const [collapsed, setCollapsedState] = useState(() => {
+    const saved = readChatHeaderCollapsedPref();
+    if (saved != null) return saved;
+    return typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches;
+  });
+  const setCollapsed = useCallback((v) => {
+    setCollapsedState(v);
+    writeChatHeaderCollapsedPref(v);
+  }, []);
+  return {
+    collapsed: isMobile && collapsed,
+    setCollapsed,
+    isMobile,
+    toggle: () => setCollapsed(!collapsed),
+  };
+}
+
+function formatQuotaCompact(displayText) {
+  if (!displayText || displayText === '—') return '';
+  const first = String(displayText).split(' · ')[0].trim();
+  if (first.length <= 11) return first;
+  const m = first.match(/(\d+(?:\.\d+)?)\s*%/);
+  return m ? m[0] : first.slice(0, 10) + '…';
+}
+
+function permModeLabelFor(agentType, value) {
+  const hit = permModeOptionsFor(agentType).find((o) => o.value === value);
+  return hit ? hit.label : value;
+}
+
+function permModeIsDanger(value) {
+  return value === 'bypassPermissions' || value === 'yolo';
+}
+
+function sessionStateChipClass(state) {
+  if (state === 'IDLE') return 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/50';
+  if (state === 'THINKING') return 'bg-blue-950/80 text-blue-400 border border-blue-800/50';
+  if (state === 'STREAMING') return 'bg-sky-950/80 text-sky-300 border border-sky-800/50';
+  if (state === 'SHELL_EXEC' || state === 'SHELL_RUNNING') return 'bg-fuchsia-950/80 text-fuchsia-200 border border-fuchsia-800/50';
+  if (state === 'AWAITING_SHELL_CONFIRM' || state === 'SHELL_AWAITING_APPROVAL') return 'bg-orange-950/85 text-orange-200 border border-orange-800/50';
+  return 'bg-amber-950/80 text-amber-200 border border-amber-800/50';
+}
+
+function SessionStateChip({ state, activityHint, compact, className = '' }) {
+  const label = compact
+    ? (state === 'THINKING' && activityHint ? '思考' : (SESSION_STATE_LABEL[state] || state))
+    : (state === 'THINKING' && activityHint ? activityHint : (SESSION_STATE_LABEL[state] || state));
+  return (
+    <span title={state} className={'inline-flex items-center shrink-0 text-[10px] px-2 py-0.5 rounded font-semibold uppercase tracking-wide ' + sessionStateChipClass(state) + ' ' + className}>
+      {label}
+    </span>
+  );
+}
+
+function HeaderToggleButton({ expanded, onToggle, className = '' }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={expanded}
+      aria-label={expanded ? '收合頂欄' : '展開頂欄'}
+      className={'sm:hidden shrink-0 p-1 rounded-md text-slate-500 hover:text-slate-200 hover:bg-slate-800/80 transition-colors ' + className}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={'w-4 h-4 transition-transform duration-150 ' + (expanded ? 'rotate-180' : '')} aria-hidden>
+        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+      </svg>
+    </button>
+  );
+}
+
+function AgentIconChip({ agentType, className = '' }) {
+  const t = String(agentType || 'claude').toLowerCase();
+  return (
+    <span className={'ent-chip inline-flex items-center justify-center !p-0 w-5 h-5 ' + getAgentBadgeClass(agentType) + ' ' + className} title={AGENT_LABEL[t] || t}>
+      <AgentBadgeIcon agentType={agentType} />
+    </span>
+  );
+}
+
+function PermModeIconChip({ agentType, value, onClick, disabled, className = '' }) {
+  const label = permModeLabelFor(agentType, value);
+  const danger = permModeIsDanger(value);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={'權限：' + label + '（點擊展開）'}
+      aria-label={'權限：' + label}
+      className={
+        'ent-chip inline-flex items-center justify-center !p-0 w-5 h-5 transition-colors ' +
+        (danger ? '!border-amber-600/60 !text-amber-200 !bg-amber-950/45' : '') +
+        (disabled ? ' opacity-45 pointer-events-none' : '') +
+        ' ' + className
+      }
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3" aria-hidden>
+        <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
+      </svg>
+    </button>
+  );
+}
+
 const INPUT_MODE_STORAGE_PREFIX = 'cc_input_mode:';
 const INPUT_MODE_LEGACY_KEY = 'cc_input_mode';
 
@@ -727,7 +864,7 @@ function getAgentBadgeClass(agentType) {
   const map = {
     claude: 'bg-amber-500/15 text-amber-200 ring-1 ring-amber-400/25',
     cursor: 'bg-blue-700/15 text-slate-300 ring-1 ring-blue-500/25',
-    codex: 'bg-lime-500/12 text-lime-200 ring-1 ring-lime-400/20',
+    codex: 'bg-slate-500/12 text-slate-200 ring-1 ring-slate-400/20',
     antigravity: 'bg-sky-500/15 text-sky-200 ring-1 ring-sky-400/25',
     kiro: 'bg-purple-500/15 text-purple-200 ring-1 ring-purple-400/25',
   };
@@ -741,13 +878,40 @@ function getAgentBadgeClass(agentType) {
 const AGENT_BADGE_ICON_CDN = {
   claude: { slug: 'claude', color: 'fed7aa' },
   cursor: { slug: 'cursor', color: '6ee7b7' },
-  codex: { slug: 'openai', color: '86efac' },
   antigravity: { slug: 'google', color: '7dd3fc' },
-  kiro: { slug: 'amazonaws', color: 'd8b4fe' },
+};
+
+/** Simple Icons 已移除 openai / amazonwebservices，改內嵌 path（simple-icons@14，CC0） */
+const AGENT_BADGE_INLINE_SVG = {
+  codex: {
+    viewBox: '0 0 24 24',
+    color: '#e2e8f0',
+    path: 'M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z',
+  },
+  kiro: {
+    viewBox: '0 0 24 24',
+    color: '#d8b4fe',
+    path: 'M6.763 10.036c0 .296.032.535.088.71.064.176.144.368.256.576.04.063.056.127.056.183 0 .08-.048.16-.152.24l-.503.335a.383.383 0 0 1-.208.072c-.08 0-.16-.04-.239-.112a2.47 2.47 0 0 1-.287-.375 6.18 6.18 0 0 1-.248-.471c-.622.734-1.405 1.101-2.347 1.101-.67 0-1.205-.191-1.596-.574-.391-.384-.59-.894-.59-1.533 0-.678.239-1.23.726-1.644.487-.415 1.133-.623 1.955-.623.272 0 .551.024.846.064.296.04.6.104.918.176v-.583c0-.607-.127-1.03-.375-1.277-.255-.248-.686-.367-1.3-.367-.28 0-.568.031-.863.103-.295.072-.583.16-.862.272a2.287 2.287 0 0 1-.28.104.488.488 0 0 1-.127.023c-.112 0-.168-.08-.168-.247v-.391c0-.128.016-.224.056-.28a.597.597 0 0 1 .224-.167c.279-.144.614-.264 1.005-.36a4.84 4.84 0 0 1 1.246-.151c.95 0 1.644.216 2.091.647.439.43.662 1.085.662 1.963v2.586zm-3.24 1.214c.263 0 .534-.048.822-.144.287-.096.543-.271.758-.51.128-.152.224-.32.272-.512.047-.191.08-.423.08-.694v-.335a6.66 6.66 0 0 0-.735-.136 6.02 6.02 0 0 0-.75-.048c-.535 0-.926.104-1.19.32-.263.215-.39.518-.39.917 0 .375.095.655.295.846.191.2.47.296.838.296zm6.41.862c-.144 0-.24-.024-.304-.08-.064-.048-.12-.16-.168-.311L7.586 5.55a1.398 1.398 0 0 1-.072-.32c0-.128.064-.2.191-.2h.783c.151 0 .255.025.31.08.065.048.113.16.16.312l1.342 5.284 1.245-5.284c.04-.16.088-.264.151-.312a.549.549 0 0 1 .32-.08h.638c.152 0 .256.025.32.08.063.048.12.16.151.312l1.261 5.348 1.381-5.348c.048-.16.104-.264.16-.312a.52.52 0 0 1 .311-.08h.743c.127 0 .2.065.2.2 0 .04-.009.08-.017.128a1.137 1.137 0 0 1-.056.2l-1.923 6.17c-.048.16-.104.263-.168.311a.51.51 0 0 1-.303.08h-.687c-.151 0-.255-.024-.32-.08-.063-.056-.119-.16-.15-.32l-1.238-5.148-1.23 5.14c-.04.16-.087.264-.15.32-.065.056-.177.08-.32.08zm10.256.215c-.415 0-.83-.048-1.229-.143-.399-.096-.71-.2-.918-.32-.128-.071-.215-.151-.247-.223a.563.563 0 0 1-.048-.224v-.407c0-.167.064-.247.183-.247.048 0 .096.008.144.024.048.016.12.048.2.08.271.12.566.215.878.279.319.064.63.096.95.096.502 0 .894-.088 1.165-.264a.86.86 0 0 0 .415-.758.777.777 0 0 0-.215-.559c-.144-.151-.416-.287-.807-.415l-1.157-.36c-.583-.183-1.014-.454-1.277-.813a1.902 1.902 0 0 1-.4-1.158c0-.335.073-.63.216-.886.144-.255.335-.479.575-.654.24-.184.51-.32.83-.415.32-.096.655-.136 1.006-.136.175 0 .359.008.535.032.183.024.35.056.518.088.16.04.312.08.455.127.144.048.256.096.336.144a.69.69 0 0 1 .24.2.43.43 0 0 1 .071.263v.375c0 .168-.064.256-.184.256a.83.83 0 0 1-.303-.096 3.652 3.652 0 0 0-1.532-.311c-.455 0-.815.071-1.062.223-.248.152-.375.383-.375.71 0 .224.08.416.24.567.159.152.454.304.877.44l1.134.358c.574.184.99.44 1.237.767.247.327.367.702.367 1.117 0 .343-.072.655-.207.926-.144.272-.336.511-.583.703-.248.2-.543.343-.886.447-.36.111-.734.167-1.142.167zM21.698 16.207c-2.626 1.94-6.442 2.969-9.722 2.969-4.598 0-8.74-1.7-11.87-4.526-.247-.223-.024-.527.272-.351 3.384 1.963 7.559 3.153 11.877 3.153 2.914 0 6.114-.607 9.06-1.852.439-.2.814.287.383.607zM22.792 14.961c-.336-.43-2.22-.207-3.074-.103-.255.032-.295-.192-.063-.36 1.5-1.053 3.967-.75 4.254-.399.287.36-.08 2.826-1.485 4.007-.215.184-.423.088-.327-.151.32-.79 1.03-2.57.695-2.994z',
+  },
 };
 
 function AgentBadgeIcon({ agentType }) {
   const t = String(agentType || 'claude').toLowerCase();
+  const inline = AGENT_BADGE_INLINE_SVG[t];
+  if (inline) {
+    return (
+      <svg
+        viewBox={inline.viewBox}
+        width={14}
+        height={14}
+        aria-hidden="true"
+        className="w-3.5 h-3.5 shrink-0 opacity-95"
+        fill={inline.color}
+      >
+        <path d={inline.path} />
+      </svg>
+    );
+  }
   const cfg = AGENT_BADGE_ICON_CDN[t] || { slug: 'anthropic', color: 'd1d5db' };
   const src = `https://cdn.simpleicons.org/${cfg.slug}/${cfg.color}`;
   return (
@@ -779,16 +943,21 @@ function formatQuotaAge(iso) {
   return Math.floor(min / 60) + ' 小時前';
 }
 
-function QuotaBadge({ quota, onRefresh, refreshing, className = '' }) {
+function QuotaBadge({ quota, onRefresh, refreshing, className = '', compact = false }) {
   const text = quota && quota.display_text;
   if (!text || text === '—') return null;
+  const shown = compact ? formatQuotaCompact(text) : text;
+  if (!shown) return null;
   const age = formatQuotaAge(quota.updated_at);
   const title = [text, age, quota.error].filter(Boolean).join(' · ');
   const textCls = quota.error ? 'text-amber-300' : quota.stale ? 'text-slate-600' : 'text-slate-500';
+  const chipCls = compact
+    ? 'ent-chip inline-flex items-center shrink-0 max-w-[4.5rem] font-mono !py-0.5 '
+    : 'inline-flex items-center gap-0.5 min-w-0 max-w-full ';
   return (
-    <span className={'inline-flex items-center gap-0.5 min-w-0 max-w-full ' + className} title={title}>
-      <span className={'text-[10px] sm:text-xs font-mono truncate ' + textCls}>{text}</span>
-      {onRefresh ? (
+    <span className={chipCls + className} title={title}>
+      <span className={'text-[10px] font-mono truncate ' + textCls}>{shown}</span>
+      {!compact && onRefresh ? (
         <button
           type="button"
           onClick={onRefresh}
@@ -803,13 +972,26 @@ function QuotaBadge({ quota, onRefresh, refreshing, className = '' }) {
   );
 }
 
-/** Git 分支角標（與 Agent badge 區隔：橘色系 + git 圖示；長分支名可換行不截斷） */
-function GitBranchBadge({ branch }) {
+function ModelBadge({ model, className = '' }) {
+  const text = model && model.display_text;
+  if (!text || text === '—') return null;
+  const title = [text, model.source, model.updated_at].filter(Boolean).join(' · ');
+  return (
+    <span className={'inline-flex items-center min-w-0 max-w-full ' + className} title={title}>
+      <span className="text-[10px] sm:text-xs font-mono truncate text-violet-300/90">{text}</span>
+    </span>
+  );
+}
+
+function GitBranchBadge({ branch, compact = false }) {
   if (!branch) return null;
   return (
     <span
-      className="inline-flex items-center gap-1 max-w-full min-w-0 text-[10px] px-2 py-0.5 rounded-full font-mono bg-slate-800/80 text-slate-200 border border-slate-600/40"
-      title="Git 分支"
+      className={
+        'ent-chip inline-flex items-center gap-1 min-w-0 font-mono shrink-0 ' +
+        (compact ? 'max-w-[5.5rem]' : 'max-w-[min(14rem,45vw)]')
+      }
+      title={'Git 分支：' + branch}
     >
       <img
         src="https://cdn.simpleicons.org/git/F05032"
@@ -819,9 +1001,9 @@ function GitBranchBadge({ branch }) {
         loading="lazy"
         decoding="async"
         referrerPolicy="no-referrer"
-        className="w-3.5 h-3.5 shrink-0 opacity-95 object-contain self-center"
+        className="w-3 h-3 shrink-0 opacity-95 object-contain"
       />
-      <span className="break-words [overflow-wrap:anywhere] leading-snug text-left">{branch}</span>
+      <span className="truncate leading-none">{branch}</span>
     </span>
   );
 }
@@ -843,6 +1025,15 @@ function workDirGroupShortLabel(dirKey) {
   if (parts.length === 0) return dirKey;
   if (parts.length === 1) return parts[0];
   return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
+}
+
+/** 路徑最後一段，作為預設 Session 名稱 */
+function workDirBasename(dirKey) {
+  const unset = '（未設定工作目錄）';
+  if (!dirKey || dirKey === unset) return '';
+  const p = String(dirKey).replace(/[/\\]+$/, '');
+  const parts = p.split(/[/\\]/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : '';
 }
 
 /** 依工作目錄排序用：空白路徑置底，其餘依路徑 localeCompare（numeric）。 */
@@ -1069,7 +1260,7 @@ function ForwardModal({
           work_dir: newWorkDir.trim(),
           permission_mode: newMode,
           agent_type: newAgent,
-          cli_extra_args: newAgent === 'claude' ? parseCliExtraArgs(cliMerged) : [],
+          cli_extra_args: parseCliExtraArgs(cliMerged),
           input_mode: 'agent',
         }),
       });
@@ -1300,6 +1491,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
   const [newMode, setNewMode]     = useState('default');
   const [newAgent, setNewAgent]   = useState('claude');
   const [newCliExtra, setNewCliExtra] = useState('');
+  const [newModel, setNewModel] = useState('');
   const [loading, setLoading]     = useState(false);
   const [renamingId, setRenamingId] = useState(null);
   const [renameVal, setRenameVal]   = useState('');
@@ -1339,6 +1531,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
   const create = async () => {
     if (!newName.trim()) return;
     setLoading(true);
+    const cliMerged = mergeModelIntoCliExtraLines(newCliExtra, newModel);
     const res = await apiFetch('/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1347,12 +1540,12 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
         work_dir: newDir.trim(),
         permission_mode: newMode,
         agent_type: newAgent,
-        cli_extra_args: newAgent === 'claude' ? parseCliExtraArgs(newCliExtra) : [],
+        cli_extra_args: parseCliExtraArgs(cliMerged),
       }),
     });
     setLoading(false);
     if (!res.ok) return;
-    setNewName(''); setNewDir(''); setNewMode('default'); setNewAgent('claude'); setNewCliExtra('');
+    setNewName(''); setNewDir(''); setNewMode('default'); setNewAgent('claude'); setNewCliExtra(''); setNewModel('');
     setShowForm(false);
     load();
   };
@@ -1524,7 +1717,9 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
 
   const openNewSessionForDir = (dirKey) => {
     const unset = '（未設定工作目錄）';
-    setNewDir(dirKey === unset ? '' : dirKey);
+    const dir = dirKey === unset ? '' : dirKey;
+    setNewDir(dir);
+    setNewName(workDirBasename(dirKey));
     setShowForm(true);
   };
 
@@ -1757,6 +1952,17 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
               )}
             </div>
           </div>
+          {newAgent !== 'antigravity' && (
+            <div className="min-w-0 space-y-1">
+              <div className="text-[10px] uppercase tracking-wide text-slate-500">Model（選填，寫入 --model）</div>
+              <input
+                value={newModel}
+                onChange={(e) => setNewModel(e.target.value)}
+                placeholder="例如 sonnet、claude-sonnet-4.6、auto"
+                className="w-full min-w-0 bg-slate-900/80 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-600 font-mono"
+              />
+            </div>
+          )}
           {newAgent === 'claude' && (
             <div className="min-w-0 space-y-1">
               <div className="text-[10px] uppercase tracking-wide text-slate-500">自訂 CLI 引數（選填）</div>
@@ -1873,6 +2079,78 @@ function SlashCommandMenu({ items, activeIndex, onSelect }) {
 }
 
 // ── 聊天畫面 ─────────────────────────────────────────────────────────────────
+
+function ChatSessionHeader({
+  session, showBack, onBack, agentType, state, activityHint, sessionModel, quota, quotaRefreshing, onQuotaRefresh,
+  headerCollapsed, onToggleHeader, onExpandHeader, showPermModeSelect, inputMode, usePermModeDropdown, mode, modeSwitchDisabled, onPermModeChange,
+}) {
+  const expanded = !headerCollapsed;
+  const showPerm = showPermModeSelect && inputMode === 'agent';
+  const permTitle =
+    agentType === 'antigravity' ? 'Antigravity 核准模式（--approval-mode）'
+    : agentType === 'cursor' ? '權限模式（bypass：Cursor 會加 --force）' : '權限模式';
+
+  return (
+    <div
+      className="shrink-0 ent-topbar border-b border-slate-700/60"
+      style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top) + var(--tg-content-safe-top))' }}
+    >
+      <div className="ent-chat-primary">
+        {showBack && (
+          <button type="button" onClick={onBack}
+            className="shrink-0 text-slate-400 hover:text-slate-100 text-lg leading-none px-1.5 py-1 rounded-md hover:bg-slate-800/80 transition-colors">
+            ←
+          </button>
+        )}
+        <div className="enterprise-display font-semibold text-base text-slate-100 truncate leading-snug min-w-0 flex-1" title={session.name}>
+          {session.name || '未命名'}
+        </div>
+        <SessionStateChip state={state} activityHint={activityHint} compact={headerCollapsed} className="sm:!normal-case" />
+        <HeaderToggleButton expanded={expanded} onToggle={onToggleHeader} />
+      </div>
+      {headerCollapsed ? (
+        <div className="ent-chat-meta sm:hidden !py-1">
+          <AgentIconChip agentType={agentType} />
+          <GitBranchBadge branch={session.git_branch} compact />
+          <QuotaBadge quota={quota} compact />
+          {showPerm ? <PermModeIconChip agentType={agentType} value={mode} onClick={onExpandHeader} disabled={modeSwitchDisabled} /> : null}
+        </div>
+      ) : null}
+      <div className={headerCollapsed ? 'hidden sm:block ent-chat-meta' : 'ent-chat-meta'}>
+        <span className={`ent-chip font-mono uppercase ${getAgentBadgeClass(agentType)}`}>
+          <AgentBadgeIcon agentType={agentType} />
+          {agentType}
+        </span>
+        <GitBranchBadge branch={session.git_branch} />
+        <ModelBadge model={sessionModel} />
+        <QuotaBadge
+          quota={quota}
+          onRefresh={agentType !== 'antigravity' ? onQuotaRefresh : null}
+          refreshing={quotaRefreshing}
+          className="!rounded !px-2 !py-0.5"
+        />
+        {session.work_dir ? (
+          <span className="ent-chip font-mono max-w-[min(14rem,45vw)] truncate" title={session.work_dir}>
+            {session.work_dir}
+          </span>
+        ) : null}
+      </div>
+      {showPerm ? (
+        <div className={headerCollapsed ? 'hidden sm:block ent-perm-row' : 'ent-perm-row'}>
+          {usePermModeDropdown ? (
+            <div className="flex items-center gap-2 min-w-0 w-full">
+              <span className="shrink-0 text-xs text-slate-500 w-10">權限</span>
+              <PermModeSelect agentType={agentType} value={mode} onChange={onPermModeChange} disabled={modeSwitchDisabled} title={permTitle} id="chat-perm-mode-enterprise" className="flex-1 min-w-0" />
+            </div>
+          ) : (
+            <PermModeSwitch agentType={agentType} value={mode} onChange={onPermModeChange} disabled={modeSwitchDisabled} title={permTitle} />
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ChatView({ session, onBack, showBack = true, fullHeight = true, usePermModeDropdown = false, onJumpToSession, allSessions }) {
   const jumpToSession = typeof onJumpToSession === 'function' ? onJumpToSession : () => {};
   const agentType = session.agent_type || 'claude';
@@ -1888,6 +2166,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const [shellRequest, setShellRequest] = useState(null);
   const [quota, setQuota] = useState(null);
   const [quotaRefreshing, setQuotaRefreshing] = useState(false);
+  const [sessionModel, setSessionModel] = useState(null);
   const [forwardModal, setForwardModal] = useState(null);
   const [forwardHints, setForwardHints] = useState({});
   const [slashMenuItems, setSlashMenuItems] = useState([]);
@@ -1906,6 +2185,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const reconnectTimerRef = useRef(null);
   const serverPermAppliedRef = useRef(null);
   const serverInputAppliedRef = useRef(null);
+  const { collapsed: headerCollapsed, toggle: toggleHeader, setCollapsed: setHeaderCollapsed } = useChatHeaderCollapsed();
 
   const syncChatNearBottom = useCallback(() => {
     const el = chatScrollRef.current;
@@ -2089,12 +2369,18 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             setMessages(mapped);
           }
           if (msg.quota) setQuota(msg.quota);
+          if (msg.model) setSessionModel(msg.model);
           return;
         }
 
         if (msg.type === 'quota_update' && msg.quota) {
           setQuota(msg.quota);
           setQuotaRefreshing(false);
+          return;
+        }
+
+        if (msg.type === 'model_update' && msg.model) {
+          setSessionModel(msg.model);
           return;
         }
 
@@ -2460,91 +2746,27 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
 
   return (
     <div className={`flex flex-col ${fullHeight ? 'h-app' : 'h-full'}`}>
-      <div
-        className="shrink-0 ent-topbar border-b border-slate-700/60"
-        style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top) + var(--tg-content-safe-top))' }}
-      >
-        <div className="ent-chat-primary">
-          {showBack && (
-            <button type="button" onClick={onBack}
-              className="shrink-0 text-slate-400 hover:text-slate-100 text-lg leading-none px-1.5 py-1 rounded-md hover:bg-slate-800/80 transition-colors">
-              ←
-            </button>
-          )}
-          <div className="enterprise-display font-semibold text-base text-slate-100 break-words [overflow-wrap:anywhere] leading-snug min-w-0 flex-1">
-            {session.name || '未命名'}
-          </div>
-          <span
-            title={state}
-            className={`text-[10px] sm:text-xs px-2 py-0.5 rounded font-semibold uppercase tracking-wide shrink-0 ${
-              state === 'IDLE'            ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/50' :
-              state === 'THINKING'        ? 'bg-blue-950/80 text-blue-400 border border-blue-800/50' :
-              state === 'STREAMING'       ? 'bg-sky-950/80 text-sky-300 border border-sky-800/50' :
-              state === 'SHELL_EXEC'      ? 'bg-fuchsia-950/80 text-fuchsia-200 border border-fuchsia-800/50' :
-              state === 'AWAITING_SHELL_CONFIRM' ? 'bg-orange-950/85 text-orange-200 border border-orange-800/50' :
-              'bg-amber-950/80 text-amber-200 border border-amber-800/50'
-            }`}
-          >
-            {state === 'THINKING' && activityHint ? activityHint : (SESSION_STATE_LABEL[state] || state)}
-          </span>
-        </div>
-        <div className="ent-chat-meta">
-          <span className={`ent-chip font-mono uppercase ${getAgentBadgeClass(agentType)}`}>
-            <AgentBadgeIcon agentType={agentType} />
-            {agentType}
-          </span>
-          <GitBranchBadge branch={session.git_branch} />
-          <QuotaBadge
-            quota={quota}
-            onRefresh={agentType !== 'antigravity' ? handleQuotaRefresh : null}
-            refreshing={quotaRefreshing}
-            className="!rounded !px-2 !py-0.5"
-          />
-          {session.work_dir && (
-            <span className="ent-chip font-mono max-w-[min(14rem,45vw)] truncate" title={session.work_dir}>
-              {session.work_dir}
-            </span>
-          )}
-        </div>
-        {showPermModeSelect && inputMode === 'agent' && (
-          <div className="ent-perm-row">
-            {usePermModeDropdown ? (
-              <div className="flex items-center gap-2 min-w-0 w-full">
-                <span className="shrink-0 text-xs text-slate-500 w-10">權限</span>
-                <PermModeSelect
-                  agentType={agentType}
-                  value={mode}
-                  onChange={handlePermModeDraftChange}
-                  disabled={modeSwitchDisabled}
-                  title={
-                    agentType === 'antigravity'
-                      ? 'Antigravity 核准模式（--approval-mode）'
-                      : agentType === 'cursor'
-                      ? '權限模式（bypass：Cursor 會加 --force）'
-                      : '權限模式'
-                  }
-                  id="chat-perm-mode-enterprise"
-                  className="flex-1 min-w-0"
-                />
-              </div>
-            ) : (
-              <PermModeSwitch
-                agentType={agentType}
-                value={mode}
-                onChange={handlePermModeDraftChange}
-                disabled={modeSwitchDisabled}
-                title={
-                  agentType === 'antigravity'
-                    ? 'Antigravity 核准模式（--approval-mode）'
-                    : agentType === 'cursor'
-                    ? '權限模式（bypass：Cursor 會加 --force）'
-                    : '權限模式'
-                }
-              />
-            )}
-          </div>
-        )}
-      </div>
+      <ChatSessionHeader
+        session={session}
+        showBack={showBack}
+        onBack={onBack}
+        agentType={agentType}
+        state={state}
+        activityHint={activityHint}
+        sessionModel={sessionModel}
+        quota={quota}
+        quotaRefreshing={quotaRefreshing}
+        onQuotaRefresh={handleQuotaRefresh}
+        headerCollapsed={headerCollapsed}
+        onToggleHeader={toggleHeader}
+        onExpandHeader={() => setHeaderCollapsed(false)}
+        showPermModeSelect={showPermModeSelect}
+        inputMode={inputMode}
+        usePermModeDropdown={usePermModeDropdown}
+        mode={mode}
+        modeSwitchDisabled={modeSwitchDisabled}
+        onPermModeChange={handlePermModeDraftChange}
+      />
 
       {/* 訊息列表 */}
       <div

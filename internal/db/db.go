@@ -88,6 +88,9 @@ func (db *DB) migrate() error {
 	// 新增 shell_pending 欄位（已存在時忽略）
 	tryAlter(`ALTER TABLE sessions ADD COLUMN shell_pending TEXT NOT NULL DEFAULT ''`)
 	tryAlter(`ALTER TABLE messages ADD COLUMN result_text TEXT NOT NULL DEFAULT ''`)
+	tryAlter(`ALTER TABLE sessions ADD COLUMN active_model TEXT NOT NULL DEFAULT ''`)
+	tryAlter(`ALTER TABLE sessions ADD COLUMN active_model_source TEXT NOT NULL DEFAULT ''`)
+	tryAlter(`ALTER TABLE sessions ADD COLUMN active_model_at TEXT NOT NULL DEFAULT ''`)
 
 	return nil
 }

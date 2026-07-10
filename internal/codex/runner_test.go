@@ -70,7 +70,7 @@ func TestBuildArgsFirstTurn(t *testing.T) {
 		WorkDir: "/tmp/wd",
 	})
 	joined := strings.Join(args, " ")
-	for _, want := range []string{"exec", "--json", "--skip-git-repo-check", "-C", "/tmp/wd", "-s", "workspace-write", "hello"} {
+	for _, want := range []string{"exec", "--json", "--skip-git-repo-check", "--yolo", "-C", "/tmp/wd", "hello"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("missing %q in %q", want, joined)
 		}
