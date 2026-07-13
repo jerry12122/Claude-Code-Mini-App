@@ -120,7 +120,8 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 		log.Printf("[ws] session %s connected (agent=%s agentSessionID=%q mode=%s)", sessionID, sess.AgentType, sess.AgentSessionID, sess.PermissionMode)
 		defer log.Printf("[ws] session %s disconnected", sessionID)
 
-		var mu sync.Mutex
+		var mu sync.Mutex       // 保護 agentSessionID 等連線狀態
+		var writeMu sync.Mutex  // 序列化 WebSocket 寫入（goroutine 不可並發 WriteMessage）
 		agentType := sess.AgentType
 		if agentType == "" {
 			agentType = agent.TypeClaude
@@ -131,6 +132,8 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 
 		send := func(msg serverMsg) bool {
 			b, _ := json.Marshal(msg)
+			writeMu.Lock()
+			defer writeMu.Unlock()
 			return c.WriteMessage(1, b) == nil
 		}
 
