@@ -402,8 +402,23 @@ function useChatHeaderCollapsed() {
   };
 }
 
-function formatQuotaCompact(displayText) {
+function formatKiroCreditRemaining(displayText) {
+  const m = String(displayText).match(/\(([\d.]+)\s*\/\s*([\d.]+)\)/);
+  if (!m) return '';
+  const used = parseFloat(m[1]);
+  const limit = parseFloat(m[2]);
+  if (!Number.isFinite(used) || !Number.isFinite(limit) || limit <= 0) return '';
+  const remaining = Math.max(0, limit - used);
+  const fmt = (n) => (Math.abs(n - Math.round(n)) < 0.05 ? String(Math.round(n)) : n.toFixed(1));
+  return fmt(remaining) + '/' + fmt(limit);
+}
+
+function formatQuotaCompact(displayText, agentType) {
   if (!displayText || displayText === '—') return '';
+  if (String(agentType || '').toLowerCase() === 'kiro') {
+    const kiro = formatKiroCreditRemaining(displayText);
+    if (kiro) return kiro;
+  }
   const first = String(displayText).split(' · ')[0].trim();
   if (first.length <= 11) return first;
   const m = first.match(/(\d+(?:\.\d+)?)\s*%/);
@@ -826,16 +841,17 @@ function formatQuotaAge(iso) {
   return Math.floor(min / 60) + ' 小時前';
 }
 
-function QuotaBadge({ quota, onRefresh, refreshing, className = '', compact = false }) {
+function QuotaBadge({ quota, onRefresh, refreshing, className = '', compact = false, agentType = '' }) {
   const text = quota && quota.display_text;
   if (!text || text === '—') return null;
-  const shown = compact ? formatQuotaCompact(text) : text;
+  const shown = compact ? formatQuotaCompact(text, agentType) : text;
   if (!shown) return null;
   const age = formatQuotaAge(quota.updated_at);
   const title = [text, age, quota.error].filter(Boolean).join(' · ');
   const textCls = quota.error ? 'text-amber-300' : quota.stale ? 'text-zinc-600' : 'text-zinc-500';
+  const compactMaxW = String(agentType || '').toLowerCase() === 'kiro' ? 'max-w-[6.5rem]' : 'max-w-[4.5rem]';
   const chipCls = compact
-    ? 'inline-flex items-center shrink-0 max-w-[4.5rem] px-1.5 py-0.5 rounded-md border border-zinc-700/45 bg-zinc-900/45 '
+    ? 'inline-flex items-center shrink-0 ' + compactMaxW + ' px-1.5 py-0.5 rounded-md border border-zinc-700/45 bg-zinc-900/45 '
     : 'inline-flex items-center gap-0.5 min-w-0 max-w-full ';
   return (
     <span className={chipCls + className} title={title}>
@@ -1977,7 +1993,7 @@ function FocusChatStatusBar({
             <AgentIconChip agentType={agentType} />
             <SessionStateChip state={state} activityHint={activityHint} compact />
             <GitBranchBadge branch={session.git_branch} compact />
-            <QuotaBadge quota={quota} compact />
+            <QuotaBadge quota={quota} compact agentType={agentType} />
             {showPerm ? <PermModeIconChip agentType={agentType} value={mode} onClick={onExpandHeader} disabled={modeSwitchDisabled} /> : null}
           </div>
         ) : null}
@@ -1989,8 +2005,14 @@ function FocusChatStatusBar({
             </span>
             <SessionStateChip state={state} activityHint={activityHint} />
             <GitBranchBadge branch={session.git_branch} />
-            <ModelBadge model={sessionModel} />
-            <QuotaBadge quota={quota} onRefresh={agentType !== 'antigravity' ? onQuotaRefresh : null} refreshing={quotaRefreshing} />
+            <div className="hidden sm:contents">
+              <ModelBadge model={sessionModel} />
+              <QuotaBadge quota={quota} onRefresh={agentType !== 'antigravity' ? onQuotaRefresh : null} refreshing={quotaRefreshing} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1 min-w-0 sm:hidden">
+            <ModelBadge model={sessionModel} className="w-full max-w-full" />
+            <QuotaBadge quota={quota} onRefresh={agentType !== 'antigravity' ? onQuotaRefresh : null} refreshing={quotaRefreshing} className="w-full max-w-full" />
           </div>
           {session.work_dir ? (
             <div className="text-[11px] text-zinc-500 font-mono truncate" title={session.work_dir}>{session.work_dir}</div>

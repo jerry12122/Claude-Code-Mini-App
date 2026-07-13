@@ -521,8 +521,23 @@ function useChatHeaderCollapsed() {
   };
 }
 
-function formatQuotaCompact(displayText) {
+function formatKiroCreditRemaining(displayText) {
+  const m = String(displayText).match(/\(([\d.]+)\s*\/\s*([\d.]+)\)/);
+  if (!m) return '';
+  const used = parseFloat(m[1]);
+  const limit = parseFloat(m[2]);
+  if (!Number.isFinite(used) || !Number.isFinite(limit) || limit <= 0) return '';
+  const remaining = Math.max(0, limit - used);
+  const fmt = (n) => (Math.abs(n - Math.round(n)) < 0.05 ? String(Math.round(n)) : n.toFixed(1));
+  return fmt(remaining) + '/' + fmt(limit);
+}
+
+function formatQuotaCompact(displayText, agentType) {
   if (!displayText || displayText === '—') return '';
+  if (String(agentType || '').toLowerCase() === 'kiro') {
+    const kiro = formatKiroCreditRemaining(displayText);
+    if (kiro) return kiro;
+  }
   const first = String(displayText).split(' · ')[0].trim();
   if (first.length <= 11) return first;
   const m = first.match(/(\d+(?:\.\d+)?)\s*%/);
@@ -943,16 +958,17 @@ function formatQuotaAge(iso) {
   return Math.floor(min / 60) + ' 小時前';
 }
 
-function QuotaBadge({ quota, onRefresh, refreshing, className = '', compact = false }) {
+function QuotaBadge({ quota, onRefresh, refreshing, className = '', compact = false, agentType = '' }) {
   const text = quota && quota.display_text;
   if (!text || text === '—') return null;
-  const shown = compact ? formatQuotaCompact(text) : text;
+  const shown = compact ? formatQuotaCompact(text, agentType) : text;
   if (!shown) return null;
   const age = formatQuotaAge(quota.updated_at);
   const title = [text, age, quota.error].filter(Boolean).join(' · ');
   const textCls = quota.error ? 'text-amber-300' : quota.stale ? 'text-slate-600' : 'text-slate-500';
+  const compactMaxW = String(agentType || '').toLowerCase() === 'kiro' ? 'max-w-[6.5rem]' : 'max-w-[4.5rem]';
   const chipCls = compact
-    ? 'ent-chip inline-flex items-center shrink-0 max-w-[4.5rem] font-mono !py-0.5 '
+    ? 'ent-chip inline-flex items-center shrink-0 ' + compactMaxW + ' font-mono !py-0.5 '
     : 'inline-flex items-center gap-0.5 min-w-0 max-w-full ';
   return (
     <span className={chipCls + className} title={title}>
@@ -2112,27 +2128,58 @@ function ChatSessionHeader({
         <div className="ent-chat-meta sm:hidden !py-1">
           <AgentIconChip agentType={agentType} />
           <GitBranchBadge branch={session.git_branch} compact />
-          <QuotaBadge quota={quota} compact />
+          <QuotaBadge quota={quota} compact agentType={agentType} />
           {showPerm ? <PermModeIconChip agentType={agentType} value={mode} onClick={onExpandHeader} disabled={modeSwitchDisabled} /> : null}
         </div>
       ) : null}
-      <div className={headerCollapsed ? 'hidden sm:block ent-chat-meta' : 'ent-chat-meta'}>
-        <span className={`ent-chip font-mono uppercase ${getAgentBadgeClass(agentType)}`}>
-          <AgentBadgeIcon agentType={agentType} />
-          {agentType}
-        </span>
-        <GitBranchBadge branch={session.git_branch} />
-        <ModelBadge model={sessionModel} />
-        <QuotaBadge
-          quota={quota}
-          onRefresh={agentType !== 'antigravity' ? onQuotaRefresh : null}
-          refreshing={quotaRefreshing}
-          className="!rounded !px-2 !py-0.5"
-        />
-        {session.work_dir ? (
-          <span className="ent-chip font-mono max-w-[min(14rem,45vw)] truncate" title={session.work_dir}>
-            {session.work_dir}
+      <div className={headerCollapsed ? 'hidden sm:block' : ''}>
+        <div className={'hidden sm:flex ent-chat-meta' + (headerCollapsed ? '' : '')}>
+          <span className={`ent-chip font-mono uppercase ${getAgentBadgeClass(agentType)}`}>
+            <AgentBadgeIcon agentType={agentType} />
+            {agentType}
           </span>
+          <GitBranchBadge branch={session.git_branch} />
+          <ModelBadge model={sessionModel} />
+          <QuotaBadge
+            quota={quota}
+            onRefresh={agentType !== 'antigravity' ? onQuotaRefresh : null}
+            refreshing={quotaRefreshing}
+            className="!rounded !px-2 !py-0.5"
+          />
+          {session.work_dir ? (
+            <span className="ent-chip font-mono max-w-[min(14rem,45vw)] truncate" title={session.work_dir}>
+              {session.work_dir}
+            </span>
+          ) : null}
+        </div>
+        {!headerCollapsed ? (
+          <div className="sm:hidden flex flex-col">
+            <div className="ent-chat-meta !border-b-0">
+              <span className={`ent-chip font-mono uppercase ${getAgentBadgeClass(agentType)}`}>
+                <AgentBadgeIcon agentType={agentType} />
+                {agentType}
+              </span>
+              <GitBranchBadge branch={session.git_branch} />
+            </div>
+            <div className="ent-chat-meta !border-b-0 !pt-0">
+              <ModelBadge model={sessionModel} className="ent-chip w-full max-w-full !justify-start" />
+            </div>
+            <div className="ent-chat-meta !pt-0">
+              <QuotaBadge
+                quota={quota}
+                onRefresh={agentType !== 'antigravity' ? onQuotaRefresh : null}
+                refreshing={quotaRefreshing}
+                className="ent-chip w-full max-w-full !rounded !px-2 !py-0.5 !justify-start"
+              />
+            </div>
+            {session.work_dir ? (
+              <div className="ent-chat-meta !border-t-0 !pt-0">
+                <span className="ent-chip font-mono w-full max-w-full truncate !justify-start" title={session.work_dir}>
+                  {session.work_dir}
+                </span>
+              </div>
+            ) : null}
+          </div>
         ) : null}
       </div>
       {showPerm ? (
