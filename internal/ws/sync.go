@@ -69,6 +69,7 @@ func buildSyncPayload(database *db.DB, sessionID string) (SyncPayload, error) {
 		Content    string `json:"content"`
 		ResultText string `json:"result_text,omitempty"`
 		Status     string `json:"status"`
+		CreatedAt  string `json:"created_at,omitempty"`
 	}
 	out := make([]row, 0, len(msgs))
 	for _, m := range msgs {
@@ -76,7 +77,10 @@ func buildSyncPayload(database *db.DB, sessionID string) (SyncPayload, error) {
 		if st == "" {
 			st = db.MessageStatusDone
 		}
-		out = append(out, row{ID: m.ID, Role: m.Role, Content: m.Content, ResultText: m.ResultText, Status: st})
+		out = append(out, row{
+			ID: m.ID, Role: m.Role, Content: m.Content, ResultText: m.ResultText,
+			Status: st, CreatedAt: m.CreatedAt,
+		})
 	}
 	raw, err := json.Marshal(out)
 	if err != nil {

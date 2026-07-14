@@ -80,7 +80,7 @@
     }
     .ra-cmd-bar {
       display: flex;
-      align-items: center;
+      align-items: flex-end;
       gap: 10px;
       background: oklch(0.19 0.02 264);
       border: 1px solid oklch(0.3 0.02 264);
@@ -996,6 +996,36 @@ function sessionLastActiveMs(s) {
   return Number.isNaN(t) ? 0 : t;
 }
 
+/** 解析訊息 created_at（SQLite datetime / ISO）為 Date；無效則回 null */
+function parseMessageCreatedAt(raw) {
+  if (raw == null || raw === '') return null;
+  const s = String(raw).trim();
+  // SQLite datetime('now') 為 UTC 且無時區後綴；補 Z 以免被當成本地時間
+  let normalized = s;
+  if (!s.includes('T')) normalized = s.replace(' ', 'T');
+  if (!/[zZ]|[+-]\d{2}:?\d{2}$/.test(normalized)) normalized += 'Z';
+  const t = Date.parse(normalized);
+  if (Number.isNaN(t)) return null;
+  return new Date(t);
+}
+
+/** 聊天氣泡下方時間：今日僅 HH:mm；昨日「昨天 HH:mm」；同年 M/D HH:mm；跨年 YYYY/M/D HH:mm */
+function formatMessageTime(raw) {
+  const d = parseMessageCreatedAt(raw);
+  if (!d) return '';
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const startOfDay = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const dayDiff = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
+  if (dayDiff === 0) return hm;
+  if (dayDiff === 1) return `昨天 ${hm}`;
+  if (d.getFullYear() === now.getFullYear()) {
+    return `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
+  }
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${hm}`;
+}
+
 /** 目錄分組標頭：顯示路徑最後兩段，避免過長 */
 function workDirGroupShortLabel(dirKey) {
   const unset = '（未設定工作目錄）';
@@ -1130,6 +1160,7 @@ function mapMessageRow(m) {
     content,
     resultText,
     status,
+    createdAt: m.created_at || m.createdAt || null,
     html: role === 'claude' ? (content ? parseMarkdown(content) : null) : null,
     streaming: pending,
     exitCode: role === 'shell' ? parseShellExitCode(content) : undefined,
@@ -2486,7 +2517,17 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             const mapped = rows.map(mapMessageRow);
             const lastClaude = [...rows].reverse().find((m) => m.role === 'claude' && (m.status || 'done') === 'pending');
             streamBuf.current = lastClaude ? (lastClaude.content || '') : '';
-            setMessages(mapped);
+            setMessages((prev) => {
+              const byId = new Map();
+              for (const m of prev) {
+                if (m.id != null && m.createdAt) byId.set(m.id, m.createdAt);
+              }
+              return mapped.map((m) => (
+                m.createdAt || m.id == null || !byId.has(m.id)
+                  ? m
+                  : { ...m, createdAt: byId.get(m.id) }
+              ));
+            });
           }
           if (msg.quota) setQuota(msg.quota);
           if (msg.model) setSessionModel(msg.model);
@@ -2518,7 +2559,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               if (last && last.role === 'claude' && last.streaming && last.status === 'pending') {
                 return prev;
               }
-              return [...prev, { role: 'claude', content: '', html: null, streaming: true, status: 'pending' }];
+              return [...prev, { role: 'claude', content: '', html: null, streaming: true, status: 'pending', createdAt: new Date().toISOString() }];
             });
           }
           if (msg.value === 'SHELL_RUNNING' || msg.value === 'SHELL_EXEC') {
@@ -2527,7 +2568,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             setMessages((prev) => {
               const last = prev[prev.length - 1];
               if (last && last.role === 'shell' && last.streaming) return prev;
-              return [...prev, { role: 'shell', content: '', html: null, streaming: true, status: 'pending' }];
+              return [...prev, { role: 'shell', content: '', html: null, streaming: true, status: 'pending', createdAt: new Date().toISOString() }];
             });
           }
           if (msg.value === 'SHELL_IDLE') {
@@ -2560,7 +2601,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         }
 
         if (msg.type === 'user_message') {
-          setMessages(prev => [...prev, { role: 'user', content: msg.content }]);
+          setMessages(prev => [...prev, { role: 'user', content: msg.content, createdAt: msg.created_at || new Date().toISOString() }]);
         }
 
         if (msg.type === 'activity') {
@@ -2926,15 +2967,17 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     return () => document.removeEventListener('mousedown', onDocMouseDown);
   }, [slashMenuOpen]);
 
-  /** 聊天輸入框：依內容伸縮高度，並遵守 CSS max-height（min(40vh,12rem)） */
+  /** 聊天輸入框：依內容動態增高；未達上限不出現卷軸 */
   useLayoutEffect(() => {
     const el = chatInputRef.current;
     if (!el || state === 'THINKING' || state === 'STREAMING' || state === 'SHELL_RUNNING' || state === 'SHELL_EXEC' || state === 'AWAITING_SHELL_CONFIRM') return;
-    el.style.height = '0px';
+    el.style.height = 'auto';
     const maxStr = getComputedStyle(el).maxHeight;
     const maxPx = parseFloat(maxStr);
     const cap = Number.isFinite(maxPx) && maxPx > 0 ? maxPx : 12 * 16;
-    el.style.height = `${Math.min(el.scrollHeight, cap)}px`;
+    const needed = el.scrollHeight;
+    el.style.height = `${Math.min(needed, cap)}px`;
+    el.style.overflowY = needed > cap + 1 ? 'auto' : 'hidden';
   }, [input, state]);
 
   return (
@@ -2982,17 +3025,19 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             (state === 'THINKING' || state === 'STREAMING') &&
             m.role === 'claude' &&
             i === messages.length - 1;
+          const timeLabel = formatMessageTime(m.createdAt);
           return (
           <div
             key={m.id != null ? `m-${m.id}` : i}
             className={`flex w-full min-w-0 ${m.role === 'user' ? 'justify-end' : 'justify-start'} ${m.role === 'claude' || m.role === 'shell' ? 'group' : ''}`}
           >
+            <div className={`flex flex-col min-w-0 ${m.role === 'user' ? 'items-end max-w-[60%]' : m.role === 'shell' ? 'items-start max-w-[85%]' : 'items-start max-w-[78%]'}`}>
             {m.role === 'user' ? (
-              <div className="bubble-user text-white px-4 py-3 text-sm w-fit max-w-[60%] min-w-0">
+              <div className="bubble-user text-white px-4 py-3 text-sm w-fit max-w-full min-w-0">
                 <div className="whitespace-pre-wrap break-words leading-relaxed">{m.content}</div>
               </div>
             ) : m.role === 'shell' ? (
-              <div className="bubble-shell px-4 py-3 text-sm w-fit max-w-[85%] min-w-0">
+              <div className="bubble-shell px-4 py-3 text-sm w-fit max-w-full min-w-0">
                 <div className="flex items-start justify-between gap-2 mb-1.5 min-w-0">
                   <span className="inline-flex items-center gap-1 font-mono text-amber-500/80 text-xs">
                     <span>&gt;_</span>
@@ -3021,10 +3066,12 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               </div>
             ) : (
               /* Claude — 設計 1a 文件流：頭像列 + 無邊框正文 */
-              <div className="bubble-claude w-fit max-w-[78%] min-w-0 flex flex-col gap-3">
+              <div className="bubble-claude w-fit max-w-full min-w-0 flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-2 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center justify-center w-[22px] h-[22px] rounded-md bg-[oklch(0.68_0.14_45_/20%)] text-[oklch(0.68_0.14_45)] text-xs shrink-0" aria-hidden>✳</span>
+                    <span className={`inline-flex items-center justify-center w-[22px] h-[22px] rounded-md shrink-0 ${getAgentBadgeClass(agentType)}`} aria-hidden>
+                      <AgentBadgeIcon agentType={agentType} />
+                    </span>
                     <span className="text-[13px] font-bold text-[oklch(0.85_0.01_264)]">{AGENT_LABEL[agentType] || agentType || 'Claude'}</span>
                   </div>
                   <div className="shrink-0 flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
@@ -3065,6 +3112,12 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 ) : null}
               </div>
             )}
+            {timeLabel ? (
+              <div className="mt-1 px-0.5 text-[10px] leading-none text-[oklch(0.48_0.01_264)] tabular-nums select-none" title={String(m.createdAt || '')}>
+                {timeLabel}
+              </div>
+            ) : null}
+            </div>
           </div>
           );
         })}
@@ -3169,7 +3222,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               showLabel
               agentLabel={AGENT_LABEL[agentType] || 'Claude'}
             />
-            <div className="relative flex flex-1 min-w-0 items-center" ref={slashInputWrapRef}>
+            <div className="relative flex flex-1 min-w-0 items-end" ref={slashInputWrapRef}>
               {slashMenuOpen && (
                 <SlashCommandMenu
                   items={slashMenuItems}
@@ -3204,7 +3257,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 placeholder={inputMode === 'shell' ? `輸入 ${shellType || 'Shell'} 指令…` : '輸入指令…'}
                 rows={1}
                 className={[
-                  'flex-1 min-w-0 w-full resize-none overflow-y-auto app-scroll border-0 bg-transparent px-1 py-1.5 text-[13.5px] leading-relaxed placeholder-[oklch(0.5_0.01_264)] focus:outline-none disabled:opacity-40 min-h-[2rem] max-h-[min(40vh,12rem)] box-border',
+                  'flex-1 min-w-0 w-full resize-none overflow-hidden border-0 bg-transparent px-1 py-1.5 text-[13.5px] leading-relaxed placeholder-[oklch(0.5_0.01_264)] focus:outline-none disabled:opacity-40 min-h-[2rem] max-h-[min(40vh,12rem)] box-border',
                   inputMode === 'shell' ? 'text-amber-50 font-mono placeholder-amber-900/60' : 'text-[oklch(0.9_0.01_264)]',
                 ].join(' ')}
               />
