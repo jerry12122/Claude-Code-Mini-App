@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/agent"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
@@ -12,8 +13,10 @@ import (
 )
 
 const (
-	maxCliExtraArgs    = 64
-	maxCliExtraArgLen  = 4096
+	maxCliExtraArgs   = 64
+	maxCliExtraArgLen = 4096
+	// gitBranchWorkers：List 時 unique work_dir 平行查分支的併發上限
+	gitBranchWorkers = 8
 )
 
 // normalizeCliExtraArgs 修剪空白、略過空行，並限制數量與單一長度（與前端「每行一個引數」一致，路徑含空格不會被切開）。
@@ -63,8 +66,50 @@ func (h *SessionHandler) List(c *fiber.Ctx) error {
 	if sessions == nil {
 		sessions = []*db.Session{}
 	}
+
+	dirs := make([]string, 0, len(sessions))
+	seen := make(map[string]struct{}, len(sessions))
 	for _, s := range sessions {
-		enrichGitBranch(s)
+		wd := strings.TrimSpace(s.WorkDir)
+		if wd == "" {
+			continue
+		}
+		if _, ok := seen[wd]; ok {
+			continue
+		}
+		seen[wd] = struct{}{}
+		dirs = append(dirs, wd)
+	}
+
+	branchByDir := make(map[string]string, len(dirs))
+	if len(dirs) > 0 {
+		var mu sync.Mutex
+		var wg sync.WaitGroup
+		sem := make(chan struct{}, gitBranchWorkers)
+		for _, wd := range dirs {
+			wg.Add(1)
+			go func(wd string) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				b, ok := gitinfo.Branch(wd)
+				if !ok {
+					b = ""
+				}
+				mu.Lock()
+				branchByDir[wd] = b
+				mu.Unlock()
+			}(wd)
+		}
+		wg.Wait()
+	}
+
+	for _, s := range sessions {
+		wd := strings.TrimSpace(s.WorkDir)
+		if wd == "" {
+			continue
+		}
+		s.GitBranch = branchByDir[wd]
 	}
 	return c.JSON(sessions)
 }
