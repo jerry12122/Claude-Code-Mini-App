@@ -5,8 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
   <!-- 選用：反代下 API 與自動推算不一致時設 content="/部署前綴"（無則由目前 index.html 目錄自動推算） -->
   <!-- <meta name="cc-api-base" content="" /> -->
-  <title>Claude Code TMA</title>
+  <title>Claude Code · Remote Agent</title>
   <link rel="icon" href="./favicon.ico" type="image/x-icon" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
@@ -17,29 +20,116 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
   <style>
-    :root { --tg-content-safe-top: 0px; }
-    body { background: #0f0f0f; color: #e5e5e5; font-family: system-ui, sans-serif; }
-    /* 用 Telegram 提供的視口高度變數；鍵盤彈出時自動縮小，解決 iOS 空白間隙問題 */
+    :root {
+      --tg-content-safe-top: 0px;
+      --ra-bg0: oklch(0.15 0.02 264);
+      --ra-bg1: oklch(0.13 0.02 264);
+      --ra-surface: oklch(0.19 0.02 264);
+      --ra-border: oklch(0.28 0.02 264);
+      --ra-accent: oklch(0.62 0.19 275);
+      --ra-accent-soft: oklch(0.62 0.19 275 / 18%);
+      --ra-text: oklch(0.94 0.01 264);
+      --ra-muted: oklch(0.55 0.01 264);
+    }
+    body.ra-body {
+      background: var(--ra-bg0);
+      color: var(--ra-text);
+      font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+    }
+    .ra-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    .ra-display { font-family: 'Manrope', sans-serif; font-weight: 800; letter-spacing: -0.02em; }
     .h-app { height: var(--tg-viewport-height, 100svh); }
-    /* 寬螢幕沿用 Tailwind text-sm（與聊天室一致）；僅窄螢幕強制 16px，避免 iOS 聚焦輸入時自動縮放 */
     @media (max-width: 767px) {
       input, textarea, select { font-size: 16px !important; }
     }
     .prose pre { margin: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
-    .prose pre code { white-space: pre; }
+    .prose pre code { white-space: pre; font-family: 'JetBrains Mono', ui-monospace, monospace; }
     .prose code:not(pre code) {
-      background: #2a2a2a; padding: 0.1em 0.4em; border-radius: 4px; font-size: 0.9em;
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      background: oklch(0.24 0.02 264); padding: 0.1em 0.45em; border-radius: 4px; font-size: 0.9em;
+      color: oklch(0.9 0.01 264);
     }
-    .prose p { margin: 0.5em 0; }
+    .prose p { margin: 0.5em 0; line-height: 1.8; }
     .prose ul, .prose ol { padding-left: 1.5em; margin: 0.5em 0; }
-    .prose h1,.prose h2,.prose h3 { font-weight: 600; margin: 0.75em 0 0.25em; }
+    .prose h1,.prose h2,.prose h3 { font-weight: 700; margin: 0.75em 0 0.25em; color: oklch(0.94 0.01 264); }
     .prose table { border-collapse: collapse; min-width: 100%; }
-    .prose table th, .prose table td { border: 1px solid #3a3a5a; padding: 0.3em 0.75em; white-space: nowrap; }
-    .prose table th { background: #2a2a4a; font-weight: 600; }
+    .prose table th, .prose table td { border: 1px solid oklch(0.28 0.02 264); padding: 0.3em 0.75em; white-space: nowrap; }
+    .prose table th { background: oklch(0.22 0.02 264); font-weight: 600; }
     .prose .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0.5em 0; }
-    .bubble-claude { background: #1a1a2e; border: 1px solid #2a2a4a; overflow: hidden; min-width: 0; }
-    .bubble-user   { background: #1a2e1a; border: 1px solid #2a4a2a; overflow: hidden; min-width: 0; }
-    .bubble-shell  { background: #0d1117; border: 1px solid #30363d; overflow: hidden; min-width: 0; }
+    /* 1a：使用者實心紫泡泡；Claude 無邊框文件流 */
+    .bubble-claude {
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      overflow: hidden; min-width: 0;
+      padding: 0 !important;
+    }
+    .bubble-user {
+      background: oklch(0.62 0.19 275);
+      border: none;
+      color: white;
+      border-radius: 14px 14px 4px 14px;
+      overflow: hidden; min-width: 0;
+      box-shadow: 0 8px 24px oklch(0.62 0.19 275 / 18%);
+    }
+    .bubble-shell {
+      background: oklch(0.12 0.01 264);
+      border: 1px solid oklch(0.3 0.02 264);
+      border-radius: 12px;
+      overflow: hidden; min-width: 0;
+    }
+    .ra-cmd-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: oklch(0.19 0.02 264);
+      border: 1px solid oklch(0.3 0.02 264);
+      border-radius: 14px;
+      padding: 8px 12px;
+      min-width: 0;
+    }
+    .ra-cmd-bar.shell {
+      background: #120d00;
+      border-color: rgba(180, 83, 9, 0.45);
+    }
+    .ra-cmd-badge {
+      font-size: 12px;
+      font-weight: 600;
+      color: oklch(0.65 0.19 275);
+      background: oklch(0.62 0.19 275 / 16%);
+      border-radius: 7px;
+      padding: 5px 10px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .ra-cmd-badge.shell {
+      color: #fcd34d;
+      background: rgba(180, 83, 9, 0.28);
+    }
+    .ra-session-card {
+      margin: 3px 0;
+      padding: 11px 12px;
+      border-radius: 10px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .ra-session-card:hover {
+      background: oklch(0.62 0.19 275 / 8%);
+      border-color: oklch(0.62 0.19 275 / 22%);
+    }
+    .ra-session-card.active {
+      background: oklch(0.62 0.19 275 / 12%);
+      border-color: oklch(0.62 0.19 275 / 40%);
+    }
+    .ra-status-dot {
+      width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+    }
+    .ra-status-dot.idle { background: oklch(0.7 0.15 155); }
+    .ra-status-dot.running { background: oklch(0.75 0.15 70); }
+    .ra-status-dot.awaiting { background: oklch(0.75 0.15 70); }
+    .ra-status-dot.done { background: oklch(0.55 0.01 264); }
+
     @keyframes streaming-dots {
       0%, 100% { opacity: 0.35; }
       50% { opacity: 1; }
@@ -48,40 +138,38 @@
       display: inline-block;
       margin-left: 0.1em;
       letter-spacing: 0.02em;
-      color: #a5b4fc;
+      color: oklch(0.75 0.14 275);
       animation: streaming-dots 1s ease-in-out infinite;
     }
     @keyframes pulse-dot {
       0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; }
     }
-    .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #6366f1; margin: 0 2px; animation: pulse-dot 1.2s infinite; }
+    .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: oklch(0.62 0.19 275); margin: 0 2px; animation: pulse-dot 1.2s infinite; }
     .dot:nth-child(2) { animation-delay: 0.2s; }
     .dot:nth-child(3) { animation-delay: 0.4s; }
-    /* 側欄 Session 列表、聊天室、textarea 共用：細捲軸、與標題 indigo 一致 */
     .app-scroll {
       -webkit-overflow-scrolling: touch;
       scrollbar-width: thin;
-      scrollbar-color: rgba(99, 102, 241, 0.48) rgba(24, 24, 27, 0.65);
+      scrollbar-color: oklch(0.4 0.02 264) transparent;
       overscroll-behavior-y: contain;
     }
-    .app-scroll::-webkit-scrollbar {
-      width: 5px;
-    }
-    .app-scroll::-webkit-scrollbar-track {
-      background: rgba(15, 15, 15, 0.45);
-      border-radius: 4px;
-    }
+    .app-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+    .app-scroll::-webkit-scrollbar-track { background: transparent; }
     .app-scroll::-webkit-scrollbar-thumb {
-      background: rgba(99, 102, 241, 0.42);
-      border-radius: 4px;
-      border: 1px solid rgba(15, 15, 15, 0.35);
+      background: oklch(0.4 0.02 264);
+      border-radius: 8px;
     }
     .app-scroll::-webkit-scrollbar-thumb:hover {
-      background: rgba(129, 140, 248, 0.58);
+      background: oklch(0.5 0.08 275);
     }
+    @keyframes ra-fade-in {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .ra-card-enter { animation: ra-fade-in 0.35s ease-out both; }
   </style>
 </head>
-<body class="h-app">
+<body class="h-app ra-body">
 
 <script type="text/babel" data-presets="react-classic">
 const { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } = React;
@@ -111,7 +199,7 @@ const WEB_SESSION_STORAGE_KEY = 'cc_web_session_token';
 
 /** 桌面版側欄寬度（localStorage，px；與原 max-w-[48vw] 上限一致） */
 const SIDEBAR_WIDTH_STORAGE_KEY = 'cc_sidebar_width_px';
-const SIDEBAR_WIDTH_DEFAULT = 440;
+const SIDEBAR_WIDTH_DEFAULT = 340;
 const SIDEBAR_WIDTH_MIN = 260;
 
 function readStoredSidebarWidthPx() {
@@ -132,7 +220,7 @@ function readStoredGroupByDir() {
     if (raw === '1' || raw === 'true') return true;
     if (raw === '0' || raw === 'false') return false;
   } catch (_) {}
-  return false;
+  return true; /* RemoteAgent 設計預設依目錄分組 */
 }
 
 function clampSidebarWidthPx(w) {
@@ -179,7 +267,7 @@ function readApiBaseOverride() {
 
 /**
  * 與 Go Fiber 同掛一條反代前綴時：目前 index 所在目錄為 API 前綴。
- * 若在 …/Nexus/、…/Focus/、…/Enterprise/ 測試主題底下，再剝除該目錄，與同層主介面共用前綴。
+ * 若在 …/Nexus/、…/Focus/、…/Enterprise/、…/RemoteAgent/、…/v1/ 測試主題底下，再剝除該目錄，與同層主介面共用前綴。
  */
 function inferApiBaseFromPathname() {
   let p = window.location.pathname || '/';
@@ -187,7 +275,7 @@ function inferApiBaseFromPathname() {
     p = p.replace(/\/[^/]+\.html$/i, '');
   }
   p = p.replace(/\/+$/, '');
-  p = p.replace(/\/nexus$/i, '').replace(/\/focus$/i, '').replace(/\/enterprise$/i, '');
+  p = p.replace(/\/nexus$/i, '').replace(/\/focus$/i, '').replace(/\/enterprise$/i, '').replace(/\/remoteagent$/i, '').replace(/\/v1$/i, '');
   p = p.replace(/\/+$/, '');
   if (p === '' || p === '/') return '';
   return p;
@@ -403,23 +491,29 @@ function permModeIsDanger(value) {
 }
 
 function sessionStateChipClass(state) {
-  if (state === 'IDLE') return 'bg-green-900/90 text-green-300 border-green-800/40';
-  if (state === 'THINKING') return 'bg-indigo-900/90 text-indigo-300 border-indigo-800/40';
-  if (state === 'STREAMING') return 'bg-blue-900/90 text-blue-300 border-blue-800/40';
-  if (state === 'SHELL_EXEC' || state === 'SHELL_RUNNING') return 'bg-purple-900/90 text-purple-300 border-purple-800/40';
-  if (state === 'AWAITING_SHELL_CONFIRM' || state === 'SHELL_AWAITING_APPROVAL') return 'bg-orange-950/90 text-orange-200 border-orange-800/40';
-  return 'bg-yellow-900/90 text-yellow-300 border-yellow-800/40';
+  // 與 session 列表下方方塊 badge 同構：無邊框、軟底色
+  if (state === 'IDLE' || state === 'SHELL_IDLE') return 'bg-[oklch(0.7_0.15_155_/16%)] text-[oklch(0.7_0.15_155)]';
+  if (state === 'THINKING') return 'bg-violet-500/20 text-violet-300';
+  if (state === 'STREAMING') return 'bg-sky-500/20 text-sky-300';
+  if (state === 'SHELL_EXEC' || state === 'SHELL_RUNNING') return 'bg-amber-500/20 text-amber-200';
+  if (state === 'AWAITING_SHELL_CONFIRM' || state === 'SHELL_AWAITING_APPROVAL' || state === 'AWAITING_CONFIRM') return 'bg-orange-500/20 text-orange-200';
+  return 'bg-amber-500/20 text-amber-200';
 }
 
 function SessionStateChip({ state, activityHint, compact, className = '' }) {
   const label = compact
     ? (state === 'THINKING' && activityHint ? '思考' : (SESSION_STATE_LABEL[state] || state))
     : (state === 'THINKING' && activityHint ? activityHint : (SESSION_STATE_LABEL[state] || state));
+  const dot =
+    state === 'IDLE' || state === 'SHELL_IDLE' ? 'bg-[oklch(0.7_0.15_155)]' :
+    state === 'THINKING' || state === 'STREAMING' || state === 'SHELL_EXEC' || state === 'SHELL_RUNNING' ? 'bg-[oklch(0.75_0.15_70)]' :
+    'bg-[oklch(0.75_0.15_70)]';
   return (
     <span
       title={state}
-      className={'inline-flex items-center shrink-0 text-[10px] px-1.5 py-0.5 rounded-md font-medium border ' + sessionStateChipClass(state) + ' ' + className}
+      className={'inline-flex items-center gap-1.5 shrink-0 text-[11px] px-[7px] py-[3px] rounded-md font-semibold ' + sessionStateChipClass(state) + ' ' + className}
     >
+      <span className={'w-1.5 h-1.5 rounded-full shrink-0 ' + dot} aria-hidden />
       {label}
     </span>
   );
@@ -667,13 +761,14 @@ function PermModeSwitch({ agentType, value, onChange, disabled, title }) {
     <div
       role="radiogroup"
       aria-label={ariaLabel}
-      className={`inline-flex max-w-full flex-wrap items-stretch gap-0.5 rounded-xl border border-gray-700/90 bg-gray-900/85 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ${
+      className={`inline-flex max-w-full flex-wrap items-stretch gap-0.5 rounded-[9px] border border-[oklch(0.28_0.02_264)] bg-[oklch(0.19_0.02_264)] p-[3px] ${
         disabled ? 'pointer-events-none opacity-45' : ''
       }`}
     >
       {opts.map((opt) => {
         const active = value === opt.value;
         const danger = opt.value === 'bypassPermissions' || opt.value === 'yolo';
+        const label = opt.label;
         return (
           <button
             key={opt.value}
@@ -683,16 +778,16 @@ function PermModeSwitch({ agentType, value, onChange, disabled, title }) {
             disabled={disabled}
             onClick={() => onChange(opt.value)}
             className={[
-              'min-h-[2rem] shrink-0 grow-0 px-2 sm:px-2.5 py-1.5 text-center text-[10px] sm:text-xs font-medium leading-tight rounded-lg transition-[color,background-color,box-shadow] duration-150 whitespace-nowrap',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 focus-visible:ring-offset-gray-900',
+              'min-h-[2rem] shrink-0 grow-0 px-3 py-1.5 text-center text-xs font-semibold leading-tight rounded-[7px] transition-[color,background-color] duration-150 whitespace-nowrap',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50',
               active
                 ? danger
-                  ? 'bg-amber-950/95 text-amber-100 ring-1 ring-amber-600/60 shadow-sm'
-                  : 'bg-indigo-600 text-white shadow-sm shadow-indigo-950/40'
-                : 'text-gray-400 hover:bg-gray-800/85 hover:text-gray-200 border border-transparent',
+                  ? 'bg-[oklch(0.75_0.15_70_/16%)] text-[oklch(0.75_0.15_70)] font-bold'
+                  : 'bg-[oklch(0.62_0.19_275_/18%)] text-[oklch(0.85_0.08_275)]'
+                : 'text-[oklch(0.55_0.01_264)] hover:text-[oklch(0.85_0.01_264)]',
             ].join(' ')}
           >
-            {opt.label}
+            {label}
           </button>
         );
       })}
@@ -721,7 +816,7 @@ function PermModeSelect({ agentType, value, onChange, disabled, title, id, class
         'min-w-0 rounded-lg px-3 py-1.5 text-sm focus:outline-none disabled:opacity-45 transition-[color,background-color,border-color,box-shadow] duration-150',
         danger
           ? 'border border-amber-600/75 bg-amber-950/45 text-amber-50 shadow-sm shadow-amber-950/35 focus:border-amber-500 focus:ring-1 focus:ring-amber-600/35'
-          : 'border border-gray-700 bg-gray-800 text-gray-200 focus:border-indigo-600',
+          : 'border border-gray-700 bg-gray-800 text-gray-200 focus:border-violet-600',
         className || '',
       ].join(' ').replace(/\s+/g, ' ').trim()}
     >
@@ -733,16 +828,33 @@ function PermModeSelect({ agentType, value, onChange, disabled, title, id, class
 }
 
 /** 依 CLI runner（agent_type）回傳 badge 的 Tailwind 底色／文字色 */
+
+function sessionStatusDotClass(s) {
+  const st = String(s && s.status || '').toLowerCase();
+  if (st === 'running') return 'ra-status-dot running';
+  if (st === 'awaiting_confirm') return 'ra-status-dot awaiting';
+  if (st === 'idle' || st === '') return '';
+  return 'ra-status-dot done';
+}
+
+function sessionStatusLabel(s) {
+  const st = String(s && s.status || '').toLowerCase();
+  if (st === 'running') return '執行中';
+  if (st === 'awaiting_confirm') return '待授權';
+  if (st === 'idle') return '待命';
+  return '已完成';
+}
+
 function getAgentBadgeClass(agentType) {
   const t = String(agentType || 'claude').toLowerCase();
   const map = {
-    claude: 'bg-orange-900/60 text-orange-200',
-    cursor: 'bg-emerald-900/60 text-emerald-300',
-    codex: 'bg-slate-800/60 text-slate-200',
-    antigravity: 'bg-sky-900/60 text-sky-300',
-    kiro: 'bg-purple-900/60 text-purple-300',
+    claude: 'bg-orange-500/20 text-orange-300',
+    cursor: 'bg-emerald-500/20 text-emerald-300',
+    codex: 'bg-slate-500/20 text-slate-300',
+    antigravity: 'bg-sky-500/20 text-sky-300',
+    kiro: 'bg-fuchsia-500/20 text-fuchsia-300',
   };
-  return map[t] || 'bg-gray-700/60 text-gray-300';
+  return map[t] || 'bg-[oklch(0.24_0.02_264)] text-[oklch(0.65_0.01_264)]';
 }
 
 /**
@@ -828,7 +940,7 @@ function QuotaBadge({ quota, onRefresh, refreshing, className = '', compact = fa
   const textCls = quota.error ? 'text-amber-400' : quota.stale ? 'text-gray-500' : 'text-gray-400';
   const compactMaxW = String(agentType || '').toLowerCase() === 'kiro' ? 'max-w-[6.5rem]' : 'max-w-[4.5rem]';
   const chipCls = compact
-    ? 'inline-flex items-center shrink-0 ' + compactMaxW + ' px-1.5 py-0.5 rounded-md border border-gray-700/45 bg-gray-800/45 '
+    ? 'inline-flex items-center shrink-0 ' + compactMaxW + ' px-2 py-1 rounded-md bg-[oklch(0.24_0.02_264)] '
     : 'inline-flex items-center gap-0.5 min-w-0 max-w-full ';
   return (
     <span className={chipCls + className} title={title}>
@@ -838,7 +950,7 @@ function QuotaBadge({ quota, onRefresh, refreshing, className = '', compact = fa
           type="button"
           onClick={onRefresh}
           disabled={refreshing}
-          className={'shrink-0 text-[10px] px-0.5 ' + (refreshing ? 'text-indigo-400 animate-spin' : 'text-gray-500 hover:text-gray-300')}
+          className={'shrink-0 text-[10px] px-0.5 ' + (refreshing ? 'text-violet-400 animate-spin' : 'text-gray-500 hover:text-gray-300')}
           title="刷新帳戶用量"
         >
           ↻
@@ -866,21 +978,11 @@ function GitBranchBadge({ branch, compact = false }) {
   return (
     <span
       className={
-        'inline-flex items-center gap-1 min-w-0 text-[10px] px-1.5 py-0.5 rounded-md font-mono bg-orange-950/55 text-orange-200/95 border border-orange-800/40 shrink-0 ' +
+        'inline-flex items-center gap-1 min-w-0 text-[11px] px-[7px] py-[3px] rounded-md bg-[oklch(0.24_0.02_264)] text-[oklch(0.6_0.01_264)] shrink-0 ' +
         (compact ? 'max-w-[5.5rem]' : 'max-w-[min(12rem,42vw)] sm:max-w-[14rem]')
       }
       title={'Git 分支：' + branch}
     >
-      <img
-        src="https://cdn.simpleicons.org/git/F05032"
-        alt=""
-        width={14}
-        height={14}
-        loading="lazy"
-        decoding="async"
-        referrerPolicy="no-referrer"
-        className="w-3 h-3 shrink-0 opacity-95 object-contain"
-      />
       <span className="truncate leading-none">{branch}</span>
     </span>
   );
@@ -983,11 +1085,11 @@ function InputModeTab({ value, onChange, disabled }) {
             onClick={() => onChange(v)}
             className={[
               'min-h-[2rem] shrink-0 grow-0 px-2 sm:px-2.5 py-1.5 text-center text-[10px] sm:text-xs font-medium leading-tight rounded-lg transition-[color,background-color,box-shadow] duration-150 whitespace-nowrap',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 focus-visible:ring-offset-gray-900',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-1 focus-visible:ring-offset-gray-900',
               active
                 ? isShell
                   ? 'bg-amber-950/95 text-amber-100 ring-1 ring-amber-600/60 shadow-sm'
-                  : 'bg-indigo-600 text-white shadow-sm shadow-indigo-950/40'
+                  : 'bg-violet-600 text-white shadow-sm shadow-violet-950/40'
                 : 'text-gray-400 hover:bg-gray-800/85 hover:text-gray-200 border border-transparent',
             ].join(' ')}
           >
@@ -999,7 +1101,7 @@ function InputModeTab({ value, onChange, disabled }) {
   );
 }
 
-function ModeToggleBtn({ value, onChange, disabled, showLabel = false }) {
+function ModeToggleBtn({ value, onChange, disabled, showLabel = false, agentLabel = 'Claude' }) {
   const isShell = value === 'shell';
   return (
     <button
@@ -1008,33 +1110,9 @@ function ModeToggleBtn({ value, onChange, disabled, showLabel = false }) {
       disabled={disabled}
       title={isShell ? '切換到 AI 代理模式' : '切換到 Shell 模式'}
       aria-label={isShell ? 'Shell 模式，點擊切換至 AI 代理' : 'AI 代理模式，點擊切換至 Shell'}
-      className={[
-        'shrink-0 flex items-center rounded-lg border transition-colors',
-        showLabel
-          ? 'gap-2 px-3 h-10 min-h-[2.75rem]'
-          : 'justify-center w-10 h-10 min-h-[2.75rem] max-lg:h-12 max-lg:w-12 max-lg:min-h-12',
-        disabled ? 'opacity-40 pointer-events-none' : '',
-        isShell
-          ? 'bg-amber-950/80 border-amber-600/70 text-amber-300 hover:bg-amber-900/80'
-          : 'bg-indigo-950/70 border-indigo-700/60 text-indigo-400 hover:bg-indigo-900/70',
-      ].join(' ')}
+      className={'ra-cmd-badge' + (isShell ? ' shell' : '') + (disabled ? ' opacity-40 pointer-events-none' : '')}
     >
-      {isShell ? (
-        /* Heroicons: command-line (terminal) */
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className={showLabel ? 'w-5 h-5 shrink-0' : 'w-5 h-5'} aria-hidden>
-          <path strokeLinecap="round" strokeLinejoin="round" d="m6.75 7.5 3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 18V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v12a2.25 2.25 0 0 0 2.25 2.25Z" />
-        </svg>
-      ) : (
-        /* Heroicons: sparkles (AI) */
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className={showLabel ? 'w-5 h-5 shrink-0' : 'w-5 h-5'} aria-hidden>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />
-        </svg>
-      )}
-      {showLabel && (
-        <span className="text-xs font-medium whitespace-nowrap leading-none">
-          {isShell ? 'Shell' : 'AI 代理'}
-        </span>
-      )}
+      {isShell ? ('>_ ' + (showLabel ? 'Shell' : '')) : ('✦' + (showLabel ? (' ' + agentLabel) : ''))}
     </button>
   );
 }
@@ -1468,11 +1546,11 @@ function ForwardModal({
 }
 
 // ── Session 列表畫面 ──────────────────────────────────────────────────────────
-function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePermModeDropdown = false }) {
+function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePermModeDropdown = false, activeSessionId = null }) {
   const [sessions, setSessions]   = useState([]);
   const [sessionSearch, setSessionSearch] = useState('');
   const [sessionSort, setSessionSort]     = useState('last_active_desc');
-  const [groupByDir, setGroupByDir] = useState(() => readStoredGroupByDir());
+  const [groupByDir] = useState(true); // RemoteAgent：固定依工作目錄分組
   const [collapsedDirs, setCollapsedDirs] = useState(() => new Set());
   const [showForm, setShowForm]   = useState(false);
   const [newName, setNewName]     = useState('');
@@ -1712,16 +1790,15 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
     setShowForm(true);
   };
 
-  const renderSessionRow = (s, groupIndent) => (
-    <div
-      key={s.id}
-      className={groupIndent ? 'pl-3 border-l border-indigo-500/25' : ''}
-    >
-      <div
-        onClick={() => renamingId !== s.id && onEnter(s)}
-        className="flex items-center justify-between px-4 py-3.5 border-b border-gray-800 hover:bg-gray-800/50 active:bg-gray-700/50 cursor-pointer transition-colors"
-      >
-        <div className="min-w-0 flex-1 mr-2">
+  const renderSessionRow = (s, groupIndent) => {
+    const active = activeSessionId != null && s.id === activeSessionId;
+    const extraArgN = Array.isArray(s.cli_extra_args) ? s.cli_extra_args.length : 0;
+    return (
+      <div key={s.id} className={groupIndent ? '' : ''}>
+        <div
+          onClick={() => renamingId !== s.id && onEnter(s)}
+          className={'ra-session-card group/card' + (active ? ' active' : '')}
+        >
           {renamingId === s.id ? (
             <input
               ref={renameInputRef}
@@ -1730,151 +1807,112 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
               onKeyDown={(e) => handleRenameKey(e, s.id)}
               onBlur={() => commitRename(s.id)}
               onClick={(e) => e.stopPropagation()}
-              className="w-full bg-gray-700 border border-indigo-500 rounded px-2 py-1 text-sm text-gray-100 focus:outline-none"
+              className="w-full bg-[oklch(0.19_0.02_264)] border border-violet-500 rounded-lg px-2 py-1 text-sm text-[oklch(0.94_0.01_264)] focus:outline-none"
             />
           ) : (
-            <div className="space-y-1.5 min-w-0">
-              <div className="text-sm font-bold text-gray-100 break-words [overflow-wrap:anywhere] leading-snug">
-                {s.name || '未命名'}
+            <>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="flex-1 min-w-0 text-[13.5px] font-semibold text-[oklch(0.92_0.01_264)] truncate leading-snug">
+                  {s.name || '未命名'}
+                </span>
+                {String(s.status || '').toLowerCase() !== 'idle' && String(s.status || '') !== '' ? (
+                  <span className={sessionStatusDotClass(s)} title={sessionStatusLabel(s)} />
+                ) : null}
+                <div className="flex items-center gap-0.5 shrink-0 sm:opacity-0 sm:group-hover/card:opacity-100 transition-opacity">
+                  <button
+                    type="button"
+                    onClick={(e) => startRename(s, e)}
+                    aria-label="重新命名"
+                    title="重新命名"
+                    className="text-[oklch(0.5_0.01_264)] hover:text-violet-400 p-1 rounded transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5" aria-hidden="true">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={(e) => del(s.id, e)}
+                    className="text-[oklch(0.5_0.01_264)] hover:text-red-400 px-1.5 py-0.5 text-[10px] rounded"
+                  >
+                    刪
+                  </button>
+                </div>
               </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className={`inline-flex items-center gap-1 shrink-0 text-[10px] px-2 py-0.5 rounded-full font-mono uppercase ${getAgentBadgeClass(s.agent_type)}`}>
+              <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                <span className={`inline-flex items-center gap-1 shrink-0 text-[11px] px-[7px] py-[3px] rounded-md font-semibold ${getAgentBadgeClass(s.agent_type)}`}>
                   <AgentBadgeIcon agentType={s.agent_type} />
                   {AGENT_LABEL[s.agent_type] || s.agent_type || 'claude'}
                 </span>
-                <GitBranchBadge branch={s.git_branch} />
-                {((s.agent_type || 'claude') !== 'codex') && s.permission_mode && (
-                  <span
-                    className="inline-flex items-center shrink-0 text-[10px] px-2 py-0.5 rounded-full font-mono text-gray-300 bg-gray-800/90 border border-gray-700/70"
-                    title="權限模式"
-                  >
+                {s.git_branch ? (
+                  <span className="inline-flex items-center text-[11px] px-[7px] py-[3px] rounded-md text-[oklch(0.6_0.01_264)] bg-[oklch(0.24_0.02_264)] truncate max-w-[9rem]" title={s.git_branch}>
+                    {s.git_branch}
+                  </span>
+                ) : null}
+                {extraArgN > 0 ? (
+                  <span className="inline-flex items-center text-[11px] px-[7px] py-[3px] rounded-md text-[oklch(0.5_0.01_264)] bg-[oklch(0.24_0.02_264)]" title="自訂 CLI 引數">
+                    +{extraArgN}
+                  </span>
+                ) : null}
+                {((s.agent_type || 'claude') !== 'codex') && s.permission_mode && s.permission_mode !== 'default' ? (
+                  <span className="inline-flex items-center text-[11px] px-[7px] py-[3px] rounded-md text-[oklch(0.6_0.01_264)] bg-[oklch(0.24_0.02_264)]" title="權限模式">
                     {PERM_MODE_LABEL[s.permission_mode] || s.permission_mode}
                   </span>
-                )}
-                {Array.isArray(s.cli_extra_args) && s.cli_extra_args.length > 0 && (
-                  <span
-                    className="inline-flex items-center shrink-0 text-[10px] px-2 py-0.5 rounded-full font-mono text-violet-300 bg-violet-950/50 border border-violet-800/60"
-                    title="已設定自訂 CLI 引數"
-                  >
-                    +{s.cli_extra_args.length} argv
-                  </span>
-                )}
+                ) : null}
               </div>
-            </div>
+            </>
           )}
-          {s.work_dir && (
-            <div className="text-xs text-gray-500 font-mono mt-0.5 truncate">{s.work_dir}</div>
-          )}
-        </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          {(s.status === 'running') && (
-            <span className="relative flex h-2 w-2 shrink-0" title="執行中">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500" />
-            </span>
-          )}
-          {(s.status === 'awaiting_confirm') && (
-            <span className="text-amber-400 text-sm shrink-0 font-bold" title="待授權">!</span>
-          )}
-          <button
-            type="button"
-            onClick={(e) => startRename(s, e)}
-            aria-label="重新命名"
-            title="重新命名"
-            className="text-gray-600 hover:text-indigo-400 p-1.5 rounded transition-colors inline-flex items-center justify-center"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0" aria-hidden="true">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-            </svg>
-          </button>
-          <button
-            onClick={(e) => del(s.id, e)}
-            className="text-gray-600 hover:text-red-400 px-2 py-1 text-xs rounded transition-colors"
-          >
-            刪除
-          </button>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="flex flex-col h-app min-w-0 overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gray-900 border-b border-gray-800 shrink-0"
-           style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top) + var(--tg-content-safe-top))' }}>
-        <span className="font-semibold text-indigo-400 text-base">Claude Code</span>
+      {/* Header — 設計 1a / 2a */}
+      <div className="flex items-center justify-between px-5 pt-[18px] pb-3 shrink-0"
+           style={{ paddingTop: 'calc(18px + env(safe-area-inset-top) + var(--tg-content-safe-top))' }}>
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-6 h-6 rounded-[6px] bg-gradient-to-br from-[oklch(0.62_0.19_275)] to-[oklch(0.6_0.17_300)] flex items-center justify-center shrink-0" aria-hidden>
+            <div className="w-[9px] h-[9px] rounded-[2px] bg-white" />
+          </div>
+          <span className="ra-display text-base text-[oklch(0.94_0.01_264)] tracking-tight">Agent Console</span>
+        </div>
         <button
           type="button"
           onClick={() => setShowForm(!showForm)}
           aria-label={showForm ? '關閉建立表單' : '建立新 Session'}
           title={showForm ? '關閉' : '新 Session'}
-          className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 via-violet-600 to-indigo-700 text-white shadow-md shadow-indigo-950/40 ring-1 ring-white/15 transition hover:scale-[1.05] hover:shadow-indigo-500/20 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
+          className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[9px] bg-[oklch(0.62_0.19_275)] text-white text-lg leading-none transition hover:brightness-110 active:scale-95 focus:outline-none"
         >
-          <span className="absolute inset-0 rounded-full bg-gradient-to-t from-black/20 to-transparent opacity-0 transition group-hover:opacity-100" aria-hidden />
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.25"
-            strokeLinecap="round"
-            className={`relative h-5 w-5 transition-transform duration-200 ease-out ${showForm ? 'rotate-45' : 'group-hover:rotate-90'}`}
-            aria-hidden
-          >
-            <path d="M12 5v14M5 12h14" />
-          </svg>
+          {showForm ? '×' : '+'}
         </button>
       </div>
 
-      {/* 搜尋／排序（有 Session 時顯示） */}
+      {/* 搜尋／排序 — 設計列 */}
       {sessions.length > 0 && (
-        <div className="px-3 py-2 bg-gray-900/80 border-b border-gray-800 shrink-0 flex gap-2 min-w-0 items-center">
-          <input
-            type="search"
-            value={sessionSearch}
-            onChange={(e) => setSessionSearch(e.target.value)}
-            placeholder="搜尋…"
-            autoComplete="off"
-            className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-600"
-          />
-          <button
-            type="button"
-            onClick={() => {
-              setGroupByDir((v) => {
-                const next = !v;
-                try {
-                  localStorage.setItem(SESSION_LIST_GROUP_BY_DIR_KEY, next ? '1' : '0');
-                } catch (_) {}
-                return next;
-              });
-            }}
-            aria-pressed={groupByDir}
-            title={groupByDir ? '關閉依目錄分組' : '依工作目錄分組'}
-            aria-label={groupByDir ? '關閉依目錄分組' : '依工作目錄分組'}
-            className={`shrink-0 flex h-9 w-9 items-center justify-center rounded-lg border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60 focus-visible:ring-offset-1 focus-visible:ring-offset-gray-900 ${
-              groupByDir
-                ? 'border-indigo-500/55 bg-indigo-600/25 text-indigo-200 shadow-[inset_0_1px_0_rgba(129,140,248,0.15)]'
-                : 'border-gray-700 bg-gray-800 text-gray-400 hover:text-indigo-300 hover:border-indigo-600/50'
-            }`}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[1.15rem] h-[1.15rem]" aria-hidden>
-              <path d="M3 7.5h7L10.5 6h11v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8.5Z" />
-              <path d="M3 7.5V6a2 2 0 0 1 2-2h3l1.5 1.5" />
-            </svg>
-          </button>
-          <span className="shrink-0 text-xs text-gray-500 whitespace-nowrap" id="session-sort-label">排序</span>
+        <div className="px-5 pb-3 shrink-0 flex gap-2 min-w-0 items-center">
+          <div className="flex-1 min-w-0 flex items-center gap-1.5 bg-[oklch(0.19_0.02_264)] border border-[oklch(0.28_0.02_264)] rounded-[9px] px-2.5 py-2">
+            <span className="text-[oklch(0.5_0.01_264)] text-sm shrink-0" aria-hidden>⌕</span>
+            <input
+              type="search"
+              value={sessionSearch}
+              onChange={(e) => setSessionSearch(e.target.value)}
+              placeholder="搜尋 session…"
+              autoComplete="off"
+              className="flex-1 min-w-0 bg-transparent border-0 p-0 text-[13px] text-[oklch(0.9_0.01_264)] placeholder-[oklch(0.5_0.01_264)] focus:outline-none"
+            />
+          </div>
           <select
             id="session-sort"
             value={sessionSort}
             onChange={(e) => setSessionSort(e.target.value)}
-            title="左側 Session 列表的排序方式"
-            aria-labelledby="session-sort-label"
-            className="shrink-0 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-indigo-600 cursor-pointer max-w-[9.5rem]"
+            title="排序"
+            aria-label="排序"
+            className="shrink-0 bg-[oklch(0.19_0.02_264)] border border-[oklch(0.28_0.02_264)] rounded-[9px] px-2.5 py-2 text-xs text-[oklch(0.65_0.01_264)] focus:outline-none cursor-pointer max-w-[6.5rem]"
           >
             {sortOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
+              <option key={opt.value} value={opt.value}>{opt.label.replace('活動 ', '')}</option>
             ))}
           </select>
         </div>
@@ -1882,13 +1920,13 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
 
       {/* 建立表單 */}
       {showForm && (
-        <div className="px-4 py-3 bg-gray-900 border-b border-gray-700 space-y-2 shrink-0 min-w-0">
+        <div className="px-4 py-3 bg-[oklch(0.15_0.02_264)] border-b border-[oklch(0.28_0.02_264)] space-y-2 shrink-0 min-w-0 ra-card-enter">
           <input value={newName} onChange={e => setNewName(e.target.value)}
             placeholder="Session 名稱（必填）"
-            className="w-full min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-600" />
+            className="w-full min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-violet-600" />
           <input value={newDir} onChange={e => setNewDir(e.target.value)}
             placeholder="工作目錄（選填，如 /home/user/project）"
-            className="w-full min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-600 font-mono" />
+            className="w-full min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-violet-600 font-mono" />
           <div className="min-w-0 space-y-2">
             <select
               value={newAgent}
@@ -1937,7 +1975,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
                 value={newModel}
                 onChange={(e) => setNewModel(e.target.value)}
                 placeholder="例如 sonnet、claude-sonnet-4.6、auto"
-                className="w-full min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-600 font-mono"
+                className="w-full min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-violet-600 font-mono"
               />
             </div>
           )}
@@ -1950,13 +1988,13 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
                 placeholder={'每行一個引數，例如：\n--plugin-dir\n./.claude/plugins/crm\n--plugin-dir\n./.claude/plugins/crm2\n含空格的路徑請寫在同一行。'}
                 rows={5}
                 spellCheck={false}
-                className="w-full min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-600 font-mono leading-relaxed overflow-y-auto app-scroll"
+                className="w-full min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-violet-600 font-mono leading-relaxed overflow-y-auto app-scroll"
               />
             </div>
           )}
           <div className="flex flex-wrap gap-2 justify-end">
             <button onClick={create} disabled={loading || !newName.trim()}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-lg text-sm font-medium shrink-0">
+              className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white rounded-lg text-sm font-medium shrink-0">
               建立
             </button>
             <button onClick={() => setShowForm(false)}
@@ -1968,9 +2006,9 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
       )}
 
       {/* Session 列表 */}
-      <div className="flex-1 overflow-y-auto app-scroll">
+      <div className="flex-1 overflow-y-auto app-scroll px-3.5 pb-5">
         {sessions.length === 0 ? (
-          <div className="text-center text-gray-600 mt-24 text-sm px-4">尚無 Session，點右上角圓形按鈕建立</div>
+          <div className="text-center text-[oklch(0.5_0.01_264)] mt-24 text-sm px-4">尚無 Session，點右上角 + 建立</div>
         ) : displaySessions.length === 0 ? (
           <div className="text-center text-gray-600 mt-24 text-sm px-4">沒有符合搜尋條件的 Session</div>
         ) : groupByDir && groupedSessions ? (
@@ -1979,31 +2017,31 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
             const shortLabel = workDirGroupShortLabel(dirKey);
             return (
               <div key={dirKey} className="space-y-0">
-                <div className="flex w-full min-w-0 items-center gap-1 px-1 py-1 transition-colors hover:bg-gray-800/40">
+                <div className="flex w-full min-w-0 items-center gap-1 px-2 py-1.5 mt-2 transition-colors hover:bg-violet-500/[0.06]">
                   <button
                     type="button"
                     onClick={() => toggleDirCollapsed(dirKey)}
-                    className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-gray-900"
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-[oklch(0.13_0.02_264)]"
                   >
-                    <span className="shrink-0 text-gray-500 w-4 text-center" aria-hidden>
-                      {expanded ? '▼' : '▶'}
+                    <span className="shrink-0 text-[oklch(0.5_0.01_264)] w-4 text-center text-[10px]" aria-hidden>
+                      {expanded ? '▾' : '▸'}
                     </span>
                     <span
-                      className="min-w-0 flex-1 truncate text-[10px] tracking-wide text-gray-500 font-medium"
+                      className="min-w-0 flex-1 truncate text-[12px] uppercase tracking-[0.4px] text-[oklch(0.6_0.01_264)] font-bold"
                       title={dirKey}
                     >
                       {shortLabel}
                     </span>
-                    <span className="shrink-0 rounded-full bg-gray-800 px-2 py-0.5 text-[10px] font-mono text-gray-300 ring-1 ring-gray-700/80">
+                    <span className="shrink-0 rounded-full bg-[oklch(0.22_0.02_264)] px-2 py-0.5 text-[11px] font-mono text-[oklch(0.45_0.01_264)]">
                       {dirSessions.length}
                     </span>
                   </button>
                   <button
                     type="button"
                     onClick={() => openNewSessionForDir(dirKey)}
-                    className="shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold text-indigo-400 hover:bg-indigo-950/50 hover:text-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-gray-900"
+                    className="shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold text-violet-400 hover:bg-violet-500/10 hover:text-violet-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50"
                   >
-                    ＋新 Session
+                    + 新增
                   </button>
                 </div>
                 {expanded && dirSessions.map((s) => renderSessionRow(s, true))}
@@ -2048,7 +2086,7 @@ function SlashCommandMenu({ items, activeIndex, onSelect }) {
             i === activeIndex ? 'bg-gray-700' : ''
           }`}
         >
-          <span className="shrink-0 font-mono text-indigo-300">{c.command}</span>
+          <span className="shrink-0 font-mono text-violet-300">{c.command}</span>
           <span className="min-w-0 flex-1 text-gray-400">{c.description}</span>
         </button>
       ))}
@@ -2087,100 +2125,117 @@ function ChatSessionHeader({
       : agentType === 'cursor'
       ? '權限模式（bypass：Cursor 會加 --force）'
       : '權限模式';
+  const repoLabel = workDirGroupShortLabel(session.work_dir);
+  const modelLabel = (sessionModel && typeof sessionModel === 'object')
+    ? (sessionModel.display_text || '')
+    : (sessionModel || '');
+  const modelOk = modelLabel && modelLabel !== '—';
+  const quotaText = quota && quota.display_text && quota.display_text !== '—' ? quota.display_text : '';
+  const subParts = [
+    repoLabel !== '（未設定工作目錄）' ? repoLabel : null,
+    modelOk ? modelLabel : null,
+  ].filter(Boolean);
+  const subLine = [subParts.join(' · '), quotaText].filter(Boolean).join(' · ');
 
   return (
     <div
-      className="flex flex-col gap-1 px-4 py-1.5 sm:py-2 bg-gray-900/95 border-b border-gray-800 shrink-0 sm:flex-row sm:items-start sm:justify-between sm:gap-3"
+      className="shrink-0 border-b border-[oklch(0.26_0.02_264)] bg-[oklch(0.15_0.02_264)]"
       style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top) + var(--tg-content-safe-top))' }}
     >
-      <div className="min-w-0 flex-1 flex flex-col gap-1 sm:gap-1.5">
-        <div className="flex items-center gap-2 min-w-0">
+      {/* 手機：標題列 + badge 列（設計 2b） */}
+      <div className="sm:hidden px-4 pt-2 pb-3">
+        <div className="flex items-center gap-2.5 min-w-0">
           {showBack && (
             <button type="button" onClick={onBack}
-              className="shrink-0 text-gray-400 hover:text-gray-200 text-lg leading-none px-1">
+              className="shrink-0 text-[oklch(0.7_0.01_264)] hover:text-[oklch(0.94_0.01_264)] text-lg leading-none px-0.5">
               ←
             </button>
           )}
-          <div className="min-w-0 flex-1 font-semibold text-gray-100 text-sm truncate leading-snug" title={session.name}>
+          <div className="min-w-0 flex-1 font-bold text-base text-[oklch(0.94_0.01_264)] truncate" title={session.name}>
             {session.name || '未命名'}
           </div>
+          <SessionStateChip state={state} activityHint={activityHint} className="shrink-0" />
+          <GitBranchBadge branch={session.git_branch} compact />
           <HeaderToggleButton expanded={expanded} onToggle={onToggleHeader} />
         </div>
-
-        {headerCollapsed ? (
-          <div className="flex sm:hidden items-center gap-1.5 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden pb-0.5">
-            <AgentIconChip agentType={agentType} />
-            <SessionStateChip state={state} activityHint={activityHint} compact />
-            <GitBranchBadge branch={session.git_branch} compact />
-            <QuotaBadge quota={quota} compact agentType={agentType} />
-            {showPerm ? (
-              <PermModeIconChip
-                agentType={agentType}
-                value={mode}
-                onClick={onExpandHeader}
-                disabled={modeSwitchDisabled}
-              />
-            ) : null}
-          </div>
-        ) : null}
-
-        <div className={headerCollapsed ? 'hidden sm:flex sm:flex-col sm:gap-1.5' : 'flex flex-col gap-1.5'}>
-          <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto sm:overflow-visible sm:flex-wrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <span className={`inline-flex items-center gap-1 shrink-0 text-[10px] px-1.5 py-0.5 rounded-md font-mono uppercase border border-gray-700/40 ${getAgentBadgeClass(agentType)}`}>
-              <AgentBadgeIcon agentType={agentType} />
-              {agentType}
-            </span>
-            <SessionStateChip state={state} activityHint={activityHint} />
-            <GitBranchBadge branch={session.git_branch} />
-            <div className="hidden sm:contents">
-              <ModelBadge model={sessionModel} />
-              <QuotaBadge
-                quota={quota}
-                onRefresh={agentType !== 'antigravity' ? onQuotaRefresh : null}
-                refreshing={quotaRefreshing}
-                agentType={agentType}
-              />
-            </div>
-          </div>
-          <div className="flex flex-col gap-1 min-w-0 sm:hidden">
-            <ModelBadge model={sessionModel} className="w-full max-w-full" />
-            <QuotaBadge
-              quota={quota}
-              onRefresh={agentType !== 'antigravity' ? onQuotaRefresh : null}
-              refreshing={quotaRefreshing}
-              className="w-full max-w-full"
+        <div className="flex items-center gap-1.5 mt-2.5 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex-wrap">
+          <span className={`inline-flex items-center gap-1 shrink-0 text-[11.5px] font-semibold px-2 py-1 rounded-md ${getAgentBadgeClass(agentType)}`}>
+            <AgentBadgeIcon agentType={agentType} />
+            {AGENT_LABEL[agentType] || agentType}
+          </span>
+          <QuotaBadge quota={quota} compact agentType={agentType} onRefresh={agentType !== 'antigravity' ? onQuotaRefresh : null} refreshing={quotaRefreshing} />
+          {showPerm ? (
+            <PermModeIconChip
+              agentType={agentType}
+              value={mode}
+              onClick={onExpandHeader}
+              disabled={modeSwitchDisabled}
             />
-          </div>
-          {session.work_dir ? (
-            <div className="text-[11px] text-gray-500 font-mono truncate" title={session.work_dir}>
-              {session.work_dir}
-            </div>
           ) : null}
         </div>
-      </div>
-
-      {showPerm ? (
-        <div
-          className={
-            (headerCollapsed ? 'hidden sm:block ' : '') +
-            (usePermModeDropdown
-              ? 'w-full min-w-0 shrink-0 border-t border-gray-800/80 pt-2 sm:border-t-0 sm:pt-0 sm:w-auto sm:max-w-[min(100%,20rem)] sm:self-center'
-              : 'w-fit max-w-full min-w-0 shrink-0 self-end sm:self-center sm:ml-auto')
-          }
-        >
-          {usePermModeDropdown ? (
-            <div className="flex items-center gap-2 min-w-0 w-full sm:justify-end">
-              <span className="shrink-0 text-xs text-gray-500">權限</span>
+        {expanded && showPerm ? (
+          <div className="mt-2.5">
+            {usePermModeDropdown ? (
               <PermModeSelect
                 agentType={agentType}
                 value={mode}
                 onChange={onPermModeChange}
                 disabled={modeSwitchDisabled}
                 title={permTitle}
-                id="chat-perm-mode"
-                className="flex-1 min-w-0 sm:min-w-[11rem]"
+                id="chat-perm-mode-mobile"
+                className="w-full py-2"
               />
+            ) : (
+              <PermModeSwitch
+                agentType={agentType}
+                value={mode}
+                onChange={onPermModeChange}
+                disabled={modeSwitchDisabled}
+                title={permTitle}
+              />
+            )}
+          </div>
+        ) : null}
+      </div>
+
+      {/* 桌面：標題 + 副標 | 權限分段（設計 1a） */}
+      <div className="hidden sm:flex items-center justify-between gap-4 px-7 py-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="text-base font-bold text-[oklch(0.94_0.01_264)] truncate" title={session.name}>
+              {session.name || '未命名'}
             </div>
+            <SessionStateChip state={state} activityHint={activityHint} className="shrink-0" />
+            <GitBranchBadge branch={session.git_branch} compact />
+          </div>
+          <div className="flex items-center gap-2 mt-1.5 min-w-0 flex-wrap">
+            {subLine ? (
+              <span className="text-xs text-[oklch(0.55_0.01_264)] ra-mono truncate">{subLine}</span>
+            ) : null}
+            {agentType !== 'antigravity' && quotaText ? (
+              <button
+                type="button"
+                onClick={onQuotaRefresh}
+                disabled={quotaRefreshing}
+                className="text-xs text-[oklch(0.55_0.01_264)] hover:text-violet-300 ra-mono"
+                title="刷新帳戶用量"
+              >
+                {quotaRefreshing ? '↻' : '↻'}
+              </button>
+            ) : null}
+          </div>
+        </div>
+        {showPerm ? (
+          usePermModeDropdown ? (
+            <PermModeSelect
+              agentType={agentType}
+              value={mode}
+              onChange={onPermModeChange}
+              disabled={modeSwitchDisabled}
+              title={permTitle}
+              id="chat-perm-mode"
+              className="min-w-[11rem]"
+            />
           ) : (
             <PermModeSwitch
               agentType={agentType}
@@ -2189,9 +2244,9 @@ function ChatSessionHeader({
               disabled={modeSwitchDisabled}
               title={permTitle}
             />
-          )}
-        </div>
-      ) : null}
+          )
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -2901,7 +2956,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       <div
         ref={chatScrollRef}
         onScroll={syncChatNearBottom}
-        className="flex-1 overflow-y-auto app-scroll px-4 py-4 space-y-3"
+        className="flex-1 overflow-y-auto app-scroll px-4 py-[18px] sm:px-8 sm:py-7 flex flex-col gap-5"
       >
         {histLoaded && messages.length === 0 && (
           <div className="text-center text-gray-600 mt-20 text-sm">輸入指令開始對話</div>
@@ -2923,93 +2978,84 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             key={m.id != null ? `m-${m.id}` : i}
             className={`flex w-full min-w-0 ${m.role === 'user' ? 'justify-end' : 'justify-start'} ${m.role === 'claude' || m.role === 'shell' ? 'group' : ''}`}
           >
-            <div
-              className={`rounded-xl px-4 py-3 text-sm w-fit max-w-[85%] min-w-0 ${
-                m.role === 'user' ? 'bubble-user' : m.role === 'shell' ? 'bubble-shell' : 'bubble-claude'
-              }`}
-            >
-            <div className="flex items-start justify-between gap-2 mb-1 min-w-0">
-              <div className="text-xs text-gray-500 min-w-0">
-                {m.role === 'user' ? (
-                  '你'
-                ) : m.role === 'shell' ? (
-                  <span className="inline-flex items-center gap-1 font-mono text-amber-500/80">
+            {m.role === 'user' ? (
+              <div className="bubble-user text-white px-4 py-3 text-sm w-fit max-w-[60%] min-w-0">
+                <div className="whitespace-pre-wrap break-words leading-relaxed">{m.content}</div>
+              </div>
+            ) : m.role === 'shell' ? (
+              <div className="bubble-shell px-4 py-3 text-sm w-fit max-w-[85%] min-w-0">
+                <div className="flex items-start justify-between gap-2 mb-1.5 min-w-0">
+                  <span className="inline-flex items-center gap-1 font-mono text-amber-500/80 text-xs">
                     <span>&gt;_</span>
                     <span>{shellType || 'shell'}</span>
                   </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5">
-                    <AgentBadgeIcon agentType={agentType} />
-                    <span>{AGENT_LABEL[agentType] || agentType || 'Claude'}</span>
-                  </span>
-                )}
-              </div>
-              <div
-                className={`shrink-0 flex items-center gap-0.5 -mt-0.5 ${
-                  m.role === 'claude' || m.role === 'shell'
-                    ? 'opacity-100 pointer-events-auto sm:opacity-0 sm:pointer-events-none sm:group-hover:opacity-100 sm:group-hover:pointer-events-auto transition-opacity duration-150'
-                    : ''
-                }`}
-              >
-                <MessageCopyButton
-                  text={m.role === 'claude' || m.role === 'shell' ? forwardBody : (m.content || '').trim()}
-                  className="p-1 rounded-md text-gray-400 hover:text-gray-200 hover:bg-gray-800/80 disabled:opacity-30 disabled:pointer-events-none"
-                />
-                {m.role === 'claude' || m.role === 'shell' ? (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setForwardModal({ messageKey: msgKey, messageContent: forwardBody });
-                    }}
-                    disabled={!canForwardShellOrAgent}
-                    title="轉發到其他會話"
-                    className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded-md text-gray-400 hover:text-cyan-400 disabled:opacity-30 disabled:pointer-events-none"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5" aria-hidden>
-                      <path d="M15 14v5l6-6-6-6v5H3v2z" />
-                    </svg>
-                    <span className="text-[10px] font-medium leading-none">Forward</span>
-                  </button>
+                  <div className="shrink-0 flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                    <MessageCopyButton text={forwardBody} className="p-1 rounded-md text-gray-400 hover:text-gray-200" />
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setForwardModal({ messageKey: msgKey, messageContent: forwardBody }); }}
+                      disabled={!canForwardShellOrAgent}
+                      title="轉發到其他會話"
+                      className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded-md text-gray-400 hover:text-cyan-400 disabled:opacity-30"
+                    >
+                      <span className="text-[10px] font-medium">Forward</span>
+                    </button>
+                  </div>
+                </div>
+                <ShellOutput content={m.content || ''} exitCode={m.exitCode} streaming={m.streaming} />
+                {forwardHints[msgKey] ? (
+                  <div className="mt-2 pt-2 border-t border-gray-700/80 text-[11px] text-gray-500">
+                    已 Forward 到「{forwardHints[msgKey].label}」
+                    <button type="button" className="ml-1 text-violet-400 hover:text-violet-300 font-medium" onClick={() => jumpToSession(forwardHints[msgKey].session)}>前往查看 →</button>
+                  </div>
                 ) : null}
               </div>
-            </div>
-            {m.role === 'claude' ? (
-              m.thinking ? (
-                <div className="flex flex-row items-start gap-1.5">
-                  <span className="text-indigo-400/60 text-xs mt-0.5 shrink-0 select-none">💭</span>
-                  <span className="text-gray-500 text-sm italic leading-relaxed line-clamp-3 min-w-0">{m.content}</span>
-                </div>
-              ) : (m.html || showStreamingTail) ? (
-                <div className="flex flex-row items-center gap-1">
-                  {m.html && (
-                    <div className="prose text-gray-200 text-sm flex-1 min-w-0" dangerouslySetInnerHTML={{ __html: m.html }} />
-                  )}
-                  {showStreamingTail && (
-                    <span className="streaming-tail shrink-0 select-none" aria-hidden="true">...</span>
-                  )}
-                </div>
-              ) : (
-                <><span className="dot"/><span className="dot"/><span className="dot"/></>
-              )
-            ) : m.role === 'shell' ? (
-              <ShellOutput content={m.content || ''} exitCode={m.exitCode} streaming={m.streaming} />
             ) : (
-              <div className="whitespace-pre-wrap text-gray-200 break-words">{m.content}</div>
-            )}
-            {(m.role === 'claude' || m.role === 'shell') && forwardHints[msgKey] ? (
-              <div className="mt-2 pt-2 border-t border-gray-700/80 text-[11px] text-gray-500">
-                已 Forward 到「{forwardHints[msgKey].label}」
-                <button
-                  type="button"
-                  className="ml-1 text-indigo-400 hover:text-indigo-300 font-medium"
-                  onClick={() => jumpToSession(forwardHints[msgKey].session)}
-                >
-                  前往查看 →
-                </button>
+              /* Claude — 設計 1a 文件流：頭像列 + 無邊框正文 */
+              <div className="bubble-claude w-fit max-w-[78%] min-w-0 flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-2 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center justify-center w-[22px] h-[22px] rounded-md bg-[oklch(0.68_0.14_45_/20%)] text-[oklch(0.68_0.14_45)] text-xs shrink-0" aria-hidden>✳</span>
+                    <span className="text-[13px] font-bold text-[oklch(0.85_0.01_264)]">{AGENT_LABEL[agentType] || agentType || 'Claude'}</span>
+                  </div>
+                  <div className="shrink-0 flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                    <MessageCopyButton text={forwardBody} className="p-1 rounded-md text-gray-400 hover:text-gray-200" />
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setForwardModal({ messageKey: msgKey, messageContent: forwardBody }); }}
+                      disabled={!canForwardShellOrAgent}
+                      title="轉發到其他會話"
+                      className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded-md text-gray-400 hover:text-cyan-400 disabled:opacity-30"
+                    >
+                      <span className="text-[10px] font-medium">Forward</span>
+                    </button>
+                  </div>
+                </div>
+                {m.thinking ? (
+                  <div className="flex flex-row items-start gap-1.5">
+                    <span className="text-violet-400/60 text-xs mt-0.5 shrink-0 select-none">💭</span>
+                    <span className="text-[oklch(0.55_0.01_264)] text-sm italic leading-relaxed line-clamp-3 min-w-0">{m.content}</span>
+                  </div>
+                ) : (m.html || showStreamingTail) ? (
+                  <div className="flex flex-row items-start gap-1">
+                    {m.html && (
+                      <div className="prose text-[oklch(0.85_0.01_264)] text-sm leading-[1.8] flex-1 min-w-0" dangerouslySetInnerHTML={{ __html: m.html }} />
+                    )}
+                    {showStreamingTail && (
+                      <span className="streaming-tail shrink-0 select-none" aria-hidden="true">...</span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex gap-1 py-1"><span className="dot"/><span className="dot"/><span className="dot"/></div>
+                )}
+                {forwardHints[msgKey] ? (
+                  <div className="pt-1 text-[11px] text-[oklch(0.5_0.01_264)]">
+                    已 Forward 到「{forwardHints[msgKey].label}」
+                    <button type="button" className="ml-1 text-violet-400 hover:text-violet-300 font-medium" onClick={() => jumpToSession(forwardHints[msgKey].session)}>前往查看 →</button>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-            </div>
+            )}
           </div>
           );
         })}
@@ -3097,7 +3143,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
 
       {/* 輸入區：水平內距略小於訊息列表，讓輸入框可用寬度較大 */}
       <div
-        className={`shrink-0 px-2 sm:px-3 py-3 border-t transition-colors duration-200 ${inputMode === 'shell' ? 'bg-[#120d00] border-amber-900/50' : 'bg-gray-900 border-gray-800'}`}
+        className={`shrink-0 px-4 sm:px-7 py-4 border-t transition-colors duration-200 ${inputMode === 'shell' ? 'bg-[oklch(0.15_0.02_264)] border-amber-900/40' : 'bg-[oklch(0.15_0.02_264)] border-[oklch(0.26_0.02_264)]'}`}
         style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
       >
         {(state === 'STREAMING' || state === 'THINKING' || state === 'SHELL_RUNNING' || state === 'SHELL_EXEC') ? (
@@ -3106,14 +3152,15 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             中斷
           </button>
         ) : (
-          <div className="flex gap-2 w-full min-w-0 items-center">
+          <div className={(inputMode === 'shell' ? 'ra-cmd-bar shell' : 'ra-cmd-bar') + ' w-full'}>
             <ModeToggleBtn
               value={inputMode}
               onChange={handleInputModeChange}
               disabled={modeSwitchDisabled}
-              showLabel={!usePermModeDropdown}
+              showLabel
+              agentLabel={AGENT_LABEL[agentType] || 'Claude'}
             />
-            <div className="relative flex min-h-[2.75rem] max-lg:min-h-12 flex-1 min-w-0 items-center" ref={slashInputWrapRef}>
+            <div className="relative flex flex-1 min-w-0 items-center" ref={slashInputWrapRef}>
               {slashMenuOpen && (
                 <SlashCommandMenu
                   items={slashMenuItems}
@@ -3148,26 +3195,16 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 placeholder={inputMode === 'shell' ? `輸入 ${shellType || 'Shell'} 指令…` : '輸入指令…'}
                 rows={1}
                 className={[
-                  'flex-1 min-w-0 w-full resize-none overflow-y-auto app-scroll rounded-lg px-3 py-2 text-sm leading-relaxed placeholder-gray-600 focus:outline-none disabled:opacity-40 min-h-[2.75rem] max-lg:min-h-12 max-h-[min(40vh,12rem)] box-border',
-                  inputMode === 'shell'
-                    ? 'bg-[#0d0800] border border-amber-600/70 text-amber-50 focus:border-amber-400 font-mono placeholder-amber-900/60'
-                    : 'bg-gray-800 border border-gray-700 text-gray-200 focus:border-indigo-600',
+                  'flex-1 min-w-0 w-full resize-none overflow-y-auto app-scroll border-0 bg-transparent px-1 py-1.5 text-[13.5px] leading-relaxed placeholder-[oklch(0.5_0.01_264)] focus:outline-none disabled:opacity-40 min-h-[2rem] max-h-[min(40vh,12rem)] box-border',
+                  inputMode === 'shell' ? 'text-amber-50 font-mono placeholder-amber-900/60' : 'text-[oklch(0.9_0.01_264)]',
                 ].join(' ')}
               />
             </div>
             <button type="button" onClick={() => handleSend()} disabled={isDisabled || !input.trim()}
               aria-label="送出"
               title="送出（Enter）"
-              className={`shrink-0 flex items-center justify-center w-10 h-10 min-h-[2.75rem] max-lg:w-12 max-lg:h-12 max-lg:min-h-12 ${inputMode === 'shell' ? 'bg-amber-700 hover:bg-amber-600' : 'bg-indigo-600 hover:bg-indigo-500'} disabled:opacity-30 text-white rounded-lg transition-colors`}>
-              {inputMode === 'shell' ? (
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden>
-                  <path fillRule="evenodd" d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z" clipRule="evenodd" />
-                </svg>
-              ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5" aria-hidden>
-                  <path d="M3.478 2.405a.75.75 0 0 0-.926.94l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.405Z" />
-                </svg>
-              )}
+              className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-[8px] ${inputMode === 'shell' ? 'bg-amber-700 hover:bg-amber-600' : 'bg-[oklch(0.62_0.19_275)] hover:brightness-110'} disabled:opacity-30 text-white transition-colors text-sm`}>
+              ➤
             </button>
           </div>
         )}
@@ -3232,8 +3269,14 @@ function PasswordView({ onSuccess }) {
     <div className="flex items-center justify-center h-app">
       <div className="w-72 space-y-4">
         <div className="text-center">
-          <div className="text-indigo-400 text-2xl font-bold mb-1">Claude Code</div>
-          <div className="text-gray-500 text-sm">請輸入存取密碼</div>
+          <div className="flex flex-col items-center gap-2 mb-1">
+            <div className="w-10 h-10 rounded-[10px] bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center" aria-hidden>
+              <div className="w-3.5 h-3.5 rounded-[3px] bg-white" />
+            </div>
+            <div className="ra-display text-2xl" style={{color:'oklch(0.94 0.01 264)'}}>Agent Console</div>
+          </div>
+          <div className="text-gray-500 text-sm">Claude Code · Remote Agent</div>
+          <div className="text-gray-600 text-xs">請輸入存取密碼</div>
         </div>
         <input
           type="password"
@@ -3242,11 +3285,11 @@ function PasswordView({ onSuccess }) {
           onKeyDown={handleKey}
           placeholder="密碼"
           autoFocus
-          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-600"
+          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-violet-600"
         />
         {error && <div className="text-red-400 text-xs text-center">{error}</div>}
         <button onClick={submit} disabled={loading || !pwd.trim()}
-          className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-lg text-sm font-medium">
+          className="w-full py-2.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white rounded-lg text-sm font-medium">
           {loading ? '驗證中…' : '進入'}
         </button>
       </div>
@@ -3386,16 +3429,16 @@ function App() {
     if (!isWideScreen) {
       return session
         ? <ChatView session={session} onBack={() => setSession(null)} usePermModeDropdown onJumpToSession={setSession} allSessions={sidebarSortedSessions} />
-        : <SessionView onEnter={setSession} onSessionsLoaded={mergeSessionMetaFromList} onSortedSessionsChange={setSidebarSortedSessions} usePermModeDropdown />;
+        : <SessionView onEnter={setSession} onSessionsLoaded={mergeSessionMetaFromList} onSortedSessionsChange={setSidebarSortedSessions} usePermModeDropdown activeSessionId={session?.id} />;
     }
 
     return (
-      <div className="h-app flex bg-black min-w-0">
+      <div className="h-app flex bg-[oklch(0.15_0.02_264)] min-w-0">
         <aside
           style={{ width: sidebarWidthPx, flexShrink: 0 }}
-          className="min-w-0 bg-gray-950 flex flex-col"
+          className="min-w-0 bg-[oklch(0.13_0.02_264)] border-r border-[oklch(0.26_0.02_264)] flex flex-col"
         >
-          <SessionView onEnter={setSession} onSessionsLoaded={mergeSessionMetaFromList} onSortedSessionsChange={setSidebarSortedSessions} />
+          <SessionView onEnter={setSession} onSessionsLoaded={mergeSessionMetaFromList} onSortedSessionsChange={setSidebarSortedSessions} activeSessionId={session?.id} />
         </aside>
         <div
           role="separator"
@@ -3404,12 +3447,12 @@ function App() {
           aria-valuemin={SIDEBAR_WIDTH_MIN}
           aria-valuemax={sidebarWidthMaxPx()}
           title="拖曳調整側欄寬度"
-          className="group relative w-3 shrink-0 cursor-col-resize select-none touch-none bg-gray-950 hover:bg-gray-900/90"
+          className="group relative w-1.5 shrink-0 cursor-col-resize select-none touch-none bg-transparent hover:bg-[oklch(0.62_0.19_275_/15%)]"
           onMouseDown={handleSidebarResizeStart}
           onTouchStart={handleSidebarResizeStart}
         >
           <span
-            className="pointer-events-none absolute left-1/2 top-0 bottom-0 w-px -translate-x-1/2 bg-gray-800 group-hover:bg-indigo-500/50"
+            className="pointer-events-none absolute left-1/2 top-0 bottom-0 w-px -translate-x-1/2 bg-gray-800 group-hover:bg-violet-500/50"
             aria-hidden
           />
         </div>
@@ -3417,8 +3460,11 @@ function App() {
           {session ? (
             <ChatView session={session} onBack={() => setSession(null)} showBack={false} fullHeight={false} onJumpToSession={setSession} allSessions={sidebarSortedSessions} />
           ) : (
-            <div className="h-full flex items-center justify-center text-gray-500 text-sm bg-gray-950/40">
-              請從左側選擇一個 Session 開始對話
+            <div className="h-full flex flex-col items-center justify-center gap-3 bg-[oklch(0.15_0.02_264)]">
+              <div className="w-10 h-10 rounded-[10px] bg-gradient-to-br from-[oklch(0.62_0.19_275)] to-[oklch(0.6_0.17_300)] flex items-center justify-center opacity-80" aria-hidden>
+                <div className="w-3.5 h-3.5 rounded-[3px] bg-white" />
+              </div>
+              <div className="text-[oklch(0.55_0.01_264)] text-sm">從左側選擇 Session，或按 + 建立新對話</div>
             </div>
           )}
         </main>

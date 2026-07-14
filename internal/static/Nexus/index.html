@@ -215,7 +215,7 @@ function readApiBaseOverride() {
 }
 
 /**
- * 與主站 internal/static/index.html 完全相同：pathname 推導 + Nexus／Focus 目錄剝除。
+ * 與主站 internal/static/index.html 完全相同：pathname 推導 + Nexus／Focus／Enterprise／RemoteAgent／v1 目錄剝除。
  */
 function inferApiBaseFromPathname() {
   let p = window.location.pathname || '/';
@@ -223,7 +223,7 @@ function inferApiBaseFromPathname() {
     p = p.replace(/\/[^/]+\.html$/i, '');
   }
   p = p.replace(/\/+$/, '');
-  p = p.replace(/\/nexus$/i, '').replace(/\/focus$/i, '').replace(/\/enterprise$/i, '');
+  p = p.replace(/\/nexus$/i, '').replace(/\/focus$/i, '').replace(/\/enterprise$/i, '').replace(/\/remoteagent$/i, '').replace(/\/v1$/i, '');
   p = p.replace(/\/+$/, '');
   if (p === '' || p === '/') return '';
   return p;

@@ -3,13 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
-  <!-- 選用：與主站相同，API 前綴不一致時設 cc-api-base 或 window.__CC_API_BASE__ -->
+  <!-- 選用：反代下 API 與自動推算不一致時設 content="/部署前綴"（無則由目前 index.html 目錄自動推算） -->
   <!-- <meta name="cc-api-base" content="" /> -->
-  <title>Claude Code · Enterprise</title>
+  <title>Claude Code TMA</title>
   <link rel="icon" href="../favicon.ico" type="image/x-icon" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
@@ -20,77 +17,29 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
   <style>
-    :root {
-      --tg-content-safe-top: 0px;
-      --ent-bg0: #0c1117;
-      --ent-bg1: #151b24;
-      --ent-surface: #1c2430;
-      --ent-accent: #2563eb;
-      --ent-accent-dim: rgba(37, 99, 235, 0.12);
-      --ent-border: rgba(148, 163, 184, 0.14);
-    }
-    body.enterprise-body {
-      background: var(--ent-bg0);
-      color: #e2e8f0;
-      font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
-    }
-    .enterprise-display {
-      font-family: "IBM Plex Sans", ui-sans-serif, sans-serif;
-      font-weight: 600;
-      letter-spacing: -0.02em;
-    }
-    body.enterprise-body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      z-index: 0;
-      pointer-events: none;
-      background:
-        linear-gradient(180deg, var(--ent-bg1) 0%, var(--ent-bg0) 48%);
-      box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.06);
-    }
-    .ent-topbar {
-      border-top: 2px solid var(--ent-accent);
-      background: rgba(21, 27, 36, 0.92);
-      backdrop-filter: blur(12px);
-    }
-    #root { position: relative; z-index: 1; }
-    /* 寬螢幕沿用 Tailwind text-sm；僅窄螢幕強制 16px，避免 iOS 聚焦輸入時自動縮放 */
+    :root { --tg-content-safe-top: 0px; }
+    body { background: #0f0f0f; color: #e5e5e5; font-family: system-ui, sans-serif; }
+    /* 用 Telegram 提供的視口高度變數；鍵盤彈出時自動縮小，解決 iOS 空白間隙問題 */
+    .h-app { height: var(--tg-viewport-height, 100svh); }
+    /* 寬螢幕沿用 Tailwind text-sm（與聊天室一致）；僅窄螢幕強制 16px，避免 iOS 聚焦輸入時自動縮放 */
     @media (max-width: 767px) {
       input, textarea, select { font-size: 16px !important; }
     }
     .prose pre { margin: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
     .prose pre code { white-space: pre; }
     .prose code:not(pre code) {
-      background: rgba(59, 130, 246, 0.08); padding: 0.12em 0.45em; border-radius: 6px; font-size: 0.9em; border: 1px solid rgba(255,255,255,0.06);
+      background: #2a2a2a; padding: 0.1em 0.4em; border-radius: 4px; font-size: 0.9em;
     }
     .prose p { margin: 0.5em 0; }
     .prose ul, .prose ol { padding-left: 1.5em; margin: 0.5em 0; }
     .prose h1,.prose h2,.prose h3 { font-weight: 600; margin: 0.75em 0 0.25em; }
     .prose table { border-collapse: collapse; min-width: 100%; }
-    .prose table th, .prose table td { border: 1px solid rgba(59, 130, 246, 0.15); padding: 0.3em 0.75em; white-space: nowrap; }
-    .prose table th { background: rgba(59, 130, 246, 0.06); font-weight: 600; }
+    .prose table th, .prose table td { border: 1px solid #3a3a5a; padding: 0.3em 0.75em; white-space: nowrap; }
+    .prose table th { background: #2a2a4a; font-weight: 600; }
     .prose .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0.5em 0; }
-    .bubble-claude {
-      background: var(--ent-surface);
-      border: 1px solid var(--ent-border);
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.24);
-      overflow: hidden;
-      min-width: 0;
-    }
-    .bubble-user {
-      background: rgba(30, 41, 59, 0.88);
-      border: 1px solid rgba(59, 130, 246, 0.18);
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-      overflow: hidden;
-      min-width: 0;
-    }
-    .bubble-shell {
-      background: #0f172a;
-      border: 1px solid rgba(148, 163, 184, 0.16);
-      overflow: hidden;
-      min-width: 0;
-    }
+    .bubble-claude { background: #1a1a2e; border: 1px solid #2a2a4a; overflow: hidden; min-width: 0; }
+    .bubble-user   { background: #1a2e1a; border: 1px solid #2a4a2a; overflow: hidden; min-width: 0; }
+    .bubble-shell  { background: #0d1117; border: 1px solid #30363d; overflow: hidden; min-width: 0; }
     @keyframes streaming-dots {
       0%, 100% { opacity: 0.35; }
       50% { opacity: 1; }
@@ -99,144 +48,40 @@
       display: inline-block;
       margin-left: 0.1em;
       letter-spacing: 0.02em;
-      color: #93c5fd;
+      color: #a5b4fc;
       animation: streaming-dots 1s ease-in-out infinite;
     }
     @keyframes pulse-dot {
       0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; }
     }
-    .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #3b82f6; margin: 0 2px; animation: pulse-dot 1.2s infinite; }
+    .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #6366f1; margin: 0 2px; animation: pulse-dot 1.2s infinite; }
     .dot:nth-child(2) { animation-delay: 0.2s; }
     .dot:nth-child(3) { animation-delay: 0.4s; }
+    /* 側欄 Session 列表、聊天室、textarea 共用：細捲軸、與標題 indigo 一致 */
     .app-scroll {
       -webkit-overflow-scrolling: touch;
       scrollbar-width: thin;
-      scrollbar-color: rgba(59, 130, 246, 0.38) rgba(10, 16, 28, 0.8);
+      scrollbar-color: rgba(99, 102, 241, 0.48) rgba(24, 24, 27, 0.65);
       overscroll-behavior-y: contain;
     }
-    .app-scroll::-webkit-scrollbar { width: 6px; }
-    .app-scroll::-webkit-scrollbar-track { background: rgba(5, 8, 15, 0.5); border-radius: 6px; }
+    .app-scroll::-webkit-scrollbar {
+      width: 5px;
+    }
+    .app-scroll::-webkit-scrollbar-track {
+      background: rgba(15, 15, 15, 0.45);
+      border-radius: 4px;
+    }
     .app-scroll::-webkit-scrollbar-thumb {
-      background: linear-gradient(180deg, rgba(59, 130, 246, 0.45), rgba(99, 102, 241, 0.35));
-      border-radius: 6px;
-      border: 1px solid rgba(0, 0, 0, 0.25);
+      background: rgba(99, 102, 241, 0.42);
+      border-radius: 4px;
+      border: 1px solid rgba(15, 15, 15, 0.35);
     }
     .app-scroll::-webkit-scrollbar-thumb:hover {
-      background: rgba(59, 130, 246, 0.6);
+      background: rgba(129, 140, 248, 0.58);
     }
-    @keyframes enterprise-fade-in {
-      from { opacity: 0; transform: translateY(6px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .enterprise-card-enter { animation: enterprise-fade-in 0.4s ease-out both; }
-    /* Enterprise 拓撲：表格式 Session、thread 聊天、command bar */
-    .ent-session-rows { flex: 1; min-height: 0; overflow-y: auto; }
-    .ent-session-row {
-      display: grid;
-      grid-template-columns: 3px minmax(0, 1fr) auto;
-      gap: 0 0.75rem;
-      align-items: center;
-      padding: 0.625rem 0.75rem;
-      border-bottom: 1px solid var(--ent-border);
-      cursor: pointer;
-      transition: background-color 0.15s ease;
-    }
-    .ent-session-row:hover { background: rgba(30, 41, 59, 0.35); }
-    .ent-session-row:active { background: rgba(30, 41, 59, 0.5); }
-    .ent-session-accent {
-      align-self: stretch;
-      width: 3px;
-      border-radius: 2px;
-      background: transparent;
-    }
-    .ent-session-row.is-running .ent-session-accent { background: var(--ent-accent); }
-    .ent-session-row.is-awaiting .ent-session-accent { background: #f59e0b; }
-    .ent-toolbar {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-      padding: 0.625rem 0.75rem;
-      border-bottom: 1px solid var(--ent-border);
-      background: rgba(21, 27, 36, 0.65);
-    }
-    @media (min-width: 640px) {
-      .ent-toolbar {
-        flex-direction: row;
-        flex-wrap: wrap;
-        align-items: center;
-      }
-      .ent-toolbar-search { flex: 1 1 12rem; min-width: 0; }
-      .ent-toolbar-actions { display: flex; gap: 0.5rem; align-items: center; shrink: 0; }
-    }
-    .ent-chat-primary {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.5rem 1rem;
-      min-height: 2.75rem;
-    }
-    .ent-chat-meta {
-      display: flex;
-      align-items: center;
-      gap: 0.375rem;
-      overflow-x: auto;
-      padding: 0.375rem 1rem 0.5rem;
-      border-bottom: 1px solid var(--ent-border);
-      background: rgba(15, 23, 42, 0.35);
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
-    }
-    .ent-chat-meta::-webkit-scrollbar { display: none; }
-    .ent-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.25rem;
-      flex-shrink: 0;
-      white-space: nowrap;
-      font-size: 10px;
-      line-height: 1.2;
-      padding: 0.2rem 0.5rem;
-      border-radius: 0.25rem;
-      border: 1px solid var(--ent-border);
-      background: rgba(30, 41, 59, 0.55);
-      color: #cbd5e1;
-    }
-    .ent-chat-column {
-      width: 100%;
-      max-width: 48rem;
-      margin-left: auto;
-      margin-right: auto;
-    }
-    .ent-thread {
-      width: 100%;
-      max-width: none;
-      border-left: 3px solid var(--ent-accent);
-      border-radius: 0 0.375rem 0.375rem 0;
-      padding: 0.75rem 1rem;
-      background: var(--ent-surface);
-    }
-    .ent-thread-user {
-      width: auto;
-      max-width: min(88%, 28rem);
-      margin-left: auto;
-      border-left: none;
-      border-radius: 0.375rem;
-    }
-    .ent-thread-shell { border-left-color: #64748b; }
-    .ent-command-bar {
-      border-top: 2px solid var(--ent-accent);
-      background: var(--ent-bg1);
-    }
-    .ent-perm-row {
-      padding: 0.375rem 1rem 0.5rem;
-      border-bottom: 1px solid var(--ent-border);
-      background: rgba(15, 23, 42, 0.25);
-    }
-    /* 用 Telegram 提供的視口高度變數；鍵盤彈出時自動縮小，解決 iOS 空白間隙問題 */
-    .h-app { height: var(--tg-viewport-height, 100svh); }
   </style>
 </head>
-<body class="h-app enterprise-body">
+<body class="h-app">
 
 <script type="text/babel" data-presets="react-classic">
 const { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } = React;
@@ -333,7 +178,8 @@ function readApiBaseOverride() {
 }
 
 /**
- * 與主站 internal/static/index.html 完全相同：pathname 推導 + Nexus／Focus／Enterprise／RemoteAgent／v1 目錄剝除。
+ * 與 Go Fiber 同掛一條反代前綴時：目前 index 所在目錄為 API 前綴。
+ * 若在 …/Nexus/、…/Focus/、…/Enterprise/、…/RemoteAgent/、…/v1/ 測試主題底下，再剝除該目錄，與同層主介面共用前綴。
  */
 function inferApiBaseFromPathname() {
   let p = window.location.pathname || '/';
@@ -368,14 +214,13 @@ function resolveApiUrl(url) {
 }
 
 console.log(
-  '[enterprise init] isTMA:', isTMA,
+  '[init] isTMA:', isTMA,
   'isTelegram:', isTelegram,
   'initData len:', initData.length,
   'protocol:', location.protocol,
   'spaBase:', getSpaBasePath() || '(root)',
 );
 
-// 統一 fetch：TMA 帶 initData；Web 帶 Bearer（localStorage），舊版仍相容後端 Cookie
 // Web session 過期時統一登出（僅 Web 密碼登入，TMA 不受影響）
 let onSessionExpired = null;
 const registerSessionExpiredHandler = (fn) => { onSessionExpired = fn; };
@@ -466,6 +311,9 @@ const SESSION_STATE_LABEL = {
   THINKING: '思考中',
   STREAMING: '輸出中',
   AWAITING_CONFIRM: '待授權',
+  SHELL_IDLE: '待命',
+  SHELL_AWAITING_APPROVAL: '等待確認',
+  SHELL_RUNNING: '執行中',
   AWAITING_SHELL_CONFIRM: '待確認 Shell',
   SHELL_EXEC: 'Shell 執行中',
 };
@@ -502,6 +350,7 @@ function useMediaQuery(query) {
   return matches;
 }
 
+/** 手機預設收合；偏好寫入 localStorage */
 function useChatHeaderCollapsed() {
   const isMobile = useMediaQuery('(max-width: 639px)');
   const [collapsed, setCollapsedState] = useState(() => {
@@ -554,12 +403,12 @@ function permModeIsDanger(value) {
 }
 
 function sessionStateChipClass(state) {
-  if (state === 'IDLE') return 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/50';
-  if (state === 'THINKING') return 'bg-blue-950/80 text-blue-400 border border-blue-800/50';
-  if (state === 'STREAMING') return 'bg-sky-950/80 text-sky-300 border border-sky-800/50';
-  if (state === 'SHELL_EXEC' || state === 'SHELL_RUNNING') return 'bg-fuchsia-950/80 text-fuchsia-200 border border-fuchsia-800/50';
-  if (state === 'AWAITING_SHELL_CONFIRM' || state === 'SHELL_AWAITING_APPROVAL') return 'bg-orange-950/85 text-orange-200 border border-orange-800/50';
-  return 'bg-amber-950/80 text-amber-200 border border-amber-800/50';
+  if (state === 'IDLE') return 'bg-green-900/90 text-green-300 border-green-800/40';
+  if (state === 'THINKING') return 'bg-indigo-900/90 text-indigo-300 border-indigo-800/40';
+  if (state === 'STREAMING') return 'bg-blue-900/90 text-blue-300 border-blue-800/40';
+  if (state === 'SHELL_EXEC' || state === 'SHELL_RUNNING') return 'bg-purple-900/90 text-purple-300 border-purple-800/40';
+  if (state === 'AWAITING_SHELL_CONFIRM' || state === 'SHELL_AWAITING_APPROVAL') return 'bg-orange-950/90 text-orange-200 border-orange-800/40';
+  return 'bg-yellow-900/90 text-yellow-300 border-yellow-800/40';
 }
 
 function SessionStateChip({ state, activityHint, compact, className = '' }) {
@@ -567,7 +416,10 @@ function SessionStateChip({ state, activityHint, compact, className = '' }) {
     ? (state === 'THINKING' && activityHint ? '思考' : (SESSION_STATE_LABEL[state] || state))
     : (state === 'THINKING' && activityHint ? activityHint : (SESSION_STATE_LABEL[state] || state));
   return (
-    <span title={state} className={'inline-flex items-center shrink-0 text-[10px] px-2 py-0.5 rounded font-semibold uppercase tracking-wide ' + sessionStateChipClass(state) + ' ' + className}>
+    <span
+      title={state}
+      className={'inline-flex items-center shrink-0 text-[10px] px-1.5 py-0.5 rounded-md font-medium border ' + sessionStateChipClass(state) + ' ' + className}
+    >
       {label}
     </span>
   );
@@ -580,7 +432,7 @@ function HeaderToggleButton({ expanded, onToggle, className = '' }) {
       onClick={onToggle}
       aria-expanded={expanded}
       aria-label={expanded ? '收合頂欄' : '展開頂欄'}
-      className={'sm:hidden shrink-0 p-1 rounded-md text-slate-500 hover:text-slate-200 hover:bg-slate-800/80 transition-colors ' + className}
+      className={'sm:hidden shrink-0 p-1 rounded-md text-gray-500 hover:text-gray-300 hover:bg-gray-800/70 transition-colors ' + className}
     >
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={'w-4 h-4 transition-transform duration-150 ' + (expanded ? 'rotate-180' : '')} aria-hidden>
         <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
@@ -592,7 +444,10 @@ function HeaderToggleButton({ expanded, onToggle, className = '' }) {
 function AgentIconChip({ agentType, className = '' }) {
   const t = String(agentType || 'claude').toLowerCase();
   return (
-    <span className={'ent-chip inline-flex items-center justify-center !p-0 w-5 h-5 ' + getAgentBadgeClass(agentType) + ' ' + className} title={AGENT_LABEL[t] || t}>
+    <span
+      className={'inline-flex items-center justify-center w-5 h-5 shrink-0 rounded-md border border-gray-700/55 ' + getAgentBadgeClass(agentType) + ' ' + className}
+      title={AGENT_LABEL[t] || t}
+    >
       <AgentBadgeIcon agentType={agentType} />
     </span>
   );
@@ -609,8 +464,10 @@ function PermModeIconChip({ agentType, value, onClick, disabled, className = '' 
       title={'權限：' + label + '（點擊展開）'}
       aria-label={'權限：' + label}
       className={
-        'ent-chip inline-flex items-center justify-center !p-0 w-5 h-5 transition-colors ' +
-        (danger ? '!border-amber-600/60 !text-amber-200 !bg-amber-950/45' : '') +
+        'inline-flex items-center justify-center w-5 h-5 shrink-0 rounded-md border transition-colors ' +
+        (danger
+          ? 'border-amber-700/65 bg-amber-950/55 text-amber-300 hover:bg-amber-950/75'
+          : 'border-gray-700/55 bg-gray-800/70 text-gray-400 hover:text-gray-200 hover:bg-gray-800') +
         (disabled ? ' opacity-45 pointer-events-none' : '') +
         ' ' + className
       }
@@ -623,6 +480,7 @@ function PermModeIconChip({ agentType, value, onClick, disabled, className = '' 
 }
 
 const INPUT_MODE_STORAGE_PREFIX = 'cc_input_mode:';
+/** 舊版單一全域鍵，僅在該 session 尚無專用紀錄時作為向後相容讀取 */
 const INPUT_MODE_LEGACY_KEY = 'cc_input_mode';
 
 /** 輸入框 `/` 觸發之 slash 命令清單（可選 `modes` 限定 inputMode，省略則全部顯示） */
@@ -653,6 +511,7 @@ function clearDraftInputForSession(sessionId) {
   } catch (_) {}
 }
 
+/** 依 session 從 localStorage 讀取輸入模式；該 session 未設定或無效時預設 agent */
 function readInputModeForSession(sessionId) {
   try {
     const v = localStorage.getItem(inputModeStorageKey(sessionId));
@@ -808,7 +667,7 @@ function PermModeSwitch({ agentType, value, onChange, disabled, title }) {
     <div
       role="radiogroup"
       aria-label={ariaLabel}
-      className={`inline-flex max-w-full flex-wrap items-stretch gap-0.5 rounded-2xl border border-blue-600/15 bg-slate-950/80 p-0.5 shadow-[inset_0_1px_0_rgba(59,130,246,0.06)] backdrop-blur-sm ${
+      className={`inline-flex max-w-full flex-wrap items-stretch gap-0.5 rounded-xl border border-gray-700/90 bg-gray-900/85 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ${
         disabled ? 'pointer-events-none opacity-45' : ''
       }`}
     >
@@ -824,13 +683,13 @@ function PermModeSwitch({ agentType, value, onChange, disabled, title }) {
             disabled={disabled}
             onClick={() => onChange(opt.value)}
             className={[
-              'min-h-[2rem] shrink-0 grow-0 px-2 sm:px-2.5 py-1.5 text-center text-[10px] sm:text-xs font-medium leading-tight rounded-xl transition-[color,background-color,box-shadow] duration-150 whitespace-nowrap',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/60 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-950',
+              'min-h-[2rem] shrink-0 grow-0 px-2 sm:px-2.5 py-1.5 text-center text-[10px] sm:text-xs font-medium leading-tight rounded-lg transition-[color,background-color,box-shadow] duration-150 whitespace-nowrap',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 focus-visible:ring-offset-gray-900',
               active
                 ? danger
-                  ? 'bg-amber-950/95 text-amber-100 ring-1 ring-amber-500/55 shadow-sm'
-                  : 'bg-gradient-to-br from-blue-700 to-blue-700 text-white shadow-md shadow-blue-950/50'
-                : 'text-slate-400 hover:bg-white/[0.06] hover:text-slate-100 border border-transparent',
+                  ? 'bg-amber-950/95 text-amber-100 ring-1 ring-amber-600/60 shadow-sm'
+                  : 'bg-indigo-600 text-white shadow-sm shadow-indigo-950/40'
+                : 'text-gray-400 hover:bg-gray-800/85 hover:text-gray-200 border border-transparent',
             ].join(' ')}
           >
             {opt.label}
@@ -861,8 +720,8 @@ function PermModeSelect({ agentType, value, onChange, disabled, title, id, class
         widthClass,
         'min-w-0 rounded-lg px-3 py-1.5 text-sm focus:outline-none disabled:opacity-45 transition-[color,background-color,border-color,box-shadow] duration-150',
         danger
-          ? 'border border-amber-500/65 bg-amber-950/50 text-amber-50 shadow-sm shadow-amber-950/30 focus:border-amber-400 focus:ring-1 focus:ring-amber-500/30'
-          : 'border border-blue-600/20 bg-slate-900/90 text-slate-100 focus:border-blue-600/50 focus:ring-1 focus:ring-blue-600/25',
+          ? 'border border-amber-600/75 bg-amber-950/45 text-amber-50 shadow-sm shadow-amber-950/35 focus:border-amber-500 focus:ring-1 focus:ring-amber-600/35'
+          : 'border border-gray-700 bg-gray-800 text-gray-200 focus:border-indigo-600',
         className || '',
       ].join(' ').replace(/\s+/g, ' ').trim()}
     >
@@ -877,13 +736,13 @@ function PermModeSelect({ agentType, value, onChange, disabled, title, id, class
 function getAgentBadgeClass(agentType) {
   const t = String(agentType || 'claude').toLowerCase();
   const map = {
-    claude: 'bg-amber-500/15 text-amber-200 ring-1 ring-amber-400/25',
-    cursor: 'bg-blue-700/15 text-slate-300 ring-1 ring-blue-500/25',
-    codex: 'bg-slate-500/12 text-slate-200 ring-1 ring-slate-400/20',
-    antigravity: 'bg-sky-500/15 text-sky-200 ring-1 ring-sky-400/25',
-    kiro: 'bg-purple-500/15 text-purple-200 ring-1 ring-purple-400/25',
+    claude: 'bg-orange-900/60 text-orange-200',
+    cursor: 'bg-emerald-900/60 text-emerald-300',
+    codex: 'bg-slate-800/60 text-slate-200',
+    antigravity: 'bg-sky-900/60 text-sky-300',
+    kiro: 'bg-purple-900/60 text-purple-300',
   };
-  return map[t] || 'bg-slate-600/40 text-slate-200 ring-1 ring-white/10';
+  return map[t] || 'bg-gray-700/60 text-gray-300';
 }
 
 /**
@@ -958,6 +817,7 @@ function formatQuotaAge(iso) {
   return Math.floor(min / 60) + ' 小時前';
 }
 
+/** 帳戶 quota %（後端已組好 display_text） */
 function QuotaBadge({ quota, onRefresh, refreshing, className = '', compact = false, agentType = '' }) {
   const text = quota && quota.display_text;
   if (!text || text === '—') return null;
@@ -965,10 +825,10 @@ function QuotaBadge({ quota, onRefresh, refreshing, className = '', compact = fa
   if (!shown) return null;
   const age = formatQuotaAge(quota.updated_at);
   const title = [text, age, quota.error].filter(Boolean).join(' · ');
-  const textCls = quota.error ? 'text-amber-300' : quota.stale ? 'text-slate-600' : 'text-slate-500';
+  const textCls = quota.error ? 'text-amber-400' : quota.stale ? 'text-gray-500' : 'text-gray-400';
   const compactMaxW = String(agentType || '').toLowerCase() === 'kiro' ? 'max-w-[6.5rem]' : 'max-w-[4.5rem]';
   const chipCls = compact
-    ? 'ent-chip inline-flex items-center shrink-0 ' + compactMaxW + ' font-mono !py-0.5 '
+    ? 'inline-flex items-center shrink-0 ' + compactMaxW + ' px-1.5 py-0.5 rounded-md border border-gray-700/45 bg-gray-800/45 '
     : 'inline-flex items-center gap-0.5 min-w-0 max-w-full ';
   return (
     <span className={chipCls + className} title={title}>
@@ -978,7 +838,7 @@ function QuotaBadge({ quota, onRefresh, refreshing, className = '', compact = fa
           type="button"
           onClick={onRefresh}
           disabled={refreshing}
-          className={'shrink-0 text-[10px] px-0.5 ' + (refreshing ? 'text-blue-500 animate-spin' : 'text-slate-600 hover:text-blue-400')}
+          className={'shrink-0 text-[10px] px-0.5 ' + (refreshing ? 'text-indigo-400 animate-spin' : 'text-gray-500 hover:text-gray-300')}
           title="刷新帳戶用量"
         >
           ↻
@@ -988,6 +848,7 @@ function QuotaBadge({ quota, onRefresh, refreshing, className = '', compact = fa
   );
 }
 
+/** Session 目前 model（後端已組好 display_text） */
 function ModelBadge({ model, className = '' }) {
   const text = model && model.display_text;
   if (!text || text === '—') return null;
@@ -999,13 +860,14 @@ function ModelBadge({ model, className = '' }) {
   );
 }
 
+/** Git 分支角標（compact：單行截斷；展開：truncate 上限避免撐高 header） */
 function GitBranchBadge({ branch, compact = false }) {
   if (!branch) return null;
   return (
     <span
       className={
-        'ent-chip inline-flex items-center gap-1 min-w-0 font-mono shrink-0 ' +
-        (compact ? 'max-w-[5.5rem]' : 'max-w-[min(14rem,45vw)]')
+        'inline-flex items-center gap-1 min-w-0 text-[10px] px-1.5 py-0.5 rounded-md font-mono bg-orange-950/55 text-orange-200/95 border border-orange-800/40 shrink-0 ' +
+        (compact ? 'max-w-[5.5rem]' : 'max-w-[min(12rem,42vw)] sm:max-w-[14rem]')
       }
       title={'Git 分支：' + branch}
     >
@@ -1070,6 +932,113 @@ function sortSessionsByWorkDirThenName(sessions) {
   });
 }
 
+function parseShellExitCode(content) {
+  const m = content.match(/\[exit (-?\d+)\]\n?$/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function ShellOutput({ content, exitCode, streaming }) {
+  const strippedContent = content.replace(/\n?\[exit -?\d+\]\n?$/, '');
+  const resolvedExitCode = exitCode != null ? exitCode : (!streaming ? parseShellExitCode(content) : null);
+  const lines = strippedContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  return (
+    <div>
+      <pre className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed overflow-x-auto max-w-full">
+        {lines.map((line, i) => {
+          const nl = i < lines.length - 1 ? '\n' : '';
+          if (line.startsWith('[stderr] ')) return <span key={i} className="text-red-400">{line.slice(9)}{nl}</span>;
+          if (line.startsWith('[error] '))  return <span key={i} className="text-red-400">{line}{nl}</span>;
+          if (line === '[interrupted]')     return <span key={i} className="text-yellow-400">{line}{nl}</span>;
+          return <span key={i} className="text-gray-200">{line}{nl}</span>;
+        })}
+        {streaming && <span className="text-amber-400 animate-pulse">▌</span>}
+      </pre>
+      {!streaming && resolvedExitCode != null && (
+        <div className={`mt-1.5 inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded ${resolvedExitCode === 0 ? 'bg-green-900/60 text-green-300' : 'bg-red-900/60 text-red-300'}`}>
+          {resolvedExitCode === 0 ? '✓' : '✗'} exit {resolvedExitCode}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InputModeTab({ value, onChange, disabled }) {
+  const tabs = [{ v: 'agent', label: 'AI 代理' }, { v: 'shell', label: 'Shell' }];
+  return (
+    <div
+      role="radiogroup"
+      aria-label="輸入模式"
+      className={`inline-flex max-w-full flex-wrap items-stretch gap-0.5 rounded-xl border border-gray-700/90 bg-gray-900/85 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ${disabled ? 'pointer-events-none opacity-45' : ''}`}
+    >
+      {tabs.map(({ v, label }) => {
+        const active = value === v;
+        const isShell = v === 'shell';
+        return (
+          <button
+            key={v}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            disabled={disabled}
+            onClick={() => onChange(v)}
+            className={[
+              'min-h-[2rem] shrink-0 grow-0 px-2 sm:px-2.5 py-1.5 text-center text-[10px] sm:text-xs font-medium leading-tight rounded-lg transition-[color,background-color,box-shadow] duration-150 whitespace-nowrap',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 focus-visible:ring-offset-gray-900',
+              active
+                ? isShell
+                  ? 'bg-amber-950/95 text-amber-100 ring-1 ring-amber-600/60 shadow-sm'
+                  : 'bg-indigo-600 text-white shadow-sm shadow-indigo-950/40'
+                : 'text-gray-400 hover:bg-gray-800/85 hover:text-gray-200 border border-transparent',
+            ].join(' ')}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ModeToggleBtn({ value, onChange, disabled, showLabel = false }) {
+  const isShell = value === 'shell';
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(isShell ? 'agent' : 'shell')}
+      disabled={disabled}
+      title={isShell ? '切換到 AI 代理模式' : '切換到 Shell 模式'}
+      aria-label={isShell ? 'Shell 模式，點擊切換至 AI 代理' : 'AI 代理模式，點擊切換至 Shell'}
+      className={[
+        'shrink-0 flex items-center rounded-lg border transition-colors',
+        showLabel
+          ? 'gap-2 px-3 h-10 min-h-[2.75rem]'
+          : 'justify-center w-10 h-10 min-h-[2.75rem] max-lg:h-12 max-lg:w-12 max-lg:min-h-12',
+        disabled ? 'opacity-40 pointer-events-none' : '',
+        isShell
+          ? 'bg-amber-950/80 border-amber-600/70 text-amber-300 hover:bg-amber-900/80'
+          : 'bg-indigo-950/70 border-indigo-700/60 text-indigo-400 hover:bg-indigo-900/70',
+      ].join(' ')}
+    >
+      {isShell ? (
+        /* Heroicons: command-line (terminal) */
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className={showLabel ? 'w-5 h-5 shrink-0' : 'w-5 h-5'} aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="m6.75 7.5 3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 18V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v12a2.25 2.25 0 0 0 2.25 2.25Z" />
+        </svg>
+      ) : (
+        /* Heroicons: sparkles (AI) */
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className={showLabel ? 'w-5 h-5 shrink-0' : 'w-5 h-5'} aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />
+        </svg>
+      )}
+      {showLabel && (
+        <span className="text-xs font-medium whitespace-nowrap leading-none">
+          {isShell ? 'Shell' : 'AI 代理'}
+        </span>
+      )}
+    </button>
+  );
+}
+
 /** 將 API / sync 的訊息列轉成 ChatView 用的物件（含 pending 串流） */
 function mapMessageRow(m) {
   const role = m.role;
@@ -1085,10 +1054,13 @@ function mapMessageRow(m) {
     status,
     html: role === 'claude' ? (content ? parseMarkdown(content) : null) : null,
     streaming: pending,
+    exitCode: role === 'shell' ? parseShellExitCode(content) : undefined,
   };
 }
 
-/** 以 document.execCommand('copy') 複製純文字（相容非安全上下文，不使用 navigator.clipboard）。 */
+/**
+ * 以 document.execCommand('copy') 複製純文字（相容非安全上下文，不使用 navigator.clipboard）。
+ */
 function copyTextExecCommand(text) {
   const t = text == null ? '' : String(text);
   if (!t) return false;
@@ -1111,6 +1083,7 @@ function copyTextExecCommand(text) {
   }
 }
 
+/** 訊息氣泡用複製按鈕（複製 m.content 原始文字） */
 function MessageCopyButton({ text, className }) {
   const [copied, setCopied] = useState(false);
   const empty = !String(text || '').trim();
@@ -1328,7 +1301,7 @@ function ForwardModal({
                       onClick={() => setSelectedId(s.id)}
                       className={`w-full flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-sm transition-colors ${
                         active
-                          ? 'border-blue-500/50 bg-blue-600/10 ring-2 ring-blue-500/35'
+                          ? 'border-cyan-400/50 bg-cyan-500/10 ring-2 ring-cyan-400/35'
                           : 'border-slate-700/80 bg-slate-900/40 hover:bg-slate-800/50'
                       }`}
                     >
@@ -1349,8 +1322,8 @@ function ForwardModal({
                   onClick={() => setSelectedId('new')}
                   className={`w-full rounded-lg border px-2.5 py-2 text-left text-sm transition-colors ${
                     selectedId === 'new'
-                      ? 'border-blue-500/50 bg-blue-600/10 ring-2 ring-blue-500/35 text-slate-200'
-                      : 'border-dashed border-slate-600 bg-slate-900/30 text-slate-400 hover:border-blue-600/30 hover:text-blue-400'
+                      ? 'border-cyan-400/50 bg-cyan-500/10 ring-2 ring-cyan-400/35 text-cyan-200'
+                      : 'border-dashed border-slate-600 bg-slate-900/30 text-slate-400 hover:border-cyan-500/30 hover:text-cyan-300'
                   }`}
                 >
                   ＋ 新建會話
@@ -1421,7 +1394,7 @@ function ForwardModal({
                       value={newMode}
                       onChange={setNewMode}
                       disabled={newAgent === 'codex' || newAgent === 'kiro'}
-                      id="forward-new-perm-mode"
+                      id="forward-new-perm-mode-classic"
                       className="w-full py-2 text-xs"
                     />
                   ) : (
@@ -1463,7 +1436,7 @@ function ForwardModal({
                 onChange={(e) => setNote(e.target.value)}
                 rows={3}
                 placeholder="加上備註給目標會話（可選）"
-                className="w-full bg-slate-900/70 border border-slate-600 rounded-lg px-2 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-600/45"
+                className="w-full bg-slate-900/70 border border-slate-600 rounded-lg px-2 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500/45"
               />
             </div>
 
@@ -1482,7 +1455,7 @@ function ForwardModal({
                 type="button"
                 onClick={runForward}
                 disabled={busy || loadingSessions}
-                className="px-4 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-40"
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-cyan-500 to-teal-600 text-slate-950 hover:brightness-110 disabled:opacity-40"
               >
                 {busy ? '送出中…' : 'Forward'}
               </button>
@@ -1740,17 +1713,15 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
   };
 
   const renderSessionRow = (s, groupIndent) => (
-    <div key={s.id} className={groupIndent ? 'pl-3 border-l border-slate-700/50' : ''}>
+    <div
+      key={s.id}
+      className={groupIndent ? 'pl-3 border-l border-indigo-500/25' : ''}
+    >
       <div
         onClick={() => renamingId !== s.id && onEnter(s)}
-        className={
-          'ent-session-row group ' +
-          (s.status === 'running' ? 'is-running ' : '') +
-          (s.status === 'awaiting_confirm' ? 'is-awaiting ' : '')
-        }
+        className="flex items-center justify-between px-4 py-3.5 border-b border-gray-800 hover:bg-gray-800/50 active:bg-gray-700/50 cursor-pointer transition-colors"
       >
-        <div className="ent-session-accent" aria-hidden="true" />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1 mr-2">
           {renamingId === s.id ? (
             <input
               ref={renameInputRef}
@@ -1759,68 +1730,70 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
               onKeyDown={(e) => handleRenameKey(e, s.id)}
               onBlur={() => commitRename(s.id)}
               onClick={(e) => e.stopPropagation()}
-              className="w-full bg-slate-800 border border-blue-600/50 rounded px-2 py-1 text-sm text-slate-100 focus:outline-none"
+              className="w-full bg-gray-700 border border-indigo-500 rounded px-2 py-1 text-sm text-gray-100 focus:outline-none"
             />
           ) : (
-            <>
-              <div className="flex items-start justify-between gap-2 min-w-0">
-                <div className="text-sm font-semibold text-slate-100 break-words [overflow-wrap:anywhere] leading-snug enterprise-display min-w-0">
-                  {s.name || '未命名'}
-                </div>
-                {(s.status === 'awaiting_confirm') && (
-                  <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-amber-400" title="待授權">待授權</span>
-                )}
+            <div className="space-y-1.5 min-w-0">
+              <div className="text-sm font-bold text-gray-100 break-words [overflow-wrap:anywhere] leading-snug">
+                {s.name || '未命名'}
               </div>
-              <div className="flex flex-wrap items-center gap-1 mt-1">
-                <span className={`inline-flex items-center gap-1 shrink-0 text-[10px] px-1.5 py-0.5 rounded font-mono uppercase ${getAgentBadgeClass(s.agent_type)}`}>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className={`inline-flex items-center gap-1 shrink-0 text-[10px] px-2 py-0.5 rounded-full font-mono uppercase ${getAgentBadgeClass(s.agent_type)}`}>
                   <AgentBadgeIcon agentType={s.agent_type} />
                   {AGENT_LABEL[s.agent_type] || s.agent_type || 'claude'}
                 </span>
                 <GitBranchBadge branch={s.git_branch} />
                 {((s.agent_type || 'claude') !== 'codex') && s.permission_mode && (
-                  <span className="ent-chip font-mono" title="權限模式">
+                  <span
+                    className="inline-flex items-center shrink-0 text-[10px] px-2 py-0.5 rounded-full font-mono text-gray-300 bg-gray-800/90 border border-gray-700/70"
+                    title="權限模式"
+                  >
                     {PERM_MODE_LABEL[s.permission_mode] || s.permission_mode}
                   </span>
                 )}
                 {Array.isArray(s.cli_extra_args) && s.cli_extra_args.length > 0 && (
-                  <span className="ent-chip font-mono" title="已設定自訂 CLI 引數">
+                  <span
+                    className="inline-flex items-center shrink-0 text-[10px] px-2 py-0.5 rounded-full font-mono text-violet-300 bg-violet-950/50 border border-violet-800/60"
+                    title="已設定自訂 CLI 引數"
+                  >
                     +{s.cli_extra_args.length} argv
                   </span>
                 )}
               </div>
-              {s.work_dir && (
-                <div className="text-[11px] text-slate-500 font-mono mt-1 truncate" title={s.work_dir}>{s.work_dir}</div>
-              )}
-            </>
+            </div>
+          )}
+          {s.work_dir && (
+            <div className="text-xs text-gray-500 font-mono mt-0.5 truncate">{s.work_dir}</div>
           )}
         </div>
-        <div className="flex flex-col items-end justify-center gap-1 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           {(s.status === 'running') && (
-            <span className="relative flex h-2 w-2 shrink-0 mb-0.5" title="執行中">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-500 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600" />
+            <span className="relative flex h-2 w-2 shrink-0" title="執行中">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500" />
             </span>
           )}
-          <div className="flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-            <button
-              type="button"
-              onClick={(e) => startRename(s, e)}
-              aria-label="重新命名"
-              title="重新命名"
-              className="text-slate-500 hover:text-blue-400 p-1.5 rounded transition-colors inline-flex items-center justify-center"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 shrink-0" aria-hidden="true">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-              </svg>
-            </button>
-            <button
-              onClick={(e) => del(s.id, e)}
-              className="text-slate-500 hover:text-red-400 p-1.5 text-[10px] rounded transition-colors"
-            >
-              刪
-            </button>
-          </div>
+          {(s.status === 'awaiting_confirm') && (
+            <span className="text-amber-400 text-sm shrink-0 font-bold" title="待授權">!</span>
+          )}
+          <button
+            type="button"
+            onClick={(e) => startRename(s, e)}
+            aria-label="重新命名"
+            title="重新命名"
+            className="text-gray-600 hover:text-indigo-400 p-1.5 rounded transition-colors inline-flex items-center justify-center"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0" aria-hidden="true">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+            </svg>
+          </button>
+          <button
+            onClick={(e) => del(s.id, e)}
+            className="text-gray-600 hover:text-red-400 px-2 py-1 text-xs rounded transition-colors"
+          >
+            刪除
+          </button>
         </div>
       </div>
     </div>
@@ -1828,28 +1801,18 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
 
   return (
     <div className="flex flex-col h-app min-w-0 overflow-hidden">
-      {/* 頂欄：玻璃質感 + 雙行標題 */}
-      <div
-        className="flex items-center justify-between px-4 py-3 shrink-0 border-b border-slate-700/60 ent-topbar"
-        style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top) + var(--tg-content-safe-top))' }}
-      >
-        <div className="min-w-0 flex items-baseline gap-2">
-          <div className="enterprise-display text-lg font-semibold tracking-tight text-slate-100">
-            Claude Code
-          </div>
-          {sessions.length > 0 && (
-            <span className="ent-chip text-slate-400">{sessions.length}</span>
-          )}
-        </div>
-        <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500 font-medium mt-0.5">Enterprise · Workspaces</div>
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 bg-gray-900 border-b border-gray-800 shrink-0"
+           style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top) + var(--tg-content-safe-top))' }}>
+        <span className="font-semibold text-indigo-400 text-base">Claude Code</span>
         <button
           type="button"
           onClick={() => setShowForm(!showForm)}
           aria-label={showForm ? '關閉建立表單' : '建立新 Session'}
           title={showForm ? '關閉' : '新 Session'}
-          className="group relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white shadow-sm ring-1 ring-blue-500/30 transition hover:bg-blue-500 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+          className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 via-violet-600 to-indigo-700 text-white shadow-md shadow-indigo-950/40 ring-1 ring-white/15 transition hover:scale-[1.05] hover:shadow-indigo-500/20 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
         >
-          <span className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/15 to-transparent opacity-0 transition group-hover:opacity-100" aria-hidden />
+          <span className="absolute inset-0 rounded-full bg-gradient-to-t from-black/20 to-transparent opacity-0 transition group-hover:opacity-100" aria-hidden />
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"
@@ -1867,66 +1830,65 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
 
       {/* 搜尋／排序（有 Session 時顯示） */}
       {sessions.length > 0 && (
-        <div className="ent-toolbar shrink-0">
+        <div className="px-3 py-2 bg-gray-900/80 border-b border-gray-800 shrink-0 flex gap-2 min-w-0 items-center">
           <input
             type="search"
             value={sessionSearch}
             onChange={(e) => setSessionSearch(e.target.value)}
-            placeholder="搜尋 Session…"
+            placeholder="搜尋…"
             autoComplete="off"
-            className="ent-toolbar-search w-full min-w-0 bg-slate-900/70 border border-slate-600/40 rounded-md px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-600/50 focus:ring-1 focus:ring-blue-600/20"
+            className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-600"
           />
-          <div className="ent-toolbar-actions w-full sm:w-auto">
-            <button
-              type="button"
-              onClick={() => {
-                setGroupByDir((v) => {
-                  const next = !v;
-                  try {
-                    localStorage.setItem(SESSION_LIST_GROUP_BY_DIR_KEY, next ? '1' : '0');
-                  } catch (_) {}
-                  return next;
-                });
-              }}
-              aria-pressed={groupByDir}
-              title={groupByDir ? '關閉依目錄分組' : '依工作目錄分組'}
-              aria-label={groupByDir ? '關閉依目錄分組' : '依工作目錄分組'}
-              className={`shrink-0 flex h-9 w-9 items-center justify-center rounded-md border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/50 ${
-                groupByDir
-                  ? 'border-blue-600/45 bg-blue-600/15 text-blue-400'
-                  : 'border-slate-600/40 bg-slate-900/80 text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden>
-                <path d="M3 7.5h7L10.5 6h11v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8.5Z" />
-                <path d="M3 7.5V6a2 2 0 0 1 2-2h3l1.5 1.5" />
-              </svg>
-            </button>
-            <select
-              id="session-sort"
-              value={sessionSort}
-              onChange={(e) => setSessionSort(e.target.value)}
-              title="Session 列表排序"
-              aria-label="Session 列表排序"
-              className="flex-1 sm:flex-none min-w-0 sm:min-w-[9.5rem] bg-slate-900/80 border border-slate-600/40 rounded-md px-2.5 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-600/50 cursor-pointer"
-            >
-              {sortOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setGroupByDir((v) => {
+                const next = !v;
+                try {
+                  localStorage.setItem(SESSION_LIST_GROUP_BY_DIR_KEY, next ? '1' : '0');
+                } catch (_) {}
+                return next;
+              });
+            }}
+            aria-pressed={groupByDir}
+            title={groupByDir ? '關閉依目錄分組' : '依工作目錄分組'}
+            aria-label={groupByDir ? '關閉依目錄分組' : '依工作目錄分組'}
+            className={`shrink-0 flex h-9 w-9 items-center justify-center rounded-lg border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60 focus-visible:ring-offset-1 focus-visible:ring-offset-gray-900 ${
+              groupByDir
+                ? 'border-indigo-500/55 bg-indigo-600/25 text-indigo-200 shadow-[inset_0_1px_0_rgba(129,140,248,0.15)]'
+                : 'border-gray-700 bg-gray-800 text-gray-400 hover:text-indigo-300 hover:border-indigo-600/50'
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[1.15rem] h-[1.15rem]" aria-hidden>
+              <path d="M3 7.5h7L10.5 6h11v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8.5Z" />
+              <path d="M3 7.5V6a2 2 0 0 1 2-2h3l1.5 1.5" />
+            </svg>
+          </button>
+          <span className="shrink-0 text-xs text-gray-500 whitespace-nowrap" id="session-sort-label">排序</span>
+          <select
+            id="session-sort"
+            value={sessionSort}
+            onChange={(e) => setSessionSort(e.target.value)}
+            title="左側 Session 列表的排序方式"
+            aria-labelledby="session-sort-label"
+            className="shrink-0 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-indigo-600 cursor-pointer max-w-[9.5rem]"
+          >
+            {sortOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
         </div>
       )}
 
       {/* 建立表單 */}
       {showForm && (
-        <div className="px-4 py-4 space-y-3 shrink-0 min-w-0 border-b border-blue-600/10 bg-gradient-to-b from-slate-900/50 to-transparent enterprise-card-enter">
+        <div className="px-4 py-3 bg-gray-900 border-b border-gray-700 space-y-2 shrink-0 min-w-0">
           <input value={newName} onChange={e => setNewName(e.target.value)}
             placeholder="Session 名稱（必填）"
-            className="w-full min-w-0 bg-slate-900/60 border border-blue-600/15 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-600/45 focus:ring-1 focus:ring-blue-600/15" />
+            className="w-full min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-600" />
           <input value={newDir} onChange={e => setNewDir(e.target.value)}
             placeholder="工作目錄（選填，如 /home/user/project）"
-            className="w-full min-w-0 bg-slate-900/60 border border-blue-600/15 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-600/45 font-mono" />
+            className="w-full min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-600 font-mono" />
           <div className="min-w-0 space-y-2">
             <select
               value={newAgent}
@@ -1935,7 +1897,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
                 setNewAgent(next);
                 setNewMode((prev) => normalizePermMode(next, prev));
               }}
-              className="w-full min-w-0 bg-slate-900/70 border border-blue-600/15 rounded-xl px-3 py-2.5 text-sm text-slate-200"
+              className="w-full min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-300"
             >
               <option value="claude">Claude</option>
               <option value="cursor">Cursor</option>
@@ -1945,19 +1907,19 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
             <div className="min-w-0">
               {usePermModeDropdown ? (
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="shrink-0 text-xs text-slate-500">權限</span>
+                  <span className="shrink-0 text-xs text-gray-500">權限</span>
                   <PermModeSelect
                     agentType={newAgent}
                     value={newMode}
                     onChange={setNewMode}
                     disabled={newAgent === 'codex' || newAgent === 'kiro'}
-                    id="session-new-perm-mode-enterprise"
+                    id="session-new-perm-mode"
                     className="flex-1 min-w-0 py-2"
                   />
                 </div>
               ) : (
                 <>
-                  <div className="mb-1 text-[10px] uppercase tracking-wide text-slate-500">權限模式</div>
+                  <div className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">權限模式</div>
                   <PermModeSwitch
                     agentType={newAgent}
                     value={newMode}
@@ -1970,76 +1932,76 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
           </div>
           {newAgent !== 'antigravity' && (
             <div className="min-w-0 space-y-1">
-              <div className="text-[10px] uppercase tracking-wide text-slate-500">Model（選填，寫入 --model）</div>
+              <div className="text-[10px] uppercase tracking-wide text-gray-500">Model（選填，寫入 --model）</div>
               <input
                 value={newModel}
                 onChange={(e) => setNewModel(e.target.value)}
                 placeholder="例如 sonnet、claude-sonnet-4.6、auto"
-                className="w-full min-w-0 bg-slate-900/80 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-600 font-mono"
+                className="w-full min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-600 font-mono"
               />
             </div>
           )}
           {newAgent === 'claude' && (
             <div className="min-w-0 space-y-1">
-              <div className="text-[10px] uppercase tracking-wide text-slate-500">自訂 CLI 引數（選填）</div>
+              <div className="text-[10px] uppercase tracking-wide text-gray-500">自訂 CLI 引數（選填）</div>
               <textarea
                 value={newCliExtra}
                 onChange={(e) => setNewCliExtra(e.target.value)}
                 placeholder={'每行一個引數，例如：\n--plugin-dir\n./.claude/plugins/crm\n--plugin-dir\n./.claude/plugins/crm2\n含空格的路徑請寫在同一行。'}
                 rows={5}
                 spellCheck={false}
-                className="w-full min-w-0 bg-slate-900/60 border border-blue-600/15 rounded-xl px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-600/45 font-mono leading-relaxed overflow-y-auto app-scroll"
+                className="w-full min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-600 font-mono leading-relaxed overflow-y-auto app-scroll"
               />
             </div>
           )}
           <div className="flex flex-wrap gap-2 justify-end">
             <button onClick={create} disabled={loading || !newName.trim()}
-              className="px-5 py-2.5 rounded-lg text-sm font-semibold shrink-0 bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-40 shadow-sm">
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-lg text-sm font-medium shrink-0">
               建立
             </button>
             <button onClick={() => setShowForm(false)}
-              className="px-4 py-2.5 bg-slate-800/90 hover:bg-slate-700/90 text-slate-300 rounded-xl text-sm shrink-0 border border-white/5">
+              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm shrink-0">
               取消
             </button>
           </div>
         </div>
       )}
 
-      {/* Session 列表（表格式） */}
-      <div className="ent-session-rows app-scroll">
+      {/* Session 列表 */}
+      <div className="flex-1 overflow-y-auto app-scroll">
         {sessions.length === 0 ? (
-          <div className="text-center text-slate-500 mt-24 text-sm px-4">尚無 Session，點右上角按鈕建立</div>
+          <div className="text-center text-gray-600 mt-24 text-sm px-4">尚無 Session，點右上角圓形按鈕建立</div>
         ) : displaySessions.length === 0 ? (
-          <div className="text-center text-slate-500 mt-24 text-sm px-4">沒有符合搜尋條件的 Session</div>
+          <div className="text-center text-gray-600 mt-24 text-sm px-4">沒有符合搜尋條件的 Session</div>
         ) : groupByDir && groupedSessions ? (
           groupedSessions.map(([dirKey, dirSessions]) => {
             const expanded = sessionSearchActive || !collapsedDirs.has(dirKey);
             const shortLabel = workDirGroupShortLabel(dirKey);
             return (
-              <div key={dirKey}>
-                <div className="flex w-full min-w-0 items-center gap-1 px-2 py-1.5 border-b border-slate-700/50 bg-slate-900/40 sticky top-0 z-[1]">
+              <div key={dirKey} className="space-y-0">
+                <div className="flex w-full min-w-0 items-center gap-1 px-1 py-1 transition-colors hover:bg-gray-800/40">
                   <button
                     type="button"
                     onClick={() => toggleDirCollapsed(dirKey)}
-                    className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-0.5 py-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/45 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-950"
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-gray-900"
                   >
-                    <span className="shrink-0 text-slate-500 w-4 text-center" aria-hidden>
+                    <span className="shrink-0 text-gray-500 w-4 text-center" aria-hidden>
                       {expanded ? '▼' : '▶'}
                     </span>
                     <span
-                      className="min-w-0 flex-1 truncate text-[10px] tracking-wide text-slate-400 font-medium"
+                      className="min-w-0 flex-1 truncate text-[10px] tracking-wide text-gray-500 font-medium"
                       title={dirKey}
                     >
                       {shortLabel}
                     </span>
-                    <span className="shrink-0 rounded-full bg-slate-800/90 px-2 py-0.5 text-[10px] font-mono text-slate-300 ring-1 ring-white/10">
+                    <span className="shrink-0 rounded-full bg-gray-800 px-2 py-0.5 text-[10px] font-mono text-gray-300 ring-1 ring-gray-700/80">
                       {dirSessions.length}
                     </span>
                   </button>
                   <button
                     type="button"
                     onClick={() => openNewSessionForDir(dirKey)}
-                    className="shrink-0 rounded-lg px-2 py-1 text-[10px] font-semibold text-blue-500/95 hover:bg-blue-600/10 hover:text-blue-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/45 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-950"
+                    className="shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold text-indigo-400 hover:bg-indigo-950/50 hover:text-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-gray-900"
                   >
                     ＋新 Session
                   </button>
@@ -2056,7 +2018,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
   );
 }
 
-/** Slash 命令選單（Enterprise 主題） */
+/** Slash 命令選單：顯示於輸入框上方，鍵盤 ↑↓、Enter、點擊選取 */
 function SlashCommandMenu({ items, activeIndex, onSelect }) {
   const listRef = useRef(null);
   useLayoutEffect(() => {
@@ -2071,7 +2033,7 @@ function SlashCommandMenu({ items, activeIndex, onSelect }) {
       ref={listRef}
       role="listbox"
       aria-label="Slash 命令"
-      className="absolute bottom-full left-0 right-0 z-20 mb-1 max-h-48 overflow-y-auto app-scroll rounded-2xl border border-blue-600/20 bg-slate-950/95 py-1 shadow-lg backdrop-blur-sm"
+      className="absolute bottom-full left-0 right-0 z-20 mb-1 max-h-48 overflow-y-auto app-scroll rounded-lg border border-gray-700 bg-gray-800/98 py-1 shadow-lg backdrop-blur-sm"
     >
       {items.map((c, i) => (
         <button
@@ -2082,12 +2044,12 @@ function SlashCommandMenu({ items, activeIndex, onSelect }) {
           data-slash-idx={i}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => onSelect(c.command)}
-          className={`flex w-full items-start gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-slate-800/90 ${
-            i === activeIndex ? 'bg-blue-950/40' : ''
+          className={`flex w-full items-start gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-gray-700/80 ${
+            i === activeIndex ? 'bg-gray-700' : ''
           }`}
         >
-          <span className="shrink-0 font-mono text-blue-400">{c.command}</span>
-          <span className="min-w-0 flex-1 text-slate-400">{c.description}</span>
+          <span className="shrink-0 font-mono text-indigo-300">{c.command}</span>
+          <span className="min-w-0 flex-1 text-gray-400">{c.description}</span>
         </button>
       ))}
     </div>
@@ -2097,100 +2059,136 @@ function SlashCommandMenu({ items, activeIndex, onSelect }) {
 // ── 聊天畫面 ─────────────────────────────────────────────────────────────────
 
 function ChatSessionHeader({
-  session, showBack, onBack, agentType, state, activityHint, sessionModel, quota, quotaRefreshing, onQuotaRefresh,
-  headerCollapsed, onToggleHeader, onExpandHeader, showPermModeSelect, inputMode, usePermModeDropdown, mode, modeSwitchDisabled, onPermModeChange,
+  session,
+  showBack,
+  onBack,
+  agentType,
+  state,
+  activityHint,
+  sessionModel,
+  quota,
+  quotaRefreshing,
+  onQuotaRefresh,
+  headerCollapsed,
+  onToggleHeader,
+  onExpandHeader,
+  showPermModeSelect,
+  inputMode,
+  usePermModeDropdown,
+  mode,
+  modeSwitchDisabled,
+  onPermModeChange,
 }) {
   const expanded = !headerCollapsed;
   const showPerm = showPermModeSelect && inputMode === 'agent';
   const permTitle =
-    agentType === 'antigravity' ? 'Antigravity 核准模式（--approval-mode）'
-    : agentType === 'cursor' ? '權限模式（bypass：Cursor 會加 --force）' : '權限模式';
+    agentType === 'antigravity'
+      ? 'Antigravity 核准模式（--approval-mode）'
+      : agentType === 'cursor'
+      ? '權限模式（bypass：Cursor 會加 --force）'
+      : '權限模式';
 
   return (
     <div
-      className="shrink-0 ent-topbar border-b border-slate-700/60"
+      className="flex flex-col gap-1 px-4 py-1.5 sm:py-2 bg-gray-900/95 border-b border-gray-800 shrink-0 sm:flex-row sm:items-start sm:justify-between sm:gap-3"
       style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top) + var(--tg-content-safe-top))' }}
     >
-      <div className="ent-chat-primary">
-        {showBack && (
-          <button type="button" onClick={onBack}
-            className="shrink-0 text-slate-400 hover:text-slate-100 text-lg leading-none px-1.5 py-1 rounded-md hover:bg-slate-800/80 transition-colors">
-            ←
-          </button>
-        )}
-        <div className="enterprise-display font-semibold text-base text-slate-100 truncate leading-snug min-w-0 flex-1" title={session.name}>
-          {session.name || '未命名'}
+      <div className="min-w-0 flex-1 flex flex-col gap-1 sm:gap-1.5">
+        <div className="flex items-center gap-2 min-w-0">
+          {showBack && (
+            <button type="button" onClick={onBack}
+              className="shrink-0 text-gray-400 hover:text-gray-200 text-lg leading-none px-1">
+              ←
+            </button>
+          )}
+          <div className="min-w-0 flex-1 font-semibold text-gray-100 text-sm truncate leading-snug" title={session.name}>
+            {session.name || '未命名'}
+          </div>
+          <HeaderToggleButton expanded={expanded} onToggle={onToggleHeader} />
         </div>
-        <SessionStateChip state={state} activityHint={activityHint} compact={headerCollapsed} className="sm:!normal-case" />
-        <HeaderToggleButton expanded={expanded} onToggle={onToggleHeader} />
-      </div>
-      {headerCollapsed ? (
-        <div className="ent-chat-meta sm:hidden !py-1">
-          <AgentIconChip agentType={agentType} />
-          <GitBranchBadge branch={session.git_branch} compact />
-          <QuotaBadge quota={quota} compact agentType={agentType} />
-          {showPerm ? <PermModeIconChip agentType={agentType} value={mode} onClick={onExpandHeader} disabled={modeSwitchDisabled} /> : null}
-        </div>
-      ) : null}
-      <div className={headerCollapsed ? 'hidden sm:block' : ''}>
-        <div className={'hidden sm:flex ent-chat-meta' + (headerCollapsed ? '' : '')}>
-          <span className={`ent-chip font-mono uppercase ${getAgentBadgeClass(agentType)}`}>
-            <AgentBadgeIcon agentType={agentType} />
-            {agentType}
-          </span>
-          <GitBranchBadge branch={session.git_branch} />
-          <ModelBadge model={sessionModel} />
-          <QuotaBadge
-            quota={quota}
-            onRefresh={agentType !== 'antigravity' ? onQuotaRefresh : null}
-            refreshing={quotaRefreshing}
-            className="!rounded !px-2 !py-0.5"
-          />
-          {session.work_dir ? (
-            <span className="ent-chip font-mono max-w-[min(14rem,45vw)] truncate" title={session.work_dir}>
-              {session.work_dir}
+
+        {headerCollapsed ? (
+          <div className="flex sm:hidden items-center gap-1.5 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden pb-0.5">
+            <AgentIconChip agentType={agentType} />
+            <SessionStateChip state={state} activityHint={activityHint} compact />
+            <GitBranchBadge branch={session.git_branch} compact />
+            <QuotaBadge quota={quota} compact agentType={agentType} />
+            {showPerm ? (
+              <PermModeIconChip
+                agentType={agentType}
+                value={mode}
+                onClick={onExpandHeader}
+                disabled={modeSwitchDisabled}
+              />
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className={headerCollapsed ? 'hidden sm:flex sm:flex-col sm:gap-1.5' : 'flex flex-col gap-1.5'}>
+          <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto sm:overflow-visible sm:flex-wrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <span className={`inline-flex items-center gap-1 shrink-0 text-[10px] px-1.5 py-0.5 rounded-md font-mono uppercase border border-gray-700/40 ${getAgentBadgeClass(agentType)}`}>
+              <AgentBadgeIcon agentType={agentType} />
+              {agentType}
             </span>
-          ) : null}
-        </div>
-        {!headerCollapsed ? (
-          <div className="sm:hidden flex flex-col">
-            <div className="ent-chat-meta !border-b-0">
-              <span className={`ent-chip font-mono uppercase ${getAgentBadgeClass(agentType)}`}>
-                <AgentBadgeIcon agentType={agentType} />
-                {agentType}
-              </span>
-              <GitBranchBadge branch={session.git_branch} />
-            </div>
-            <div className="ent-chat-meta !border-b-0 !pt-0">
-              <ModelBadge model={sessionModel} className="ent-chip w-full max-w-full !justify-start" />
-            </div>
-            <div className="ent-chat-meta !pt-0">
+            <SessionStateChip state={state} activityHint={activityHint} />
+            <GitBranchBadge branch={session.git_branch} />
+            <div className="hidden sm:contents">
+              <ModelBadge model={sessionModel} />
               <QuotaBadge
                 quota={quota}
                 onRefresh={agentType !== 'antigravity' ? onQuotaRefresh : null}
                 refreshing={quotaRefreshing}
-                className="ent-chip w-full max-w-full !rounded !px-2 !py-0.5 !justify-start"
+                agentType={agentType}
               />
             </div>
-            {session.work_dir ? (
-              <div className="ent-chat-meta !border-t-0 !pt-0">
-                <span className="ent-chip font-mono w-full max-w-full truncate !justify-start" title={session.work_dir}>
-                  {session.work_dir}
-                </span>
-              </div>
-            ) : null}
           </div>
-        ) : null}
+          <div className="flex flex-col gap-1 min-w-0 sm:hidden">
+            <ModelBadge model={sessionModel} className="w-full max-w-full" />
+            <QuotaBadge
+              quota={quota}
+              onRefresh={agentType !== 'antigravity' ? onQuotaRefresh : null}
+              refreshing={quotaRefreshing}
+              className="w-full max-w-full"
+            />
+          </div>
+          {session.work_dir ? (
+            <div className="text-[11px] text-gray-500 font-mono truncate" title={session.work_dir}>
+              {session.work_dir}
+            </div>
+          ) : null}
+        </div>
       </div>
+
       {showPerm ? (
-        <div className={headerCollapsed ? 'hidden sm:block ent-perm-row' : 'ent-perm-row'}>
+        <div
+          className={
+            (headerCollapsed ? 'hidden sm:block ' : '') +
+            (usePermModeDropdown
+              ? 'w-full min-w-0 shrink-0 border-t border-gray-800/80 pt-2 sm:border-t-0 sm:pt-0 sm:w-auto sm:max-w-[min(100%,20rem)] sm:self-center'
+              : 'w-fit max-w-full min-w-0 shrink-0 self-end sm:self-center sm:ml-auto')
+          }
+        >
           {usePermModeDropdown ? (
-            <div className="flex items-center gap-2 min-w-0 w-full">
-              <span className="shrink-0 text-xs text-slate-500 w-10">權限</span>
-              <PermModeSelect agentType={agentType} value={mode} onChange={onPermModeChange} disabled={modeSwitchDisabled} title={permTitle} id="chat-perm-mode-enterprise" className="flex-1 min-w-0" />
+            <div className="flex items-center gap-2 min-w-0 w-full sm:justify-end">
+              <span className="shrink-0 text-xs text-gray-500">權限</span>
+              <PermModeSelect
+                agentType={agentType}
+                value={mode}
+                onChange={onPermModeChange}
+                disabled={modeSwitchDisabled}
+                title={permTitle}
+                id="chat-perm-mode"
+                className="flex-1 min-w-0 sm:min-w-[11rem]"
+              />
             </div>
           ) : (
-            <PermModeSwitch agentType={agentType} value={mode} onChange={onPermModeChange} disabled={modeSwitchDisabled} title={permTitle} />
+            <PermModeSwitch
+              agentType={agentType}
+              value={mode}
+              onChange={onPermModeChange}
+              disabled={modeSwitchDisabled}
+              title={permTitle}
+            />
           )}
         </div>
       ) : null}
@@ -2209,7 +2207,9 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const [permTools, setPermTools] = useState([]);
   const [mode, setMode]           = useState(() => normalizePermMode(agentType, session.permission_mode || 'default'));
   const [histLoaded, setHistLoaded] = useState(false);
-  const [inputMode, setInputMode]   = useState(() => readInputModeForSession(session.id));
+  const [inputMode, setInputMode] = useState(() => readInputModeForSession(session.id));
+  const [shellType, setShellType] = useState('bash');
+  const [shellPendingCmd, setShellPendingCmd] = useState(null);
   const [shellRequest, setShellRequest] = useState(null);
   const [quota, setQuota] = useState(null);
   const [quotaRefreshing, setQuotaRefreshing] = useState(false);
@@ -2218,6 +2218,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const [forwardHints, setForwardHints] = useState({});
   const [slashMenuItems, setSlashMenuItems] = useState([]);
   const [slashActiveIdx, setSlashActiveIdx] = useState(0);
+  const shellBuf = useRef([]);
+  const shellRenderPending = useRef(false);
   const wsRef     = useRef(null);
   const bottomRef = useRef(null);
   const chatScrollRef = useRef(null);
@@ -2230,6 +2232,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const connGenRef = useRef(0);
   const activeSessionRef = useRef(session.id);
   const reconnectTimerRef = useRef(null);
+  /** 後端已套用的權限／輸入模式（送出時若與畫面選擇不同才送 set_mode／set_input_mode） */
   const serverPermAppliedRef = useRef(null);
   const serverInputAppliedRef = useRef(null);
   const { collapsed: headerCollapsed, toggle: toggleHeader, setCollapsed: setHeaderCollapsed } = useChatHeaderCollapsed();
@@ -2275,6 +2278,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   useEffect(() => {
     const showPermPanel =
       (state === 'AWAITING_CONFIRM' && permTools.length > 0) ||
+      (state === 'SHELL_AWAITING_APPROVAL' && shellPendingCmd) ||
       (state === 'AWAITING_SHELL_CONFIRM' && shellRequest);
     if (!showPermPanel) return;
     let id2;
@@ -2287,12 +2291,12 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       cancelAnimationFrame(id1);
       if (id2 != null) cancelAnimationFrame(id2);
     };
-  }, [state, permTools.length, shellRequest]);
+  }, [state, permTools.length, shellPendingCmd, shellRequest]);
 
   // 離開頁面確認（任務進行中或等待授權時）
   useEffect(() => {
     const handler = (e) => {
-      if (state === 'THINKING' || state === 'STREAMING' || state === 'AWAITING_CONFIRM' || state === 'AWAITING_SHELL_CONFIRM' || state === 'SHELL_EXEC') {
+      if (state === 'THINKING' || state === 'STREAMING' || state === 'AWAITING_CONFIRM' || state === 'SHELL_RUNNING' || state === 'SHELL_AWAITING_APPROVAL' || state === 'AWAITING_SHELL_CONFIRM' || state === 'SHELL_EXEC') {
         e.preventDefault();
         e.returnValue = '';
       }
@@ -2306,6 +2310,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     activeSessionRef.current = session.id;
     streamBuf.current = '';
     thinkingMode.current = false;
+    shellBuf.current = [];
+    shellRenderPending.current = false;
     setMessages([]);
     setHistLoaded(false);
     setState('IDLE');
@@ -2327,6 +2333,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     serverPermAppliedRef.current = pm;
     setInputMode(im);
     setMode(pm);
+    setShellPendingCmd(null);
   }, [session.id, session.permission_mode, agentType, session.input_mode]);
 
   const prevChatStateRef = useRef(null);
@@ -2408,6 +2415,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             setInputMode(msg.input_mode);
             serverInputAppliedRef.current = msg.input_mode;
           }
+          if (msg.shell_type) setShellType(msg.shell_type);
+          if (msg.shell_pending) setShellPendingCmd(msg.shell_pending);
           if (msg.messages) {
             const rows = Array.isArray(msg.messages) ? msg.messages : JSON.parse(msg.messages);
             const mapped = rows.map(mapMessageRow);
@@ -2448,14 +2457,23 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               return [...prev, { role: 'claude', content: '', html: null, streaming: true, status: 'pending' }];
             });
           }
-          if (msg.value === 'SHELL_EXEC') {
+          if (msg.value === 'SHELL_RUNNING' || msg.value === 'SHELL_EXEC') {
+            shellBuf.current = [];
+            setShellPendingCmd(null);
             setMessages((prev) => {
               const last = prev[prev.length - 1];
-              if (last && last.role === 'shell' && last.streaming && last.status === 'pending') {
-                return prev;
-              }
+              if (last && last.role === 'shell' && last.streaming) return prev;
               return [...prev, { role: 'shell', content: '', html: null, streaming: true, status: 'pending' }];
             });
+          }
+          if (msg.value === 'SHELL_IDLE') {
+            setShellPendingCmd(null);
+            shellBuf.current = [];
+            setMessages((prev) => prev.map((m, i) =>
+              i === prev.length - 1 && m.role === 'shell' && m.streaming
+                ? { ...m, streaming: false, status: 'done' }
+                : m
+            ));
           }
           if (msg.value === 'IDLE' || msg.value === 'AWAITING_CONFIRM') {
             setMessages((prev) => {
@@ -2463,6 +2481,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 i === prev.length - 1 ? { ...m, streaming: false, status: m.status === 'pending' ? 'done' : m.status } : m
               );
               const last = updated[updated.length - 1];
+              // 移除因中斷而從未收到任何內容的暫存 claude 泡泡（無 DB id、無內容）
               if (last && last.role === 'claude' && last.id == null && !last.content && !last.html) {
                 return updated.slice(0, -1);
               }
@@ -2543,6 +2562,15 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         if (msg.type === 'input_mode_changed') {
           setInputMode(msg.value);
           serverInputAppliedRef.current = msg.value;
+          if (msg.shell_type) setShellType(msg.shell_type);
+        }
+
+        if (msg.type === 'shell_approval_request') {
+          setShellPendingCmd({ command: msg.content, work_dir: msg.work_dir, shell_type: msg.shell_type });
+        }
+
+        if (msg.type === 'shell_approval_cancelled') {
+          setShellPendingCmd(null);
         }
 
         if (msg.type === 'shell_command_request') {
@@ -2551,6 +2579,43 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             line: msg.line || '',
             workDirKey: msg.work_dir_key || '',
           });
+        }
+
+        if (msg.type === 'shell_delta') {
+          if (!msg.content) return;
+          shellBuf.current.push({ stream: msg.stream || 'stdout', text: msg.content });
+          if (!shellRenderPending.current) {
+            shellRenderPending.current = true;
+            requestAnimationFrame(() => {
+              shellRenderPending.current = false;
+              const rendered = shellBuf.current.map(s => s.stream === 'stderr' ? '[stderr] ' + s.text : s.text).join('');
+              setMessages(prev => prev.map((m, i) =>
+                i === prev.length - 1 && m.role === 'shell' && m.streaming
+                  ? { ...m, content: rendered }
+                  : m
+              ));
+            });
+          }
+        }
+
+        if (msg.type === 'shell_done') {
+          const code = msg.exit_code;
+          setMessages(prev => prev.map((m, i) =>
+            i === prev.length - 1 && m.role === 'shell' && m.streaming
+              ? { ...m, streaming: false, status: 'done', exitCode: code, id: msg.id != null ? msg.id : m.id }
+              : m
+          ));
+          shellBuf.current = [];
+        }
+
+        if (msg.type === 'shell_error') {
+          shellBuf.current.push({ stream: 'stderr', text: '[error] ' + (msg.content || '') + '\n' });
+          const rendered = shellBuf.current.map(s => s.stream === 'stderr' ? '[stderr] ' + s.text : s.text).join('');
+          setMessages(prev => prev.map((m, i) =>
+            i === prev.length - 1 && m.role === 'shell' && m.streaming
+              ? { ...m, content: rendered }
+              : m
+          ));
         }
 
         if (msg.type === 'shell_result') {
@@ -2660,8 +2725,9 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const handleSend = (overrideText) => {
     const raw = overrideText !== undefined && overrideText !== null ? String(overrideText) : input;
     const trimmed = raw.trim();
-    if (!trimmed || state !== 'IDLE') return;
+    if (!trimmed) return;
     if (trimmed === '/reset' || trimmed === '/clear') {
+      if (state !== 'IDLE' && state !== 'SHELL_IDLE') return;
       if (!flushPendingModes()) return;
       send({ type: 'reset_context' });
       clearDraftInputForSession(session.id);
@@ -2669,11 +2735,18 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       setSlashMenuItems([]);
       return;
     }
+    if (inputMode === 'shell') {
+      if (state !== 'SHELL_IDLE' && state !== 'IDLE') return;
+      if (!flushPendingModes()) return;
+      send({ type: 'shell_exec', data: trimmed });
+      clearDraftInputForSession(session.id);
+      setInput('');
+      setSlashMenuItems([]);
+      return;
+    }
+    if (state !== 'IDLE' && state !== 'SHELL_IDLE') return;
     if (!flushPendingModes()) return;
-    const sent = inputMode === 'shell'
-      ? send({ type: 'shell_exec', data: trimmed })
-      : send({ type: 'input', data: trimmed });
-    if (!sent) return;
+    if (!send({ type: 'input', data: trimmed })) return;
     clearDraftInputForSession(session.id);
     setInput('');
     setSlashMenuItems([]);
@@ -2726,10 +2799,11 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     setPermTools([]);
   };
 
+  /** 僅更新畫面選擇，送出訊息時才會送 set_mode */
   const handlePermModeDraftChange = (newMode) => {
     setMode(normalizePermMode(agentType, newMode));
   };
-
+  /** 授權面板「允許並記住」：須立即寫入後端並重試 */
   const handlePermModeCommitNow = (newMode) => {
     const n = normalizePermMode(agentType, newMode);
     setMode(n);
@@ -2740,8 +2814,37 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
 
   const handleInterrupt = () => send({ type: 'interrupt' });
 
-  const isDisabled = state !== 'IDLE';
-  const modeSwitchDisabled = state !== 'IDLE';
+  const handleInputModeChange = (newMode) => {
+    const busy = ['THINKING', 'STREAMING', 'AWAITING_CONFIRM', 'SHELL_RUNNING', 'SHELL_AWAITING_APPROVAL', 'SHELL_EXEC', 'AWAITING_SHELL_CONFIRM'].includes(state);
+    if (busy) return;
+    setInputMode(newMode);
+    try {
+      localStorage.setItem(inputModeStorageKey(session.id), newMode);
+    } catch (_) {}
+    if (input.startsWith('/')) {
+      const q = input.toLowerCase();
+      const filtered = SLASH_COMMANDS.filter(
+        (c) => (!c.modes || c.modes.includes(newMode)) && c.command.toLowerCase().startsWith(q)
+      );
+      setSlashMenuItems(filtered);
+      setSlashActiveIdx(0);
+    } else {
+      setSlashMenuItems([]);
+    }
+  };
+
+  const handleShellApprove = () => {
+    send({ type: 'shell_approve' });
+    setShellPendingCmd(null);
+  };
+
+  const handleShellCancel = () => {
+    send({ type: 'shell_cancel' });
+    setShellPendingCmd(null);
+  };
+
+  const isDisabled = state === 'THINKING' || state === 'STREAMING' || state === 'AWAITING_CONFIRM' || state === 'SHELL_RUNNING' || state === 'SHELL_AWAITING_APPROVAL' || state === 'SHELL_EXEC' || state === 'AWAITING_SHELL_CONFIRM';
+  const modeSwitchDisabled = ['THINKING', 'STREAMING', 'AWAITING_CONFIRM', 'SHELL_RUNNING', 'SHELL_AWAITING_APPROVAL', 'SHELL_EXEC', 'AWAITING_SHELL_CONFIRM'].includes(state);
   const slashMenuOpen = slashMenuItems.length > 0;
 
   useEffect(() => {
@@ -2759,31 +2862,10 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     return () => document.removeEventListener('mousedown', onDocMouseDown);
   }, [slashMenuOpen]);
 
-  useEffect(() => {
-    if (!input.startsWith('/')) {
-      setSlashMenuItems([]);
-      return;
-    }
-    const q = input.toLowerCase();
-    setSlashMenuItems(
-      SLASH_COMMANDS.filter(
-        (c) => (!c.modes || c.modes.includes(inputMode)) && c.command.toLowerCase().startsWith(q)
-      )
-    );
-    setSlashActiveIdx(0);
-  }, [inputMode]);
-
-  const setInputModePersist = (mode) => {
-    setInputMode(mode);
-    try {
-      localStorage.setItem(inputModeStorageKey(session.id), mode);
-    } catch (_) {}
-  };
-
   /** 聊天輸入框：依內容伸縮高度，並遵守 CSS max-height（min(40vh,12rem)） */
   useLayoutEffect(() => {
     const el = chatInputRef.current;
-    if (!el || state === 'THINKING' || state === 'STREAMING' || state === 'SHELL_EXEC' || state === 'AWAITING_SHELL_CONFIRM') return;
+    if (!el || state === 'THINKING' || state === 'STREAMING' || state === 'SHELL_RUNNING' || state === 'SHELL_EXEC' || state === 'AWAITING_SHELL_CONFIRM') return;
     el.style.height = '0px';
     const maxStr = getComputedStyle(el).maxHeight;
     const maxPx = parseFloat(maxStr);
@@ -2819,11 +2901,10 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       <div
         ref={chatScrollRef}
         onScroll={syncChatNearBottom}
-        className="flex-1 overflow-y-auto app-scroll px-3 sm:px-5 py-4"
+        className="flex-1 overflow-y-auto app-scroll px-4 py-4 space-y-3"
       >
-        <div className="ent-chat-column space-y-3">
         {histLoaded && messages.length === 0 && (
-          <div className="text-center text-slate-500 mt-16 text-sm border border-dashed border-slate-700/60 rounded-lg py-10">輸入指令開始對話</div>
+          <div className="text-center text-gray-600 mt-20 text-sm">輸入指令開始對話</div>
         )}
         {messages.map((m, i) => {
           const msgKey = m.id != null ? String(m.id) : `idx-${i}`;
@@ -2837,28 +2918,25 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             (state === 'THINKING' || state === 'STREAMING') &&
             m.role === 'claude' &&
             i === messages.length - 1;
-          const showShellTail =
-            state === 'SHELL_EXEC' && m.role === 'shell' && m.streaming && i === messages.length - 1;
           return (
           <div
             key={m.id != null ? `m-${m.id}` : i}
             className={`flex w-full min-w-0 ${m.role === 'user' ? 'justify-end' : 'justify-start'} ${m.role === 'claude' || m.role === 'shell' ? 'group' : ''}`}
           >
             <div
-              className={`text-sm min-w-0 ${
-                m.role === 'user'
-                  ? 'ent-thread ent-thread-user bubble-user'
-                  : m.role === 'shell'
-                  ? 'ent-thread ent-thread-shell bg-slate-900/90 border border-slate-700/50'
-                  : 'ent-thread bubble-claude'
+              className={`rounded-xl px-4 py-3 text-sm w-fit max-w-[85%] min-w-0 ${
+                m.role === 'user' ? 'bubble-user' : m.role === 'shell' ? 'bubble-shell' : 'bubble-claude'
               }`}
             >
-            <div className="flex items-start justify-between gap-2 mb-1.5 min-w-0">
-              <div className="text-xs text-slate-500 font-medium min-w-0">
+            <div className="flex items-start justify-between gap-2 mb-1 min-w-0">
+              <div className="text-xs text-gray-500 min-w-0">
                 {m.role === 'user' ? (
                   '你'
                 ) : m.role === 'shell' ? (
-                  'Shell'
+                  <span className="inline-flex items-center gap-1 font-mono text-amber-500/80">
+                    <span>&gt;_</span>
+                    <span>{shellType || 'shell'}</span>
+                  </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5">
                     <AgentBadgeIcon agentType={agentType} />
@@ -2875,7 +2953,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               >
                 <MessageCopyButton
                   text={m.role === 'claude' || m.role === 'shell' ? forwardBody : (m.content || '').trim()}
-                  className="p-1 rounded-md text-slate-500 hover:text-slate-200 hover:bg-slate-800/80 disabled:opacity-30 disabled:pointer-events-none"
+                  className="p-1 rounded-md text-gray-400 hover:text-gray-200 hover:bg-gray-800/80 disabled:opacity-30 disabled:pointer-events-none"
                 />
                 {m.role === 'claude' || m.role === 'shell' ? (
                   <button
@@ -2886,7 +2964,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                     }}
                     disabled={!canForwardShellOrAgent}
                     title="轉發到其他會話"
-                    className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded-md text-slate-400 hover:text-blue-500 disabled:opacity-30 disabled:pointer-events-none"
+                    className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded-md text-gray-400 hover:text-cyan-400 disabled:opacity-30 disabled:pointer-events-none"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5" aria-hidden>
                       <path d="M15 14v5l6-6-6-6v5H3v2z" />
@@ -2899,13 +2977,13 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             {m.role === 'claude' ? (
               m.thinking ? (
                 <div className="flex flex-row items-start gap-1.5">
-                  <span className="text-fuchsia-400/60 text-xs mt-0.5 shrink-0 select-none">💭</span>
-                  <span className="text-slate-500 text-sm italic leading-relaxed line-clamp-3 min-w-0">{m.content}</span>
+                  <span className="text-indigo-400/60 text-xs mt-0.5 shrink-0 select-none">💭</span>
+                  <span className="text-gray-500 text-sm italic leading-relaxed line-clamp-3 min-w-0">{m.content}</span>
                 </div>
               ) : (m.html || showStreamingTail) ? (
                 <div className="flex flex-row items-center gap-1">
                   {m.html && (
-                    <div className="prose text-slate-100 text-sm flex-1 min-w-0" dangerouslySetInnerHTML={{ __html: m.html }} />
+                    <div className="prose text-gray-200 text-sm flex-1 min-w-0" dangerouslySetInnerHTML={{ __html: m.html }} />
                   )}
                   {showStreamingTail && (
                     <span className="streaming-tail shrink-0 select-none" aria-hidden="true">...</span>
@@ -2915,25 +2993,16 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 <><span className="dot"/><span className="dot"/><span className="dot"/></>
               )
             ) : m.role === 'shell' ? (
-              <div className="flex flex-row items-center gap-1 font-mono text-xs text-slate-100 min-w-0">
-                <div className="whitespace-pre-wrap break-words flex-1 min-w-0">
-                  {(m.content || '').trim() === '' && m.status === 'done' && !showShellTail
-                    ? '（無輸出）'
-                    : m.content}
-                  {showShellTail && (
-                    <span className="streaming-tail shrink-0 select-none text-fuchsia-300" aria-hidden="true">...</span>
-                  )}
-                </div>
-              </div>
+              <ShellOutput content={m.content || ''} exitCode={m.exitCode} streaming={m.streaming} />
             ) : (
-              <div className="whitespace-pre-wrap text-slate-100 break-words">{m.content}</div>
+              <div className="whitespace-pre-wrap text-gray-200 break-words">{m.content}</div>
             )}
             {(m.role === 'claude' || m.role === 'shell') && forwardHints[msgKey] ? (
-              <div className="mt-2 pt-2 border-t border-slate-600/40 text-[11px] text-slate-400">
+              <div className="mt-2 pt-2 border-t border-gray-700/80 text-[11px] text-gray-500">
                 已 Forward 到「{forwardHints[msgKey].label}」
                 <button
                   type="button"
-                  className="ml-1 text-blue-500 hover:text-blue-400 font-medium"
+                  className="ml-1 text-indigo-400 hover:text-indigo-300 font-medium"
                   onClick={() => jumpToSession(forwardHints[msgKey].session)}
                 >
                   前往查看 →
@@ -2945,29 +3014,51 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
           );
         })}
 
-        {/* 授權確認 */}
+        {/* Shell 指令批准對話框 */}
+        {state === 'SHELL_AWAITING_APPROVAL' && shellPendingCmd && (
+          <div className="rounded-xl border border-amber-700/60 bg-amber-950/30 px-4 py-3 text-sm mr-8">
+            <div className="text-amber-400 font-semibold mb-2">⚠️ 即將執行 Shell 指令</div>
+            <div className="text-gray-400 text-xs mb-1">Shell：{shellPendingCmd.shell_type || shellType}</div>
+            {shellPendingCmd.work_dir && (
+              <div className="text-gray-400 text-xs mb-2">目錄：<span className="font-mono text-gray-300">{shellPendingCmd.work_dir}</span></div>
+            )}
+            <pre className="bg-gray-900/60 rounded px-3 py-2 text-xs font-mono text-gray-200 mb-3 whitespace-pre-wrap break-words">{shellPendingCmd.command}</pre>
+            <div className="flex gap-2">
+              <button onClick={handleShellApprove}
+                className="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 text-white rounded-lg text-xs font-medium">
+                確認執行
+              </button>
+              <button onClick={handleShellCancel}
+                className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-xs">
+                取消
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* AI 授權確認 */}
         {state === 'AWAITING_CONFIRM' && permTools.length > 0 && (
-          <div className="rounded-2xl border border-amber-500/35 bg-gradient-to-br from-amber-950/55 to-slate-950/80 px-4 py-4 text-sm mr-4 shadow-xl shadow-amber-950/30">
-            <div className="text-amber-300 font-semibold mb-2 enterprise-display">需要授權</div>
+          <div className="rounded-xl border border-yellow-700 bg-yellow-950/40 px-4 py-3 text-sm mr-8">
+            <div className="text-yellow-400 font-semibold mb-2">需要授權</div>
             {permTools.map((t, i) => (
-              <div key={i} className="text-slate-300 text-xs font-mono mb-1">
+              <div key={i} className="text-gray-300 text-xs font-mono mb-1">
                 {t.tool_name}
                 {t.tool_input && (
-                  <span className="text-slate-500"> — {JSON.stringify(t.tool_input).slice(0, 80)}</span>
+                  <span className="text-gray-500"> — {JSON.stringify(t.tool_input).slice(0, 80)}</span>
                 )}
               </div>
             ))}
-            <div className="flex flex-wrap gap-2 mt-4">
+            <div className="flex gap-2 mt-3">
               <button onClick={handleAllowOnce}
-                className="px-4 py-2 bg-amber-600/90 hover:bg-amber-500 text-white rounded-xl text-xs font-semibold shadow-md">
+                className="px-3 py-1.5 bg-yellow-700 hover:bg-yellow-600 text-white rounded-lg text-xs">
                 允許此操作
               </button>
               <button onClick={() => handlePermModeCommitNow('acceptEdits')}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold">
+                className="px-3 py-1.5 bg-orange-700 hover:bg-orange-600 text-white rounded-lg text-xs">
                 允許並記住
               </button>
               <button onClick={handleDenyOnce}
-                className="px-4 py-2 bg-red-900/80 hover:bg-red-800 text-white rounded-xl text-xs font-semibold">
+                className="px-3 py-1.5 bg-red-900 hover:bg-red-800 text-white rounded-lg text-xs">
                 拒絕
               </button>
             </div>
@@ -2975,26 +3066,26 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         )}
 
         {state === 'AWAITING_SHELL_CONFIRM' && shellRequest && (
-          <div className="rounded-2xl border border-orange-600/50 bg-gradient-to-br from-orange-950/55 to-slate-950/85 px-4 py-4 text-sm mr-4 shadow-xl">
-            <div className="text-orange-300 font-semibold mb-2 enterprise-display">允許執行 Shell 指令？</div>
-            <div className="text-slate-200 text-xs font-mono break-words mb-1 whitespace-pre-wrap">{shellRequest.line}</div>
-            <div className="text-slate-500 text-[10px] font-mono mb-2">
+          <div className="rounded-xl border border-orange-700/90 bg-orange-950/35 px-4 py-3 text-sm mr-8">
+            <div className="text-orange-300 font-semibold mb-2">允許執行 Shell 指令？</div>
+            <div className="text-gray-200 text-xs font-mono break-words mb-1 whitespace-pre-wrap">{shellRequest.line}</div>
+            <div className="text-gray-500 text-[10px] font-mono mb-2">
               指令名稱：<span className="text-orange-200/90">{shellRequest.command}</span>
               {shellRequest.workDirKey ? (
                 <span className="block truncate mt-0.5" title={shellRequest.workDirKey}>目錄：{shellRequest.workDirKey}</span>
               ) : null}
             </div>
-            <div className="flex flex-wrap gap-2 mt-3">
+            <div className="flex flex-wrap gap-2 mt-2">
               <button type="button" onClick={() => { send({ type: 'shell_allow_once' }); }}
-                className="px-4 py-2 bg-orange-700/90 hover:bg-orange-600 text-white rounded-xl text-xs font-semibold">
+                className="px-3 py-1.5 bg-orange-800 hover:bg-orange-700 text-white rounded-lg text-xs">
                 允許一次
               </button>
               <button type="button" onClick={() => { send({ type: 'shell_allow_remember_workdir' }); }}
-                className="px-4 py-2 bg-amber-900/90 hover:bg-amber-800 text-amber-100 rounded-xl text-xs font-semibold">
+                className="px-3 py-1.5 bg-amber-900 hover:bg-amber-800 text-amber-100 rounded-lg text-xs">
                 允許並記住此目錄
               </button>
               <button type="button" onClick={() => { send({ type: 'shell_deny' }); }}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold">
+                className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs">
                 拒絕
               </button>
             </div>
@@ -3002,45 +3093,27 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         )}
 
         <div ref={bottomRef} />
-        </div>
       </div>
 
+      {/* 輸入區：水平內距略小於訊息列表，讓輸入框可用寬度較大 */}
       <div
-        className="shrink-0 ent-command-bar px-3 sm:px-4 py-3"
+        className={`shrink-0 px-2 sm:px-3 py-3 border-t transition-colors duration-200 ${inputMode === 'shell' ? 'bg-[#120d00] border-amber-900/50' : 'bg-gray-900 border-gray-800'}`}
         style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
       >
-        {state === 'STREAMING' || state === 'THINKING' || state === 'SHELL_EXEC' ? (
+        {(state === 'STREAMING' || state === 'THINKING' || state === 'SHELL_RUNNING' || state === 'SHELL_EXEC') ? (
           <button onClick={handleInterrupt}
-            className="w-full py-3 bg-red-950/70 hover:bg-red-900/80 text-red-200 rounded-2xl text-sm font-semibold border border-red-500/25">
+            className="w-full py-2 bg-red-900/60 hover:bg-red-800 text-red-300 rounded-lg text-sm">
             中斷
           </button>
         ) : (
-          <div className="flex flex-col gap-1.5 w-full min-w-0">
-            <div className="flex w-full min-w-0 gap-2.5 items-center">
-            <button
-              type="button"
-              onClick={() => setInputModePersist(inputMode === 'shell' ? 'agent' : 'shell')}
-              disabled={isDisabled}
-              title={inputMode === 'shell' ? '切換為 Agent 模式' : '切換為 Shell 模式'}
-              aria-label={inputMode === 'shell' ? '切換為 Agent 模式' : '切換為 Shell 模式'}
-              aria-pressed={inputMode === 'shell'}
-              className={`shrink-0 flex items-center justify-center w-10 h-10 rounded-md border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:opacity-40 ${
-                inputMode === 'shell'
-                  ? 'border-orange-500/55 bg-orange-950/35 text-orange-400 hover:bg-orange-950/50'
-                  : 'border-blue-600/20 bg-slate-900/80 text-blue-500/90 hover:bg-slate-800/90'
-              }`}
-            >
-              {inputMode === 'shell' ? (
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5" aria-hidden>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5-4.5h7.5m-15 8.25h13.5A2.25 2.25 0 0021 12V5.25A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25v12A2.25 2.25 0 005.25 19.5z" />
-                </svg>
-              ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5" aria-hidden>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
-                </svg>
-              )}
-            </button>
-            <div className="relative flex min-h-12 flex-1 min-w-0 items-center" ref={slashInputWrapRef}>
+          <div className="flex gap-2 w-full min-w-0 items-center">
+            <ModeToggleBtn
+              value={inputMode}
+              onChange={handleInputModeChange}
+              disabled={modeSwitchDisabled}
+              showLabel={!usePermModeDropdown}
+            />
+            <div className="relative flex min-h-[2.75rem] max-lg:min-h-12 flex-1 min-w-0 items-center" ref={slashInputWrapRef}>
               {slashMenuOpen && (
                 <SlashCommandMenu
                   items={slashMenuItems}
@@ -3059,13 +3132,12 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                   } catch (_) {}
                   if (value.startsWith('/')) {
                     const q = value.toLowerCase();
-                    setSlashMenuItems(
-                      SLASH_COMMANDS.filter(
-                        (c) =>
-                          (!c.modes || c.modes.includes(inputMode)) &&
-                          c.command.toLowerCase().startsWith(q)
-                      )
+                    const filtered = SLASH_COMMANDS.filter(
+                      (c) =>
+                        (!c.modes || c.modes.includes(inputMode)) &&
+                        c.command.toLowerCase().startsWith(q)
                     );
+                    setSlashMenuItems(filtered);
                     setSlashActiveIdx(0);
                   } else {
                     setSlashMenuItems([]);
@@ -3073,25 +3145,30 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 }}
                 onKeyDown={handleKeyDown}
                 disabled={isDisabled}
-                placeholder={
-                  inputMode === 'shell'
-                    ? '輸入指令，例如 git status（左側圖示切回 Agent）'
-                    : '輸入與 Agent 對話…（左側圖示切到 Shell）'
-                }
+                placeholder={inputMode === 'shell' ? `輸入 ${shellType || 'Shell'} 指令…` : '輸入指令…'}
                 rows={1}
-                className="flex-1 min-w-0 w-full resize-none overflow-y-auto app-scroll bg-slate-900/75 border border-slate-600/40 rounded-md px-3 py-2.5 text-sm leading-relaxed text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-600/20 disabled:opacity-40 min-h-10 max-h-[min(40vh,12rem)] box-border"
+                className={[
+                  'flex-1 min-w-0 w-full resize-none overflow-y-auto app-scroll rounded-lg px-3 py-2 text-sm leading-relaxed placeholder-gray-600 focus:outline-none disabled:opacity-40 min-h-[2.75rem] max-lg:min-h-12 max-h-[min(40vh,12rem)] box-border',
+                  inputMode === 'shell'
+                    ? 'bg-[#0d0800] border border-amber-600/70 text-amber-50 focus:border-amber-400 font-mono placeholder-amber-900/60'
+                    : 'bg-gray-800 border border-gray-700 text-gray-200 focus:border-indigo-600',
+                ].join(' ')}
               />
             </div>
             <button type="button" onClick={() => handleSend()} disabled={isDisabled || !input.trim()}
               aria-label="送出"
               title="送出（Enter）"
-              className="shrink-0 flex items-center justify-center w-10 h-10 rounded-md bg-blue-600 hover:bg-blue-500 disabled:opacity-30 text-white transition-colors"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5" aria-hidden>
-                <path d="M3.478 2.405a.75.75 0 0 0-.926.94l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.405Z" />
-              </svg>
+              className={`shrink-0 flex items-center justify-center w-10 h-10 min-h-[2.75rem] max-lg:w-12 max-lg:h-12 max-lg:min-h-12 ${inputMode === 'shell' ? 'bg-amber-700 hover:bg-amber-600' : 'bg-indigo-600 hover:bg-indigo-500'} disabled:opacity-30 text-white rounded-lg transition-colors`}>
+              {inputMode === 'shell' ? (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden>
+                  <path fillRule="evenodd" d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z" clipRule="evenodd" />
+                </svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5" aria-hidden>
+                  <path d="M3.478 2.405a.75.75 0 0 0-.926.94l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.405Z" />
+                </svg>
+              )}
             </button>
-            </div>
           </div>
         )}
       </div>
@@ -3152,12 +3229,11 @@ function PasswordView({ onSuccess }) {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-full px-4">
-      <div className="w-full max-w-sm space-y-5 rounded-xl border border-slate-700/80 bg-slate-900/90 backdrop-blur-sm p-8 shadow-xl shadow-black/30">
-        <div className="text-center space-y-1">
-          <div className="enterprise-display text-2xl font-bold text-slate-100">Claude Code</div>
-          <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Enterprise</div>
-          <div className="text-slate-500 text-sm pt-2">請輸入存取密碼</div>
+    <div className="flex items-center justify-center h-app">
+      <div className="w-72 space-y-4">
+        <div className="text-center">
+          <div className="text-indigo-400 text-2xl font-bold mb-1">Claude Code</div>
+          <div className="text-gray-500 text-sm">請輸入存取密碼</div>
         </div>
         <input
           type="password"
@@ -3166,11 +3242,11 @@ function PasswordView({ onSuccess }) {
           onKeyDown={handleKey}
           placeholder="密碼"
           autoFocus
-          className="w-full bg-slate-900/70 border border-blue-600/20 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-600/20"
+          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-600"
         />
         {error && <div className="text-red-400 text-xs text-center">{error}</div>}
         <button onClick={submit} disabled={loading || !pwd.trim()}
-          className="w-full py-3 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-40 shadow-sm">
+          className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-lg text-sm font-medium">
           {loading ? '驗證中…' : '進入'}
         </button>
       </div>
@@ -3303,14 +3379,7 @@ function App() {
   }, []);
 
   if (checking) {
-    return (
-      <div className="flex items-center justify-center h-app">
-        <div className="flex items-center gap-2 text-blue-500/80 text-sm font-medium">
-          <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-          載入中…
-        </div>
-      </div>
-    );
+    return <div className="flex items-center justify-center h-app"><div className="text-gray-500 text-sm">載入中…</div></div>;
   }
 
   const renderAuthedLayout = () => {
@@ -3321,10 +3390,10 @@ function App() {
     }
 
     return (
-      <div className="h-app flex bg-[var(--ent-bg0)] min-w-0">
+      <div className="h-app flex bg-black min-w-0">
         <aside
           style={{ width: sidebarWidthPx, flexShrink: 0 }}
-          className="min-w-0 flex flex-col border-r border-slate-700/60 bg-[var(--ent-bg1)]"
+          className="min-w-0 bg-gray-950 flex flex-col"
         >
           <SessionView onEnter={setSession} onSessionsLoaded={mergeSessionMetaFromList} onSortedSessionsChange={setSidebarSortedSessions} />
         </aside>
@@ -3335,22 +3404,21 @@ function App() {
           aria-valuemin={SIDEBAR_WIDTH_MIN}
           aria-valuemax={sidebarWidthMaxPx()}
           title="拖曳調整側欄寬度"
-          className="group relative w-3 shrink-0 cursor-col-resize select-none touch-none bg-slate-950 hover:bg-slate-900/80"
+          className="group relative w-3 shrink-0 cursor-col-resize select-none touch-none bg-gray-950 hover:bg-gray-900/90"
           onMouseDown={handleSidebarResizeStart}
           onTouchStart={handleSidebarResizeStart}
         >
           <span
-            className="pointer-events-none absolute left-1/2 top-0 bottom-0 w-px -translate-x-1/2 bg-blue-600/15 group-hover:bg-blue-500/40"
+            className="pointer-events-none absolute left-1/2 top-0 bottom-0 w-px -translate-x-1/2 bg-gray-800 group-hover:bg-indigo-500/50"
             aria-hidden
           />
         </div>
-        <main className="flex-1 min-w-0 min-h-0 bg-[var(--ent-bg0)]">
+        <main className="flex-1 min-w-0 min-h-0">
           {session ? (
             <ChatView session={session} onBack={() => setSession(null)} showBack={false} fullHeight={false} onJumpToSession={setSession} allSessions={sidebarSortedSessions} />
           ) : (
-            <div className="h-full flex flex-col items-center justify-center gap-2 text-slate-500 text-sm px-6 border-l border-slate-800/50">
-              <div className="enterprise-display text-base font-semibold text-slate-400">選擇 Workspace Session</div>
-              <p className="text-center text-xs text-slate-600 max-w-sm">左側列表採表格式排列；點選一列即可在此面板開始對話</p>
+            <div className="h-full flex items-center justify-center text-gray-500 text-sm bg-gray-950/40">
+              請從左側選擇一個 Session 開始對話
             </div>
           )}
         </main>
