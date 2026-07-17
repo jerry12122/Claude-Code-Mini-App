@@ -458,7 +458,7 @@ const PERM_MODE_LABEL = {
   plan: '規劃模式',
 };
 
-const AGENT_LABEL = { claude: 'Claude', cursor: 'Cursor', codex: 'Codex', antigravity: 'Antigravity', kiro: 'Kiro' };
+const AGENT_LABEL = { claude: 'Claude', cursor: 'Cursor', codex: 'Codex', antigravity: 'Antigravity', kiro: 'Kiro', kiroacp: 'Kiro ACP' };
 
 /** 聊天室頂欄狀態角標：中文短標（避免與權限列搶注意力） */
 const SESSION_STATE_LABEL = {
@@ -1391,6 +1391,7 @@ function ForwardModal({
                     <option value="claude">Claude</option>
                     <option value="cursor">Cursor</option>
                     <option value="kiro">Kiro</option>
+              <option value="kiroacp">Kiro ACP</option>
                     <option value="codex">Codex</option>
                   </select>
                 </div>
@@ -1939,6 +1940,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
               <option value="claude">Claude</option>
               <option value="cursor">Cursor</option>
               <option value="kiro">Kiro</option>
+              <option value="kiroacp">Kiro ACP</option>
               <option value="codex">Codex</option>
             </select>
             <div className="min-w-0">

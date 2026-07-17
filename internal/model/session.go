@@ -27,7 +27,7 @@ func ResolveForSession(provider string, cliArgs []string, storedModel, storedSou
 		return resolveCursorOffline(flag)
 	case agent.TypeCodex:
 		return ExtractFromCodexLines(nil, flag)
-	case agent.TypeKiro:
+	case agent.TypeKiro, agent.TypeKiroACP:
 		return ResolveKiro(flag)
 	default:
 		return Info{Provider: provider, DisplayText: "—", Source: SourceUnknown}

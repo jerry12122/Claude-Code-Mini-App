@@ -2,54 +2,59 @@
 
 ## 驗證目標
 
+### A. `--no-interactive`（既有）
+
 1. `kiro-cli chat --no-interactive` 可在 Go 環境透過 `exec.Command` 正常啟動
 2. stdout 回應格式（`> ` 前綴剝除）可被正確解析
 3. 首回合後能透過 `--list-sessions` 取得 session id
 4. 以 `--resume-id` 能穩定延續對話
-5. 在工作目錄隔離條件下 session id 唯一且可辨識
+
+### B. ACP（2026-07-17 實測通過 → 已整合 `kiroacp` agent）
+
+```bash
+node poc/kiro-cli/acp_roundtrip.js <workDir>
+```
+
+| 檢查項 | 結果（kiro-cli 2.12.1） |
+|---|---|
+| `session/new` → `sessionId` | 通過（無需 `--list-sessions`） |
+| `models.currentModelId` | 通過（例：`claude-sonnet-5`） |
+| `agent_message_chunk` / `tool_call` 分離 | 通過 |
+| chunk 文字含 `` ``` `` fence | 通過 |
+| 跨進程 `session/load` resume | **失敗（timeout）** — 已知限制 |
+
+產出：`samples_acp_report.json`、`samples_acp_chunks.md`  
+跨進程 resume 探測：`acp_resume_probe.js`
+
+調查結論：`docs/plan/todo/kiro-output-markdown-and-acp.md`
 
 ## 前置需求
 
-- `kiro-cli` 已安裝且在 PATH 中（實測版本：2.10.0）
-- Kiro 帳號已登入
+- `kiro-cli` 已安裝且在 PATH 中
+- Kiro 帳號已登入（`kiro-cli whoami`）
 
 ## 腳本說明
 
-### `capture_session_id.ps1`
-執行首回合無互動訊息，並從 `--list-sessions` stderr 擷取最新 session id。
-輸出：session id 字串（成功）或空字串（失敗）。
+| 腳本 | 用途 |
+|---|---|
+| `capture_session_id.ps1` / `resume_smoke_test.ps1` / `run_all_poc.ps1` | `--no-interactive` session 流程 |
+| `classify_output.ps1` | TTY `> ` 分類規則 |
+| `markdown_experiment.py` | heuristic 補 fence（非正式） |
+| `acp_probe.js` | 早期 initialize／session/new 探測 |
+| `acp_roundtrip.js` | 完整 prompt roundtrip 成功標準 |
+| `acp_resume_probe.js` | 跨進程 session/load |
 
-### `resume_smoke_test.ps1`
-接受 `$SessionId` 參數，以 `--resume-id` 延續第二輪對話，驗證對話連貫性。
-
-### `run_all_poc.ps1`
-整合以上腳本的端對端驗證，列印成功/失敗摘要。
-
-### `classify_output.ps1`
-驗證 stdout 思考鏈 vs 最終回覆的分類規則（首個 `> ` 行為分界）。
-
-### `markdown_experiment.py`
-「過濾工具敘述 + 補 code fence」heuristic 實驗腳本，接受任意 Kiro 回覆純文字檔輸出 `.after.md` 對照。僅供本機實驗，非正式解法；真實回覆樣本含商業程式碼內容，不進版控。
-
-### `acp_probe.js`
-以 JSON-RPC over stdio 探測 `kiro-cli acp`（`initialize` / `session/new`）。完整 prompt 串流需本機已 `kiro-cli login`。
-
-調查結論文件：`docs/plan/todo/kiro-output-markdown-and-acp.md`
-
-## 已確認規格
+## 已確認規格（`--no-interactive`）
 
 | 項目 | 結果 |
 |---|---|
-| 執行檔類型 | 原生 .exe（免 cmd.exe wrapper） |
-| 提示詞傳遞方式 | positional arg（最後一個引數） |
-| stdout 格式 | `> <回應文字>` 每行帶 `> ` 前綴 |
-| session id 位置 | `--list-sessions` 的 **stderr** |
-| session id 格式 | `Chat SessionId: <UUID>` |
-| resume 旗標 | `--resume-id <UUID>` |
-| 信任工具 | `--trust-all-tools` |
-| exit code | 0 = 成功，其他 = 失敗 |
+| stdout 格式 | `> <回應文字>` |
+| session id | `--list-sessions` 的 **stderr** |
+| resume | `--resume-id <UUID>` |
 
-## 成功標準
+## ACP → 產品整合
 
-- 同一工作目錄下兩輪對話穩定接續
-- session id 可落盤供後端 Go runner 引用
+- agent_type：`kiroacp`（與 `kiro` 並存）
+- 實作：`internal/kiroacp/`
+- UI：新建 Session 選 **Kiro ACP**
+- 注意：目前跨進程 resume（`session/load`）不可靠；適合單回合／首則訊息對照 Markdown 品質

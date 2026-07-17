@@ -9,6 +9,8 @@ const (
 	TypeCodex       = "codex"
 	TypeAntigravity = "antigravity"
 	TypeKiro        = "kiro"
+	// TypeKiroACP 為實驗 type：kiro-cli acp（JSON-RPC），與 TypeKiro（--no-interactive）並存以便對照。
+	TypeKiroACP = "kiroacp"
 	// TypeGemini 已棄用；與 TypeAntigravity 一併停用（headless 無法使用，見 issue #76）。
 	TypeGemini = "gemini"
 )

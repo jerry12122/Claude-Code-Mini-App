@@ -21,6 +21,7 @@ import (
 	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/antigravity"
 	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/codex"
 	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/kiro"
+	_ "github.com/jerry12122/Claude-Code-Mini-App/internal/kiroacp"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/model"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/quota"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/shell"
@@ -357,7 +358,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				permDenied := false
 
 				// Kiro / Codex stream 不含 model，run 前解析並推送。
-				if agentType == agent.TypeKiro || agentType == agent.TypeCodex {
+				if agentType == agent.TypeKiro || agentType == agent.TypeKiroACP || agentType == agent.TypeCodex {
 					info := model.ResolveForSession(agentType, opts.CliExtraArgs, "", "")
 					if p := persistInfoUpdate(database, sessionID, info); p != nil {
 						broadcast(serverMsg{Type: "model_update", Model: p})
@@ -846,7 +847,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				runAgent("[Permission denied by user. Please acknowledge that you cannot perform the requested operation and stop.]", nil)
 
 			case "set_mode":
-				if agentType != agent.TypeClaude && agentType != agent.TypeCursor && agentType != agent.TypeAntigravity && agentType != agent.TypeGemini && agentType != agent.TypeKiro {
+				if agentType != agent.TypeClaude && agentType != agent.TypeCursor && agentType != agent.TypeAntigravity && agentType != agent.TypeGemini && agentType != agent.TypeKiro && agentType != agent.TypeKiroACP {
 					log.Printf("[ws] agent=%s: set_mode ignored", agentType)
 					continue
 				}

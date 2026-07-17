@@ -391,7 +391,7 @@ const PERM_MODE_LABEL = {
   plan: '規劃模式',
 };
 
-const AGENT_LABEL = { claude: 'Claude', cursor: 'Cursor', codex: 'Codex', antigravity: 'Antigravity', kiro: 'Kiro' };
+const AGENT_LABEL = { claude: 'Claude', cursor: 'Cursor', codex: 'Codex', antigravity: 'Antigravity', kiro: 'Kiro', kiroacp: 'Kiro ACP' };
 
 /** 聊天室頂欄狀態角標：中文短標（避免與權限列搶注意力） */
 const SESSION_STATE_LABEL = {
@@ -470,7 +470,7 @@ function formatKiroCreditUsed(displayText) {
 
 function formatQuotaCompact(displayText, agentType) {
   if (!displayText || displayText === '—') return '';
-  if (String(agentType || '').toLowerCase() === 'kiro') {
+  if (String(agentType || '').toLowerCase() === 'kiro' || String(agentType || '').toLowerCase() === 'kiroacp') {
     const kiro = formatKiroCreditUsed(displayText);
     if (kiro) return kiro;
   }
@@ -632,7 +632,7 @@ function permModeOptionsFor(agentType) {
       { value: 'yolo', label: 'YOLO（全自動）⚠️' },
     ];
   }
-  if (t === 'kiro' || t === 'codex') {
+  if (t === 'kiro' || t === 'kiroacp' || t === 'codex') {
     return [{ value: 'default', label: '預設（固定）' }];
   }
   return [
@@ -852,6 +852,7 @@ function getAgentBadgeClass(agentType) {
     codex: 'bg-slate-500/20 text-slate-300',
     antigravity: 'bg-sky-500/20 text-sky-300',
     kiro: 'bg-fuchsia-500/20 text-fuchsia-300',
+    kiroacp: 'bg-fuchsia-500/20 text-fuchsia-300',
   };
   return map[t] || 'bg-[oklch(0.24_0.02_264)] text-[oklch(0.65_0.01_264)]';
 }
@@ -881,7 +882,8 @@ const AGENT_BADGE_INLINE_SVG = {
 };
 
 function AgentBadgeIcon({ agentType }) {
-  const t = String(agentType || 'claude').toLowerCase();
+  const t0 = String(agentType || 'claude').toLowerCase();
+  const t = t0 === 'kiroacp' ? 'kiro' : t0;
   const inline = AGENT_BADGE_INLINE_SVG[t];
   if (inline) {
     return (
@@ -1473,6 +1475,7 @@ function ForwardModal({
                     <option value="claude">Claude</option>
                     <option value="cursor">Cursor</option>
                     <option value="kiro">Kiro</option>
+                    <option value="kiroacp">Kiro ACP</option>
                     <option value="codex">Codex</option>
                   </select>
                 </div>
@@ -1979,6 +1982,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, usePer
               <option value="claude">Claude</option>
               <option value="cursor">Cursor</option>
               <option value="kiro">Kiro</option>
+              <option value="kiroacp">Kiro ACP</option>
               <option value="codex">Codex</option>
             </select>
             <div className="min-w-0">
