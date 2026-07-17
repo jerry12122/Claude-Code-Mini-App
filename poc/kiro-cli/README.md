@@ -28,6 +28,14 @@
 ### `classify_output.ps1`
 驗證 stdout 思考鏈 vs 最終回覆的分類規則（首個 `> ` 行為分界）。
 
+### `markdown_experiment.py`
+「過濾工具敘述 + 補 code fence」heuristic 實驗腳本，接受任意 Kiro 回覆純文字檔輸出 `.after.md` 對照。僅供本機實驗，非正式解法；真實回覆樣本含商業程式碼內容，不進版控。
+
+### `acp_probe.js`
+以 JSON-RPC over stdio 探測 `kiro-cli acp`（`initialize` / `session/new`）。完整 prompt 串流需本機已 `kiro-cli login`。
+
+調查結論文件：`docs/plan/todo/kiro-output-markdown-and-acp.md`
+
 ## 已確認規格
 
 | 項目 | 結果 |

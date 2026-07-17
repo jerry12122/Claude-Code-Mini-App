@@ -150,6 +150,82 @@ func TestDispatchLineTextOnly(t *testing.T) {
 	}
 }
 
+func TestIsKiroToolNarration(t *testing.T) {
+	yes := []string{
+		"Reading file: C:\\repo\\handler.go, from line 353 to 724 (using tool: read)",
+		"Searching for: FooType in C:\\repo (using tool: grep)",
+		"✓ Successfully read 14474 bytes from C:\\repo\\handler.go",
+		" - Completed in 0.5s",
+		"Batch fs_read operation with 3 operations (using tool: read)",
+		"↱ Operation 1: Reading file: C:\\repo\\struct.go, from line 100 to 170",
+		"⋮",
+		"- Summary: 3 operations processed, 3 successful, 0 failed",
+		"(3 more items found)",
+		"I will run the following command: certutil -hashfile x SHA1 (using tool: shell)",
+		"Purpose: 計算檔案的 SHA1 供比對",
+		"1. Method ComputeFooIntent at service\\foopkg\\intent.go:57:1",
+		`Searching for: foo (using tool: grep)Searching for symbols matching: "ComputeFooIntent" (using tool: code)`,
+	}
+	for _, s := range yes {
+		if !isKiroToolNarration(s) {
+			t.Errorf("expected narration: %q", s)
+		}
+	}
+
+	no := []string{
+		"有完整的圖景。整理重構建議如下。",
+		"## 現況結構",
+		"1. 共同前置：解析 token → parse body",
+		"go",
+		"type transferHandlerFunc func(ctx context.Context) error",
+		"Dispatch table（map[FooType]func]）就足夠。",
+	}
+	for _, s := range no {
+		if isKiroToolNarration(s) {
+			t.Errorf("expected prose/code, not narration: %q", s)
+		}
+	}
+}
+
+func TestDispatchLineInterleavedToolAfterResponse(t *testing.T) {
+	var events []agent.Event
+	cb := func(e agent.Event) { events = append(events, e) }
+
+	st := &kiroStreamState{}
+	st.dispatchLine("> Transfer 函式有 330 行，先完整讀進來看。", cb)
+	st.dispatchLine("Reading file: C:\\repo\\handler.go, from line 353 to 724 (using tool: read)", cb)
+	st.dispatchLine(" ✓ Successfully read 14474 bytes from C:\\repo\\handler.go", cb)
+	st.dispatchLine(" - Completed in 0.0s", cb)
+	st.dispatchLine("看一下 FooType 常數與相關函式。", cb)
+	st.dispatchLine(`1. Method ComputeFooIntent at service\foopkg\intent.go:57:1`, cb)
+	st.dispatchLine("有完整的圖景。整理重構建議如下。", cb)
+
+	var deltas []string
+	activityCount := 0
+	for _, e := range events {
+		switch e.Type {
+		case agent.EventDelta:
+			deltas = append(deltas, e.Text)
+		case agent.EventActivity:
+			activityCount++
+		case agent.EventThinking:
+			t.Fatal("must not emit EventThinking after response started (would wipe frontend stream)")
+		}
+	}
+
+	joined := strings.Join(deltas, "")
+	if strings.Contains(joined, "Reading file:") || strings.Contains(joined, "Successfully read") ||
+		strings.Contains(joined, "Completed in") || strings.Contains(joined, "ComputeFooIntent at") {
+		t.Errorf("tool narration leaked into delta: %q", joined)
+	}
+	if !strings.Contains(joined, "Transfer 函式") || !strings.Contains(joined, "有完整的圖景") {
+		t.Errorf("prose missing from delta: %q", joined)
+	}
+	if activityCount < 4 {
+		t.Errorf("expected >=4 EventActivity for tool lines, got %d", activityCount)
+	}
+}
+
 func TestFlushFallback(t *testing.T) {
 	var events []agent.Event
 	cb := func(e agent.Event) { events = append(events, e) }
