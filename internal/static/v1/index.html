@@ -370,21 +370,20 @@ function useChatHeaderCollapsed() {
   };
 }
 
-function formatKiroCreditRemaining(displayText) {
-  const m = String(displayText).match(/\(([\d.]+)\s*\/\s*([\d.]+)\)/);
-  if (!m) return '';
-  const used = parseFloat(m[1]);
-  const limit = parseFloat(m[2]);
-  if (!Number.isFinite(used) || !Number.isFinite(limit) || limit <= 0) return '';
-  const remaining = Math.max(0, limit - used);
+function formatKiroCreditUsed(displayText) {
+  const pct = String(displayText).match(/Credits\s+([\d.]+)\s*%/);
+  const frac = String(displayText).match(/\(([\d.]+)\s*\/\s*([\d.]+)\)/);
+  if (!pct && !frac) return '';
   const fmt = (n) => (Math.abs(n - Math.round(n)) < 0.05 ? String(Math.round(n)) : n.toFixed(1));
-  return fmt(remaining) + '/' + fmt(limit);
+  if (pct && frac) return pct[1] + '% (' + fmt(parseFloat(frac[1])) + '/' + fmt(parseFloat(frac[2])) + ')';
+  if (pct) return pct[1] + '%';
+  return fmt(parseFloat(frac[1])) + '/' + fmt(parseFloat(frac[2]));
 }
 
 function formatQuotaCompact(displayText, agentType) {
   if (!displayText || displayText === '—') return '';
   if (String(agentType || '').toLowerCase() === 'kiro') {
-    const kiro = formatKiroCreditRemaining(displayText);
+    const kiro = formatKiroCreditUsed(displayText);
     if (kiro) return kiro;
   }
   const first = String(displayText).split(' · ')[0].trim();
