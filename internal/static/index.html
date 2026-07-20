@@ -232,6 +232,17 @@ function sidebarWidthMaxPx() {
   return Math.max(SIDEBAR_WIDTH_MIN, Math.floor(window.innerWidth * 0.48));
 }
 
+/** 桌面版側欄收合狀態（localStorage） */
+const SIDEBAR_COLLAPSED_KEY = 'cc_sidebar_collapsed';
+
+function readStoredSidebarCollapsed() {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1';
+  } catch (_) {
+    return false;
+  }
+}
+
 /**
  * 正規化 API base path：無結尾 /；根為 ''；一律以 / 開頭（非空時）。
  */
@@ -3388,6 +3399,16 @@ function App() {
     lastSidebarWidthRef.current = sidebarWidthPx;
   }, [sidebarWidthPx]);
 
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readStoredSidebarCollapsed);
+
+  const toggleSidebarCollapsed = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0'); } catch (_) {}
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     const onResize = () => {
       setSidebarWidthPx((w) => clampSidebarWidthPx(w));
@@ -3496,29 +3517,45 @@ function App() {
     }
 
     return (
-      <div className="h-app flex bg-[oklch(0.15_0.02_264)] min-w-0">
-        <aside
-          style={{ width: sidebarWidthPx, flexShrink: 0 }}
-          className="min-w-0 bg-[oklch(0.13_0.02_264)] border-r border-[oklch(0.26_0.02_264)] flex flex-col"
+      <div className="h-app flex bg-[oklch(0.15_0.02_264)] min-w-0 relative">
+        {!sidebarCollapsed && (
+          <aside
+            style={{ width: sidebarWidthPx, flexShrink: 0 }}
+            className="min-w-0 bg-[oklch(0.13_0.02_264)] border-r border-[oklch(0.26_0.02_264)] flex flex-col"
+          >
+            <SessionView onEnter={setSession} onSessionsLoaded={mergeSessionMetaFromList} onSortedSessionsChange={setSidebarSortedSessions} activeSessionId={session?.id} />
+          </aside>
+        )}
+        {!sidebarCollapsed && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-valuenow={sidebarWidthPx}
+            aria-valuemin={SIDEBAR_WIDTH_MIN}
+            aria-valuemax={sidebarWidthMaxPx()}
+            title="拖曳調整側欄寬度"
+            className="group relative w-1.5 shrink-0 cursor-col-resize select-none touch-none bg-transparent hover:bg-[oklch(0.62_0.19_275_/15%)]"
+            onMouseDown={handleSidebarResizeStart}
+            onTouchStart={handleSidebarResizeStart}
+          >
+            <span
+              className="pointer-events-none absolute left-1/2 top-0 bottom-0 w-px -translate-x-1/2 bg-gray-800 group-hover:bg-violet-500/50"
+              aria-hidden
+            />
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={toggleSidebarCollapsed}
+          title={sidebarCollapsed ? '展開會話列表' : '收合會話列表'}
+          aria-label={sidebarCollapsed ? '展開會話列表' : '收合會話列表'}
+          style={{ left: sidebarCollapsed ? 0 : sidebarWidthPx }}
+          className="absolute top-1/2 -translate-y-1/2 z-20 flex items-center justify-center w-5 h-10 rounded-r-md bg-[oklch(0.19_0.02_264)] border border-l-0 border-[oklch(0.28_0.02_264)] text-gray-500 hover:text-gray-300 hover:bg-[oklch(0.24_0.02_264)] transition-colors"
         >
-          <SessionView onEnter={setSession} onSessionsLoaded={mergeSessionMetaFromList} onSortedSessionsChange={setSidebarSortedSessions} activeSessionId={session?.id} />
-        </aside>
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-valuenow={sidebarWidthPx}
-          aria-valuemin={SIDEBAR_WIDTH_MIN}
-          aria-valuemax={sidebarWidthMaxPx()}
-          title="拖曳調整側欄寬度"
-          className="group relative w-1.5 shrink-0 cursor-col-resize select-none touch-none bg-transparent hover:bg-[oklch(0.62_0.19_275_/15%)]"
-          onMouseDown={handleSidebarResizeStart}
-          onTouchStart={handleSidebarResizeStart}
-        >
-          <span
-            className="pointer-events-none absolute left-1/2 top-0 bottom-0 w-px -translate-x-1/2 bg-gray-800 group-hover:bg-violet-500/50"
-            aria-hidden
-          />
-        </div>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={'w-3.5 h-3.5 transition-transform duration-150 ' + (sidebarCollapsed ? 'rotate-180' : '')} aria-hidden>
+            <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
+          </svg>
+        </button>
         <main className="flex-1 min-w-0 min-h-0">
           {session ? (
             <ChatView session={session} onBack={() => setSession(null)} showBack={false} fullHeight={false} onJumpToSession={setSession} allSessions={sidebarSortedSessions} />
