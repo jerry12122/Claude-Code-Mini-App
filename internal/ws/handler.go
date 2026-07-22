@@ -495,7 +495,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 					case agent.EventError:
 						if e.Err != nil {
 							runFailed = true
-							errText = e.Err.Error()
+							errText = agent.PreferErrorText(errText, e.Err.Error())
 							broadcast(serverMsg{Type: "error", Content: errText})
 						}
 					}
@@ -510,8 +510,10 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 						if !runFailed {
 							runFailed = true
 							errText = err.Error()
+						} else {
+							errText = agent.PreferErrorText(errText, err.Error())
 						}
-						broadcast(serverMsg{Type: "error", Content: err.Error()})
+						broadcast(serverMsg{Type: "error", Content: errText})
 					}
 					if err := database.FinalizeMessage(msgID); err != nil {
 						log.Printf("[ws] FinalizeMessage (err path): %v", err)

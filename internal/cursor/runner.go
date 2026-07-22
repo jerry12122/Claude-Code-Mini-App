@@ -155,7 +155,7 @@ func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventC
 	// Cursor 失敗時可能沒有 terminal result event，exit code 才是真實判準。
 	// 若被 context 取消，直接回報 waitErr 由上層處理（視為 aborted）。
 	if waitErr != nil {
-		if ctx.Err() == nil && !sawResult && stderr != "" {
+		if ctx.Err() == nil && !sawResult {
 			cb(agent.Event{Type: agent.EventError, Err: classifyRunnerError(stderr, waitErr)})
 		}
 		log.Printf("[cursor] 子進程結束，exit error: %v", waitErr)

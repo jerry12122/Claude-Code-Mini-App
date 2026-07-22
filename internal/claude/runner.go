@@ -148,6 +148,9 @@ func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventC
 	}
 	if waitErr != nil {
 		log.Printf("[claude] 子進程結束，exit error: %v", waitErr)
+		if ctx.Err() == nil {
+			return agent.NewExitError("claude", stderr, waitErr)
+		}
 	} else {
 		log.Printf("[claude] 子進程正常結束，共處理 %d 行", lineCount)
 	}

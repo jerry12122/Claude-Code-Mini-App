@@ -140,7 +140,13 @@ func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventC
 	if waitErr != nil {
 		log.Printf("[kiro] 子進程結束，exit error: %v", waitErr)
 		if ctx.Err() == nil {
-			cb(agent.Event{Type: agent.EventError, Err: waitErr})
+			detail := strings.TrimSpace(stderr)
+			if detail == "" {
+				detail = strings.TrimSpace(st.thinkingBuf.String())
+			}
+			runErr := agent.NewExitError("kiro-cli", detail, waitErr)
+			cb(agent.Event{Type: agent.EventError, Err: runErr})
+			return runErr
 		}
 		return waitErr
 	}
