@@ -1,5 +1,7 @@
 package db
 
+import "strings"
+
 const (
 	MessageStatusPending = "pending"
 	MessageStatusDone    = "done"
@@ -85,6 +87,18 @@ func (db *DB) UpdateMessageResultText(msgID int64, resultText string) error {
 // FinalizeMessage marks a message as done.
 func (db *DB) FinalizeMessage(msgID int64) error {
 	_, err := db.Exec(`UPDATE messages SET status = ? WHERE id = ?`, MessageStatusDone, msgID)
+	return err
+}
+
+// FillMessageContentIfEmpty 僅在 content 仍為空且仍 pending 時寫入全文（result 後備，避免空白氣泡）。
+func (db *DB) FillMessageContentIfEmpty(msgID int64, content string) error {
+	if strings.TrimSpace(content) == "" {
+		return nil
+	}
+	_, err := db.Exec(
+		`UPDATE messages SET content = ? WHERE id = ? AND status = ? AND TRIM(COALESCE(content, '')) = ''`,
+		content, msgID, MessageStatusPending,
+	)
 	return err
 }
 

@@ -158,6 +158,57 @@ func TestDispatch_contentBlockStartWithoutDeltaThenAssistant(t *testing.T) {
 	}
 }
 
+func TestDispatch_userResetsStreamFlagSoNextAssistantAccepted(t *testing.T) {
+	t.Parallel()
+	r := &Runner{}
+	var st streamState
+	var deltas []string
+	cb := func(e agent.Event) {
+		if e.Type == agent.EventDelta {
+			deltas = append(deltas, e.Text)
+		}
+	}
+	r.dispatch(&StreamEvent{
+		Type: "stream_event",
+		Event: &APIEvent{
+			Type:  "content_block_delta",
+			Delta: &Delta{Type: "text_delta", Text: "turn1"},
+		},
+	}, cb, &st)
+	r.dispatch(&StreamEvent{Type: "user"}, cb, &st)
+	r.dispatch(&StreamEvent{
+		Type:    "assistant",
+		Message: &AssistantMessage{Content: []MessageContent{{Type: "text", Text: "turn2-final"}}},
+	}, cb, &st)
+	if len(deltas) != 2 || deltas[0] != "turn1" || deltas[1] != "turn2-final" {
+		t.Fatalf("user 事件後應接受下一輪 assistant，got deltas=%v", deltas)
+	}
+}
+
+func TestDispatch_resultFillsDeltaWhenNoTextEmitted(t *testing.T) {
+	t.Parallel()
+	r := &Runner{}
+	var st streamState
+	var deltas []string
+	var done *agent.Event
+	cb := func(ev agent.Event) {
+		switch ev.Type {
+		case agent.EventDelta:
+			deltas = append(deltas, ev.Text)
+		case agent.EventDone:
+			ev := ev
+			done = &ev
+		}
+	}
+	r.dispatch(&StreamEvent{Type: "result", SessionID: "sid", Result: "only-in-result"}, cb, &st)
+	if len(deltas) != 1 || deltas[0] != "only-in-result" {
+		t.Fatalf("無先前文字時 result 應後備成 delta，got deltas=%v", deltas)
+	}
+	if done == nil || done.ResultText != "only-in-result" {
+		t.Fatalf("EventDone 應保留 ResultText，got %+v", done)
+	}
+}
+
 func TestBuildClaudeArgs(t *testing.T) {
 	t.Parallel()
 
@@ -170,7 +221,7 @@ func TestBuildClaudeArgs(t *testing.T) {
 			name: "僅內建旗標與預設 permission_mode",
 			opts: agent.RunOptions{},
 			want: []string{
-				"-p", "--output-format", "stream-json", "--verbose",
+				"-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
 				"--permission-mode", "default",
 			},
 		},
@@ -183,7 +234,7 @@ func TestBuildClaudeArgs(t *testing.T) {
 				},
 			},
 			want: []string{
-				"-p", "--output-format", "stream-json", "--verbose",
+				"-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
 				"--resume", "sess-uuid",
 				"--permission-mode", "acceptEdits",
 			},
@@ -203,7 +254,7 @@ func TestBuildClaudeArgs(t *testing.T) {
 			want: []string{
 				"--plugin-dir", "./.claude/plugins/crm",
 				"--plugin-dir", "./.claude/plugins/crm2",
-				"-p", "--output-format", "stream-json", "--verbose",
+				"-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
 				"--resume", "abc",
 				"--permission-mode", "default",
 			},
@@ -215,7 +266,7 @@ func TestBuildClaudeArgs(t *testing.T) {
 			},
 			want: []string{
 				"--plugin-dir", "./.claude/plugins/my project",
-				"-p", "--output-format", "stream-json", "--verbose",
+				"-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
 				"--permission-mode", "default",
 			},
 		},
@@ -228,7 +279,7 @@ func TestBuildClaudeArgs(t *testing.T) {
 				},
 			},
 			want: []string{
-				"-p", "--output-format", "stream-json", "--verbose",
+				"-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
 				"--permission-mode", "default",
 				"--allowedTools", "Write",
 				"--allowedTools", "Edit",

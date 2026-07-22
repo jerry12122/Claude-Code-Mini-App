@@ -385,8 +385,13 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				}
 
 				err := runner.Run(ctx, opts, func(e agent.Event) {
+					// 中止後仍處理 delta/done/error，避免進程收尾時文字被丟棄成空白訊息。
 					if ctx.Err() != nil {
-						return
+						switch e.Type {
+						case agent.EventDelta, agent.EventDone, agent.EventError, agent.EventPermDenied, agent.EventSessionInit:
+						default:
+							return
+						}
 					}
 					switch e.Type {
 					case agent.EventStreamStart:
@@ -460,14 +465,23 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 						}
 						mu.Unlock()
 
-						if !permDenied && !runFailed {
-							rt := strings.TrimSpace(e.ResultText)
-							if rt != "" {
-								if err := database.UpdateMessageResultText(msgID, rt); err != nil {
-									log.Printf("[ws] UpdateMessageResultText: %v", err)
-								}
-								broadcast(serverMsg{Type: "message_result_text", ID: msgID, Content: rt})
+						rt := strings.TrimSpace(e.ResultText)
+						if rt != "" {
+							if err := database.UpdateMessageResultText(msgID, rt); err != nil {
+								log.Printf("[ws] UpdateMessageResultText: %v", err)
 							}
+							if err := database.FillMessageContentIfEmpty(msgID, rt); err != nil {
+								log.Printf("[ws] FillMessageContentIfEmpty: %v", err)
+							}
+							broadcast(serverMsg{Type: "message_result_text", ID: msgID, Content: rt})
+						}
+
+						// 中止中收到 result：只救內容，不當成功完成（避免提早「任務完成」）。
+						if ctx.Err() != nil {
+							return
+						}
+
+						if !permDenied && !runFailed {
 							if err := database.FinalizeMessage(msgID); err != nil {
 								log.Printf("[ws] FinalizeMessage: %v", err)
 							}
@@ -501,9 +515,12 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 					}
 				})
 
+				if errors.Is(ctx.Err(), context.Canceled) {
+					cancelled = true
+				}
+
 				if err != nil {
-					if errors.Is(ctx.Err(), context.Canceled) {
-						cancelled = true
+					if cancelled {
 						log.Printf("[ws] %s.Run cancelled", agentType)
 					} else {
 						log.Printf("[ws] %s.Run error: %v", agentType, err)
@@ -515,25 +532,18 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 						}
 						broadcast(serverMsg{Type: "error", Content: errText})
 					}
-					if err := database.FinalizeMessage(msgID); err != nil {
-						log.Printf("[ws] FinalizeMessage (err path): %v", err)
-					}
-					if !permDenied {
-						if err := database.UpdateSessionStatus(sessionID, db.SessionStatusIdle); err != nil {
-							log.Printf("[ws] UpdateSessionStatus idle: %v", err)
-						}
-						broadcast(serverMsg{Type: "status", Value: idleUIStatus(database, sessionID)})
-					}
+				} else if cancelled {
+					log.Printf("[ws] %s.Run cancelled (exit 0)", agentType)
 				} else {
 					log.Printf("[ws] %s.Run finished OK", agentType)
 				}
 
-				if runFailed && err == nil && !permDenied {
+				if (err != nil || cancelled || (runFailed && err == nil)) && !permDenied {
 					if finErr := database.FinalizeMessage(msgID); finErr != nil {
-						log.Printf("[ws] FinalizeMessage (provider err): %v", finErr)
+						log.Printf("[ws] FinalizeMessage (err/cancel path): %v", finErr)
 					}
 					if stErr := database.UpdateSessionStatus(sessionID, db.SessionStatusIdle); stErr != nil {
-						log.Printf("[ws] UpdateSessionStatus idle (provider err): %v", stErr)
+						log.Printf("[ws] UpdateSessionStatus idle (err/cancel path): %v", stErr)
 					}
 					broadcast(serverMsg{Type: "status", Value: idleUIStatus(database, sessionID)})
 				}
@@ -541,7 +551,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				if permDenied {
 					return
 				}
-				if runFailed {
+				if runFailed && !cancelled {
 					notifyTaskAsync(botToken, tgUserID, notifyCfg, tg.TaskAlert{
 						SessionName: sess.Name,
 						AgentType:   agentType,
@@ -966,14 +976,8 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 					shellTaskCancel(sessionID)
 					continue
 				}
+				// Agent 同樣只 cancel，等 Run goroutine 收尾後再 IDLE（避免進程還在跑前端已變完成）。
 				taskCancel(sessionID)
-				_ = database.FinalizePendingMessagesForSession(sessionID)
-				clearShellPending(database, sessionID)
-				clearInMemoryShellApproval(sessionID)
-				if err := database.UpdateSessionStatus(sessionID, db.SessionStatusIdle); err != nil {
-					log.Printf("[ws] UpdateSessionStatus idle: %v", err)
-				}
-				broadcast(serverMsg{Type: "status", Value: idleUIStatus(database, sessionID)})
 
 			case "shell_allow_once":
 				handleShellAllowExecute(false)

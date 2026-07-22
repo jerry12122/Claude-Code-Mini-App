@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -35,6 +36,7 @@ func buildClaudeArgs(opts agent.RunOptions) []string {
 		"-p",
 		"--output-format", "stream-json",
 		"--verbose",
+		"--include-partial-messages",
 	)
 
 	if opts.SessionID != "" {
@@ -78,6 +80,8 @@ func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventC
 	if opts.WorkDir != "" {
 		cmd.Dir = opts.WorkDir
 	}
+	// -p 結束後背景 Bash 約 5 秒會被殺；禁止背景任務，改前景跑完再回 result。
+	cmd.Env = append(os.Environ(), "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1")
 	cmd.SysProcAttr = proc.SysProcAttr()
 	cmd.WaitDelay = 5 * time.Second
 	cmd.Cancel = func() error {
@@ -160,10 +164,24 @@ func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventC
 // streamState 追蹤單次 Run 的串流進度（同一則 assistant 可能先 delta 再送完整 assistant，後者需略過）。
 type streamState struct {
 	streamStartSent bool
-	// gotStreamTextDelta 表示已透過 content_block_delta 送出至少一則文字（與下方 assistant 全文重複）
+	// gotStreamTextDelta 表示「本輪」已透過 content_block_delta 送出至少一則文字（與下方 assistant 全文重複）
 	gotStreamTextDelta bool
+	// emittedAnyText 表示整次 Run 是否已送出任何可見回覆文字（供 result 後備）
+	emittedAnyText bool
 	// thinkingBuf 累積 thinking_delta，每次送出 EventThinking 時語意為「當前完整思考快照」（與 Gemini runner 一致）
 	thinkingBuf strings.Builder
+}
+
+func (st *streamState) emitDelta(cb agent.EventCallback, text string) {
+	if text == "" {
+		return
+	}
+	if !st.streamStartSent {
+		st.streamStartSent = true
+		cb(agent.Event{Type: agent.EventStreamStart})
+	}
+	st.emittedAnyText = true
+	cb(agent.Event{Type: agent.EventDelta, Text: text})
 }
 
 // dispatch 將 Claude 專屬 StreamEvent 轉換為 agent.Event 送給 cb。
@@ -179,6 +197,10 @@ func (r *Runner) dispatch(e *StreamEvent, cb agent.EventCallback, st *streamStat
 				cb(ev)
 			}
 		}
+
+	case "user":
+		// tool_result 等以 user 事件回來；下一則 assistant 是新一輪，不可沿用上一輪的 gotStreamTextDelta。
+		st.gotStreamTextDelta = false
 
 	case "stream_event":
 		if e.Event == nil {
@@ -217,12 +239,8 @@ func (r *Runner) dispatch(e *StreamEvent, cb agent.EventCallback, st *streamStat
 				if e.Event.Delta.Text == "" {
 					break
 				}
-				if !st.streamStartSent {
-					st.streamStartSent = true
-					cb(agent.Event{Type: agent.EventStreamStart})
-				}
 				st.gotStreamTextDelta = true
-				cb(agent.Event{Type: agent.EventDelta, Text: e.Event.Delta.Text})
+				st.emitDelta(cb, e.Event.Delta.Text)
 			}
 		}
 
@@ -232,12 +250,7 @@ func (r *Runner) dispatch(e *StreamEvent, cb agent.EventCallback, st *streamStat
 		if st.gotStreamTextDelta {
 			break
 		}
-		text := e.TextContent()
-		if text != "" {
-			st.streamStartSent = true
-			cb(agent.Event{Type: agent.EventStreamStart})
-			cb(agent.Event{Type: agent.EventDelta, Text: text})
-		}
+		st.emitDelta(cb, e.TextContent())
 
 	case "result":
 		if len(e.PermissionDenials) > 0 {
@@ -251,17 +264,22 @@ func (r *Runner) dispatch(e *StreamEvent, cb agent.EventCallback, st *streamStat
 			}
 			cb(agent.Event{Type: agent.EventPermDenied, Denials: denials, SessionID: e.SessionID})
 		}
+		resultText := strings.TrimSpace(e.Result)
 		if e.IsError {
-			msg := strings.TrimSpace(e.Result)
+			msg := resultText
 			if msg == "" {
 				msg = "claude reported error"
 			}
 			cb(agent.Event{Type: agent.EventError, Err: fmt.Errorf("claude: %s", msg), SessionID: e.SessionID})
 		}
+		// 多輪略過 assistant、或僅有 result 欄位時，避免前端／DB 空白。
+		if resultText != "" && !st.emittedAnyText {
+			st.emitDelta(cb, resultText)
+		}
 		cb(agent.Event{
 			Type:       agent.EventDone,
 			SessionID:  e.SessionID,
-			ResultText: strings.TrimSpace(e.Result),
+			ResultText: resultText,
 		})
 	}
 }
