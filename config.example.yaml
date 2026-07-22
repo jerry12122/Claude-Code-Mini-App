@@ -25,6 +25,15 @@ web:
 # true = 跳過所有驗證（僅限本機開發）
 no_auth: false
 
+# 任務結束時的 Telegram 推播（錯誤／中斷）
+notify:
+  on_error: true
+  on_cancel: false
+  on_shell_error: true
+  error_preview_len: 800
+  include_prompt: true
+  prompt_preview_len: 120
+
 server:
   port: 8080
 

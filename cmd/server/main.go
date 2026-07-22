@@ -248,7 +248,15 @@ func main() {
 		MaxOutputBytes:  cfg.Shell.MaxOutputBytes,
 		AllowedCommands: cfg.Shell.AllowedCommands,
 	}
-	app.Get("/sessions/:id/ws", authMiddleware, fiberws.New(ws.NewHandler(database, cfg.BotToken, shellOpts, quotaSvc)))
+	notifyCfg := tg.NotifyConfig{
+		OnError:          cfg.Notify.OnError,
+		OnCancel:         cfg.Notify.OnCancel,
+		OnShellError:     cfg.Notify.OnShellError,
+		ErrorPreviewLen:  cfg.Notify.ErrorPreviewLen,
+		IncludePrompt:    cfg.Notify.IncludePrompt,
+		PromptPreviewLen: cfg.Notify.PromptPreviewLen,
+	}
+	app.Get("/sessions/:id/ws", authMiddleware, fiberws.New(ws.NewHandler(database, cfg.BotToken, shellOpts, quotaSvc, notifyCfg)))
 
 	if cfg.NoAuth {
 		log.Println("⚠️  no_auth: true，已跳過 Telegram 驗證（僅限開發環境）")

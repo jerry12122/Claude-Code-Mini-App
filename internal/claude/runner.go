@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"fmt"
 	"log"
 	"os/exec"
 	"strings"
@@ -246,6 +247,13 @@ func (r *Runner) dispatch(e *StreamEvent, cb agent.EventCallback, st *streamStat
 				})
 			}
 			cb(agent.Event{Type: agent.EventPermDenied, Denials: denials, SessionID: e.SessionID})
+		}
+		if e.IsError {
+			msg := strings.TrimSpace(e.Result)
+			if msg == "" {
+				msg = "claude reported error"
+			}
+			cb(agent.Event{Type: agent.EventError, Err: fmt.Errorf("claude: %s", msg), SessionID: e.SessionID})
 		}
 		cb(agent.Event{
 			Type:       agent.EventDone,

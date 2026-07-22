@@ -14,6 +14,17 @@ type Config struct {
 	Server         Server  `mapstructure:"server"`
 	DB             DB      `mapstructure:"db"`
 	Shell          Shell   `mapstructure:"shell"`
+	Notify         Notify  `mapstructure:"notify"`
+}
+
+// Notify 任務結束時的 Telegram 推播設定。
+type Notify struct {
+	OnError          bool `mapstructure:"on_error"`
+	OnCancel         bool `mapstructure:"on_cancel"`
+	OnShellError     bool `mapstructure:"on_shell_error"`
+	ErrorPreviewLen  int  `mapstructure:"error_preview_len"`
+	IncludePrompt    bool `mapstructure:"include_prompt"`
+	PromptPreviewLen int  `mapstructure:"prompt_preview_len"`
 }
 
 // Shell 直連 shell 執行（等同伺服器端任意指令，預設關閉）。
@@ -58,6 +69,12 @@ func Load() (*Config, error) {
 	viper.SetDefault("shell.enabled", false)
 	viper.SetDefault("shell.timeout", "60s")
 	viper.SetDefault("shell.max_output_bytes", 524288)
+	viper.SetDefault("notify.on_error", true)
+	viper.SetDefault("notify.on_cancel", false)
+	viper.SetDefault("notify.on_shell_error", true)
+	viper.SetDefault("notify.error_preview_len", 800)
+	viper.SetDefault("notify.include_prompt", true)
+	viper.SetDefault("notify.prompt_preview_len", 120)
 
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("讀取 config.yaml 失敗: %w", err)

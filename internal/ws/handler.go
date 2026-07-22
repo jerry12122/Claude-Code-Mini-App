@@ -3,6 +3,7 @@ package ws
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -106,7 +107,8 @@ type ShellOpts struct {
 	AllowedCommands []string // 非空時啟用指令白名單（見 internal/shell/allowlist.go）
 }
 
-func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *quota.Service) func(*fiberws.Conn) {
+func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *quota.Service, notifyCfg tg.NotifyConfig) func(*fiberws.Conn) {
+	notifyCfg = notifyConfigFrom(notifyCfg)
 	return func(c *fiberws.Conn) {
 		sessionID := c.Params("id")
 		tgUserID, _ := c.Locals("tg_id").(int64)
@@ -229,6 +231,8 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				}()
 				var cbMu sync.Mutex
 				var done atomic.Bool
+				var shellErrText string
+				var exitCode int
 				err := shell.Run(ctx, shell.RunOptions{Command: command, WorkDir: wdir, Timeout: shellTimeoutSec}, func(e shell.Event) {
 					cbMu.Lock()
 					defer cbMu.Unlock()
@@ -249,29 +253,34 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 						}
 						broadcast(serverMsg{Type: "shell_delta", Stream: "stderr", Content: e.Text})
 					case shell.EventError:
+						shellErrText = e.Text
 						if e.Text != "" {
 							_ = database.AppendMessageContent(msgID, "\n[error] "+e.Text+"\n")
 						}
 						broadcast(serverMsg{Type: "shell_error", Content: e.Text})
 					case shell.EventDone:
 						done.Store(true)
+						exitCode = e.ExitCode
 						finalizeShellMessage(database, msgID, e.ExitCode)
 						broadcast(serverMsg{Type: "shell_done", ExitCode: e.ExitCode})
 					}
 				})
-				if !done.Load() {
+				interrupted := !done.Load()
+				if interrupted {
 					appendText := "\n[interrupted]\n"
 					if err != nil {
 						appendText = "\n[error] " + err.Error() + "\n"
 					}
 					_ = database.AppendMessageContent(msgID, appendText)
 					finalizeShellMessage(database, msgID, -1)
+					exitCode = -1
 					broadcast(serverMsg{Type: "shell_done", ExitCode: -1})
 				}
 				if err := database.UpdateSessionStatus(sessionID, db.SessionStatusIdle); err != nil {
 					log.Printf("[ws] shell idle status: %v", err)
 				}
 				broadcast(serverMsg{Type: "status", Value: idleUIStatus(database, sessionID)})
+				finishShellNotify(botToken, tgUserID, notifyCfg, sess.Name, command, shellErrText, exitCode, interrupted && err == nil, err)
 			}(command, msgID, workDir)
 		}
 
@@ -347,15 +356,25 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				taskEnd(sessionID)
 				broadcast(serverMsg{Type: "error", Content: err.Error()})
 				broadcast(serverMsg{Type: "status", Value: idleUIStatus(database, sessionID)})
+				notifyTaskAsync(botToken, tgUserID, notifyCfg, tg.TaskAlert{
+					SessionName: sess.Name,
+					AgentType:   agentType,
+					Outcome:     tg.OutcomeError,
+					Prompt:      prompt,
+					Error:       err.Error(),
+				})
 				return
 			}
 
 			log.Printf("[ws] start %s.Run agentSessionID=%q mode=%s msgID=%d", runner.Name(), opts.SessionID, pm, msgID)
 
-			go func(opts agent.RunOptions, msgID int64) {
+			go func(opts agent.RunOptions, msgID int64, userPrompt string) {
 				defer taskEnd(sessionID)
 
 				permDenied := false
+				runFailed := false
+				errText := ""
+				var cancelled bool
 
 				// Kiro / Codex stream 不含 model，run 前解析並推送。
 				if agentType == agent.TypeKiro || agentType == agent.TypeKiroACP || agentType == agent.TypeCodex {
@@ -426,7 +445,10 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 						}
 						broadcast(serverMsg{Type: "status", Value: StateAwaitingConfirm})
 						broadcast(serverMsg{Type: "permission_request", Tools: e.Denials})
-						go tg.Notify(botToken, tgUserID, fmt.Sprintf("⚠️ *%s* 需要授權確認，請開啟 App", sess.Name))
+						notifyTaskAsync(botToken, tgUserID, notifyCfg, tg.TaskAlert{
+							SessionName: sess.Name,
+							Outcome:     tg.OutcomeConfirm,
+						})
 
 					case agent.EventDone:
 						mu.Lock()
@@ -438,7 +460,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 						}
 						mu.Unlock()
 
-						if !permDenied {
+						if !permDenied && !runFailed {
 							rt := strings.TrimSpace(e.ResultText)
 							if rt != "" {
 								if err := database.UpdateMessageResultText(msgID, rt); err != nil {
@@ -454,7 +476,10 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 								log.Printf("[ws] UpdateSessionStatus idle: %v", err)
 							}
 							broadcast(serverMsg{Type: "status", Value: idleUIStatus(database, sessionID)})
-							go tg.Notify(botToken, tgUserID, fmt.Sprintf("✅ *%s* 任務完成", sess.Name))
+							notifyTaskAsync(botToken, tgUserID, notifyCfg, tg.TaskAlert{
+								SessionName: sess.Name,
+								Outcome:     tg.OutcomeSuccess,
+							})
 							if quotaSvc != nil {
 								go func(at string) {
 									snap, err := quotaSvc.RefreshAfterRun(context.Background(), at)
@@ -469,16 +494,23 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 
 					case agent.EventError:
 						if e.Err != nil {
-							broadcast(serverMsg{Type: "error", Content: e.Err.Error()})
+							runFailed = true
+							errText = e.Err.Error()
+							broadcast(serverMsg{Type: "error", Content: errText})
 						}
 					}
 				})
 
 				if err != nil {
-					if ctx.Err() != nil {
+					if errors.Is(ctx.Err(), context.Canceled) {
+						cancelled = true
 						log.Printf("[ws] %s.Run cancelled", agentType)
 					} else {
 						log.Printf("[ws] %s.Run error: %v", agentType, err)
+						if !runFailed {
+							runFailed = true
+							errText = err.Error()
+						}
 						broadcast(serverMsg{Type: "error", Content: err.Error()})
 					}
 					if err := database.FinalizeMessage(msgID); err != nil {
@@ -493,7 +525,37 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				} else {
 					log.Printf("[ws] %s.Run finished OK", agentType)
 				}
-			}(opts, msgID)
+
+				if runFailed && err == nil && !permDenied {
+					if finErr := database.FinalizeMessage(msgID); finErr != nil {
+						log.Printf("[ws] FinalizeMessage (provider err): %v", finErr)
+					}
+					if stErr := database.UpdateSessionStatus(sessionID, db.SessionStatusIdle); stErr != nil {
+						log.Printf("[ws] UpdateSessionStatus idle (provider err): %v", stErr)
+					}
+					broadcast(serverMsg{Type: "status", Value: idleUIStatus(database, sessionID)})
+				}
+
+				if permDenied {
+					return
+				}
+				if runFailed {
+					notifyTaskAsync(botToken, tgUserID, notifyCfg, tg.TaskAlert{
+						SessionName: sess.Name,
+						AgentType:   agentType,
+						Outcome:     tg.OutcomeError,
+						Prompt:      userPrompt,
+						Error:       errText,
+					})
+				} else if cancelled {
+					notifyTaskAsync(botToken, tgUserID, notifyCfg, tg.TaskAlert{
+						SessionName: sess.Name,
+						AgentType:   agentType,
+						Outcome:     tg.OutcomeCancelled,
+						Prompt:      userPrompt,
+					})
+				}
+			}(opts, msgID, prompt)
 		}
 
 		startShellGoroutine := func(line string, absDir string) {
@@ -521,6 +583,8 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				}()
 				var cbMu sync.Mutex
 				var done atomic.Bool
+				var shellErrText string
+				var exitCode int
 				err := shell.Run(ctx, shell.RunOptions{Command: line, WorkDir: workDir, Timeout: shellTimeoutSec}, func(e shell.Event) {
 					cbMu.Lock()
 					defer cbMu.Unlock()
@@ -541,29 +605,34 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 						}
 						broadcast(serverMsg{Type: "shell_delta", Stream: "stderr", Content: e.Text})
 					case shell.EventError:
+						shellErrText = e.Text
 						if e.Text != "" {
 							_ = database.AppendMessageContent(msgID, "\n[error] "+e.Text+"\n")
 						}
 						broadcast(serverMsg{Type: "shell_error", Content: e.Text})
 					case shell.EventDone:
 						done.Store(true)
+						exitCode = e.ExitCode
 						finalizeShellMessage(database, msgID, e.ExitCode)
 						broadcast(serverMsg{Type: "shell_done", ExitCode: e.ExitCode, ID: msgID})
 					}
 				})
-				if !done.Load() {
+				interrupted := !done.Load()
+				if interrupted {
 					appendText := "\n[interrupted]\n"
 					if err != nil {
 						appendText = "\n[error] " + err.Error() + "\n"
 					}
 					_ = database.AppendMessageContent(msgID, appendText)
 					finalizeShellMessage(database, msgID, -1)
+					exitCode = -1
 					broadcast(serverMsg{Type: "shell_done", ExitCode: -1, ID: msgID})
 				}
 				if err := database.UpdateSessionStatus(sessionID, db.SessionStatusIdle); err != nil {
 					log.Printf("[ws] UpdateSessionStatus idle (shell): %v", err)
 				}
 				broadcast(serverMsg{Type: "status", Value: idleUIStatus(database, sessionID)})
+				finishShellNotify(botToken, tgUserID, notifyCfg, sess.Name, line, shellErrText, exitCode, interrupted && err == nil, err)
 			}(line, msgID, absDir)
 		}
 

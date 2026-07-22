@@ -26,6 +26,7 @@
 - [x] **initData 簽名校驗**：實作 HMAC-SHA256 校驗 Telegram 登入資訊。
 - [x] **使用者白名單**：限制僅允許特定 Telegram ID 使用系統。
 - [x] **TMA UI 調整**：套用 Telegram 主題色與視口高度優化。
+- [x] **任務異常通知**：Agent/Shell 出錯或非正常完成時推送 TG 訊息（含錯誤摘要）。詳見 `docs/plan/done/error-notify.md`。
 
 ---
 
