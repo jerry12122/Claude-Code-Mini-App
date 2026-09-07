@@ -306,6 +306,8 @@ func main() {
 	sth := api.NewSettingsHandler(database)
 	app.Get("/settings/appearance", authMiddleware, sth.GetAppearance)
 	app.Put("/settings/appearance", authMiddleware, sth.PutAppearance)
+	app.Get("/settings/general", authMiddleware, sth.GetGeneral)
+	app.Put("/settings/general", authMiddleware, sth.PutGeneral)
 
 	// GET /config — 前端用來判斷是否顯示「開啟 VSCode / 開啟目錄」等依賴伺服器端本機程序的功能。
 	app.Get("/config", authMiddleware, func(c *fiber.Ctx) error {

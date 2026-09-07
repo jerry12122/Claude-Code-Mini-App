@@ -1,8 +1,12 @@
 // ── 設定彈窗（左選單 + 右內容，仿 Claude Desktop）───────────────────────────
-// 目前只有「外觀」一個分類：Markdown 顏色（heading/bold/inline code）+ 自訂 CSS。
-// 本機 localStorage 當快取；伺服器 SQLite 為準（見 core.js putAppearance / hydrateAppearanceFromServer）。
+// 目前有「一般」「外觀」兩個分類：
+//   一般：伺服器端本機行為開關（目前僅 vscodeNoAdmin）。
+//   外觀：Markdown 顏色（heading/bold/inline code）+ 自訂 CSS。
+// 外觀本機 localStorage 當快取；伺服器 SQLite 為準（見 core.js putAppearance / hydrateAppearanceFromServer）。
+// 一般設定不做本機快取，見 GeneralSection。
 
 const SETTINGS_SECTIONS = [
+  { id: 'general', label: '一般' },
   { id: 'appearance', label: '外觀' },
 ];
 
@@ -67,6 +71,67 @@ function ColorField({ label, value, onChange, placeholder }) {
   );
 }
 
+/** 「一般」設定頁：目前僅 vscodeNoAdmin 一個開關，即時 PUT（不走外層儲存流程，跟 appearance 分開存）。 */
+function GeneralSection() {
+  const [general, setGeneral] = useState(() => ({ ...GENERAL_DEFAULTS }));
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    getGeneralSettings().then((g) => {
+      if (alive) {
+        setGeneral(g);
+        setLoading(false);
+      }
+    });
+    return () => { alive = false; };
+  }, []);
+
+  const toggle = async (checked) => {
+    setError('');
+    setSaving(true);
+    const next = { ...general, vscodeNoAdmin: checked };
+    setGeneral(next);
+    try {
+      const saved = await putGeneralSettings(next);
+      setGeneral(saved);
+    } catch (e) {
+      setGeneral(general);
+      setError((e && e.message) || '伺服器未存到');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <div className="text-sm font-semibold text-[oklch(0.92_0.01_264)] mb-1">開啟 VSCode</div>
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={general.vscodeNoAdmin}
+            disabled={loading || saving}
+            onChange={(e) => toggle(e.target.checked)}
+            className="mt-0.5 w-4 h-4 accent-violet-600 shrink-0"
+          />
+          <div className="min-w-0">
+            <div className="text-sm text-[oklch(0.9_0.01_264)]">以一般使用者權限開啟 VSCode</div>
+            <div className="text-[11px] text-[oklch(0.55_0.01_264)] mt-0.5">
+              當伺服器程式本身以系統管理員身分執行時，直接開啟 VSCode 會因權限不一致出現
+              「Another instance of Code is already running as administrator」錯誤。開啟此選項後，
+              伺服器改用 <code className="ra-mono">runas /trustlevel</code> 以一般使用者權限啟動 VSCode（僅 Windows 有效）。
+            </div>
+          </div>
+        </label>
+        {error ? <div className="text-xs text-red-400 mt-2">{error}</div> : null}
+      </div>
+    </div>
+  );
+}
+
 function AppearanceSection({ draft, setDraft }) {
   const set = (key) => (val) => setDraft((prev) => ({ ...prev, [key]: val }));
   return (
@@ -102,7 +167,7 @@ function AppearanceSection({ draft, setDraft }) {
 }
 
 function SettingsModal({ open, onClose }) {
-  const [section, setSection] = useState('appearance');
+  const [section, setSection] = useState('general');
   const [draft, setDraft] = useState(() => readStoredAppearance());
   const [savedFlash, setSavedFlash] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -193,6 +258,7 @@ function SettingsModal({ open, onClose }) {
         {/* 右側內容 */}
         <div className="flex-1 min-w-0 flex flex-col">
           <div className="flex-1 overflow-y-auto app-scroll px-5 py-5">
+            {section === 'general' && <GeneralSection />}
             {section === 'appearance' && <AppearanceSection draft={draft} setDraft={setDraft} />}
           </div>
           <div className="shrink-0 flex items-center justify-between gap-2 px-5 py-3 border-t border-[oklch(0.26_0.02_264)]">

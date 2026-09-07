@@ -30,3 +30,21 @@ func (h *SettingsHandler) PutAppearance(c *fiber.Ctx) error {
 	}
 	return c.JSON(res)
 }
+
+// GetGeneral GET /settings/general
+func (h *SettingsHandler) GetGeneral(c *fiber.Ctx) error {
+	res, err := h.db.GetGeneralSettings()
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(res)
+}
+
+// PutGeneral PUT /settings/general — 整包覆寫。
+func (h *SettingsHandler) PutGeneral(c *fiber.Ctx) error {
+	res, err := h.db.PutGeneralSettings(c.Body())
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(res)
+}
