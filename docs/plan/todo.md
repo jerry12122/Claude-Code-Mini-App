@@ -15,3 +15,4 @@
 - [ ] 檔案總管功能 (瀏覽 work_dir 檔案)
 - [ ] 系統資源監控 (CPU/Memory 狀態)
 - [x] Kiro ACP：前端已重新啟用（需 kiro-cli >= 2.16.0；`session/load` PoC 通過，見 `poc/kiro-cli/acp_same_cwd_resume_poc.js`／`docs/plan/done/kiro-output-markdown-and-acp.md`）
+- [x] Session @mention + MCP 諮詢署名（見 `docs/plan/done/session-mention-mcp.md`）

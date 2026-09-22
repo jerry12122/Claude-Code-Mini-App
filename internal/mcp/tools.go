@@ -102,8 +102,9 @@ func (d *deps) getMessages(_ context.Context, _ *gomcp.CallToolRequest, in sessi
 // --- send_message（非阻塞：立刻回，結果靠 get_status 輪詢） ---
 
 type sendMessageIn struct {
-	SessionID string `json:"session_id"`
-	Text      string `json:"text"`
+	SessionID     string `json:"session_id"`
+	Text          string `json:"text"`
+	FromSessionID string `json:"from_session_id,omitempty" jsonschema:"送出者的 miniapp session_id；session 互問／討論時必填，伺服器會蓋上自介與回覆署名"`
 }
 
 type startedOut struct {
@@ -111,10 +112,23 @@ type startedOut struct {
 }
 
 func (d *deps) sendMessage(_ context.Context, _ *gomcp.CallToolRequest, in sendMessageIn) (*gomcp.CallToolResult, startedOut, error) {
-	if strings.TrimSpace(in.Text) == "" {
+	text := strings.TrimSpace(in.Text)
+	if text == "" {
 		return nil, startedOut{}, fmt.Errorf("text 不可為空")
 	}
-	if err := d.reg.SendMessage(in.SessionID, in.Text); err != nil {
+	fromID := strings.TrimSpace(in.FromSessionID)
+	if fromID != "" {
+		from, err := d.db.GetSession(fromID)
+		if err != nil {
+			return nil, startedOut{}, fmt.Errorf("from_session_id 不存在")
+		}
+		to, err := d.db.GetSession(in.SessionID)
+		if err != nil {
+			return nil, startedOut{}, fmt.Errorf("session_id 不存在")
+		}
+		text = wrapConsultEnvelope(from, to, text)
+	}
+	if err := d.reg.SendMessage(in.SessionID, text); err != nil {
 		return nil, startedOut{}, err
 	}
 	return nil, startedOut{Status: "started"}, nil
@@ -244,11 +258,11 @@ func (d *deps) getQuota(_ context.Context, _ *gomcp.CallToolRequest, in getQuota
 }
 
 func registerTools(s *gomcp.Server, d *deps) {
-	gomcp.AddTool(s, &gomcp.Tool{Name: "list_sessions", Description: "列出所有 session"}, d.listSessions)
+	gomcp.AddTool(s, &gomcp.Tool{Name: "list_sessions", Description: "列出所有 session。互問／討論時用 id 當 send_message 的 session_id；自己的 id 見使用者 prompt 的 [miniapp] self，或上次諮詢信封的「你是 session_id」"}, d.listSessions)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "create_session", Description: "建立新 session"}, d.createSession)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "delete_session", Description: "刪除 session"}, d.deleteSession)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "get_messages", Description: "讀取 session 歷史訊息"}, d.getMessages)
-	gomcp.AddTool(s, &gomcp.Tool{Name: "send_message", Description: "非阻塞送出指令給 agent；立刻回傳，用 get_status 輪詢結果"}, d.sendMessage)
+	gomcp.AddTool(s, &gomcp.Tool{Name: "send_message", Description: "非阻塞送出給目標 session。session 互問／討論時必填 from_session_id（你自己的 miniapp session_id），伺服器會蓋上自介與回覆署名；立刻回傳，用 get_status 輪詢結果"}, d.sendMessage)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "get_status", Description: "查詢 session 目前狀態與累積回覆內容"}, d.getStatus)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "respond_permission", Description: "回覆待授權的工具請求（allow_once/deny_once）"}, d.respondPermission)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "set_permission_mode", Description: "切換 session 的權限模式"}, d.setPermissionMode)
