@@ -1,11 +1,6 @@
-/** @mention：標記可詢問／討論的其他 session（不是 Forward） */
-
-const SESSION_MENTION_RE = /@\[([^\]]*)\]\(session:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\)/g;
-
-function sessionMentionToken(s) {
-  const name = String(s && s.name ? s.name : '未命名').replace(/[\[\]]/g, '');
-  return `@[${name}](session:${s.id})`;
-}
+/** @mention：標記可詢問／討論的其他 session（不是 Forward）
+ *  UI：輸入框上方 chips；文字區不塞 uuid token。
+ */
 
 /** 游標前尚未完成的 `@query`；沒有則 null */
 function mentionQueryAtCursor(text, cursor) {
@@ -18,11 +13,21 @@ function mentionQueryAtCursor(text, cursor) {
   return { atStart: pos - query.length - 1, query, pos };
 }
 
-function filterMentionSessions(sessions, currentId, query) {
+/** 選完後清掉 `@query`，不插入工程字串 */
+function consumeMentionQuery(text, cursor) {
+  const src = String(text || '');
+  const pos = Math.max(0, Math.min(Number(cursor) || 0, src.length));
+  const hit = mentionQueryAtCursor(src, pos);
+  if (!hit) return { text: src, cursor: pos };
+  return { text: src.slice(0, hit.atStart) + src.slice(hit.pos), cursor: hit.atStart };
+}
+
+function filterMentionSessions(sessions, currentId, query, excludeIds) {
   const q = String(query || '').toLowerCase();
+  const excluded = new Set([currentId, ...(Array.isArray(excludeIds) ? excludeIds : [])].filter(Boolean));
   const list = Array.isArray(sessions) ? sessions : [];
   return list.filter((s) => {
-    if (!s || s.id === currentId) return false;
+    if (!s || excluded.has(s.id)) return false;
     if (!q) return true;
     const hay = [s.name, s.work_dir, s.agent_type, s.git_branch, s.id]
       .filter(Boolean)
@@ -32,52 +37,67 @@ function filterMentionSessions(sessions, currentId, query) {
   });
 }
 
-function insertMentionToken(text, cursor, session) {
-  const src = String(text || '');
-  const token = sessionMentionToken(session);
-  const hit = mentionQueryAtCursor(src, cursor);
-  if (!hit) {
-    const pos = Math.max(0, Math.min(Number(cursor) || 0, src.length));
-    const next = src.slice(0, pos) + token + ' ' + src.slice(pos);
-    return { text: next, cursor: pos + token.length + 1 };
-  }
-  const next = src.slice(0, hit.atStart) + token + ' ' + src.slice(hit.pos);
-  return { text: next, cursor: hit.atStart + token.length + 1 };
-}
-
 function formatMiniappSessionLine(kind, s) {
   const name = (s && s.name) ? s.name : '未命名';
   const agent = (s && s.agent_type) ? s.agent_type : 'claude';
-  const dir = (s && s.work_dir) ? s.work_dir : '';
   const id = (s && s.id) ? s.id : '';
-  return `${kind}: session_id=${id} name=${name} agent=${agent} work_dir=${dir}`;
+  return `${kind}: session_id=${id} name=${name} agent=${agent}`;
 }
 
-/** 送出前把 @mention token 展開成 [miniapp] 自介，給當前 agent 走 MCP 詢問／討論 */
-function expandMentionPrompt(text, self, sessions) {
+/** 送出前依 chips 展開 [miniapp] 自介；文字區保持乾淨 */
+function expandMentionPrompt(text, self, mentionedSessions) {
   const src = String(text || '');
-  const found = [];
-  const re = new RegExp(SESSION_MENTION_RE.source, 'g');
-  let m;
-  while ((m = re.exec(src))) {
-    found.push({ name: m[1], id: m[2] });
-  }
-  if (!found.length) return src;
-  const byId = new Map();
-  for (const s of Array.isArray(sessions) ? sessions : []) {
-    if (s && s.id) byId.set(s.id, s);
-  }
+  const list = Array.isArray(mentionedSessions) ? mentionedSessions : [];
+  if (!list.length) return src;
   const lines = ['[miniapp]', formatMiniappSessionLine('self', self || {})];
   const seen = new Set();
-  for (const hit of found) {
-    if (seen.has(hit.id)) continue;
-    seen.add(hit.id);
-    const s = byId.get(hit.id) || { id: hit.id, name: hit.name };
+  for (const s of list) {
+    if (!s || !s.id || seen.has(s.id)) continue;
+    seen.add(s.id);
     lines.push(formatMiniappSessionLine('mention', s));
   }
-  lines.push('上述 mention 標記的是可詢問／討論的對象，不是轉寄。請用 miniapp MCP send_message(session_id=<mention>, from_session_id=<self>, text=...) 向對方提問，再用 get_status 讀回覆。');
+  if (seen.size === 0) return src;
+  lines.push('上述 mention 標記的是可詢問／討論的對象。請用 miniapp MCP send_message(session_id=<mention>, from_session_id=<self>, text=...) 向對方提問，再用 get_status 讀回覆。');
   lines.push('[/miniapp]', '', src);
   return lines.join('\n');
+}
+
+function MentionChips({ items, onRemove }) {
+  if (!Array.isArray(items) || items.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5 mb-2" aria-label="已標記要詢問的 session">
+      {items.map((s) => {
+        const shortDir = workDirGroupShortLabel(s.work_dir);
+        return (
+          <span
+            key={s.id}
+            className={`inline-flex max-w-full items-center gap-1 rounded-full border border-violet-500/35 bg-violet-500/10 pl-1.5 pr-1 py-0.5 text-xs text-violet-100`}
+            title={(s.work_dir || '') + (s.id ? `\n${s.id}` : '')}
+          >
+            <span
+              className={`inline-flex items-center gap-0.5 shrink-0 text-[10px] px-1 py-0.5 rounded-full font-mono uppercase ${getAgentBadgeClass(s.agent_type)}`}
+            >
+              <AgentBadgeIcon agentType={s.agent_type} />
+              {s.agent_type || 'claude'}
+            </span>
+            <span className="min-w-0 truncate font-medium">{s.name || '未命名'}</span>
+            <span className="shrink-0 max-w-[7rem] truncate font-mono text-[10px] text-violet-300/70">
+              {shortDir}
+            </span>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => onRemove(s.id)}
+              aria-label={`移除 ${s.name || '未命名'}`}
+              className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full text-violet-300/80 hover:bg-violet-500/25 hover:text-violet-50"
+            >
+              ×
+            </button>
+          </span>
+        );
+      })}
+    </div>
+  );
 }
 
 function MentionMenu({ items, activeIndex, onSelect }) {

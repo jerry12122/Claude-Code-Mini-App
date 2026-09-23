@@ -34,6 +34,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionItems, setMentionItems] = useState([]);
   const [mentionActiveIdx, setMentionActiveIdx] = useState(0);
+  const [mentionChips, setMentionChips] = useState([]);
   const bottomRef = useRef(null);
   const chatScrollRef = useRef(null);
   const chatNearBottomRef = useRef(true);
@@ -121,6 +122,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     setMentionOpen(false);
     setMentionItems([]);
     setMentionActiveIdx(0);
+    setMentionChips([]);
   }, [session.id]);
 
   const prevChatStateRef = useRef(null);
@@ -202,7 +204,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       setMentionItems([]);
       return;
     }
-    const filtered = filterMentionSessions(allSessions, session.id, hit.query);
+    const excludeIds = mentionChips.map((s) => s.id);
+    const filtered = filterMentionSessions(allSessions, session.id, hit.query, excludeIds);
     setMentionOpen(true);
     setMentionItems(filtered);
     setMentionActiveIdx(0);
@@ -211,11 +214,12 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const handleMentionSelect = (s) => {
     const el = chatInputRef.current;
     const cursor = el ? el.selectionStart : input.length;
-    const next = insertMentionToken(input, cursor, s);
+    const next = consumeMentionQuery(input, cursor);
     setInput(next.text);
     try {
       localStorage.setItem(draftInputStorageKey(session.id), next.text);
     } catch (_) {}
+    setMentionChips((prev) => (prev.some((x) => x.id === s.id) ? prev : [...prev, s]));
     setMentionOpen(false);
     setMentionItems([]);
     requestAnimationFrame(() => {
@@ -224,6 +228,10 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       ta.focus();
       ta.setSelectionRange(next.cursor, next.cursor);
     });
+  };
+
+  const handleMentionChipRemove = (id) => {
+    setMentionChips((prev) => prev.filter((s) => s.id !== id));
   };
 
   const handleSend = (overrideText) => {
@@ -250,10 +258,11 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     }
     if (state !== 'IDLE' && state !== 'SHELL_IDLE') return;
     if (!flushPendingModes()) return;
-    const expanded = expandMentionPrompt(trimmed, session, allSessions);
+    const expanded = expandMentionPrompt(trimmed, session, mentionChips);
     if (!send({ type: 'input', data: expanded })) return;
     clearDraftInputForSession(session.id);
     setInput('');
+    setMentionChips([]);
     closeComposerMenus();
   };
 
@@ -642,57 +651,62 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             中斷
           </button>
         ) : (
-          <div className={(inputMode === 'shell' ? 'ra-cmd-bar shell' : 'ra-cmd-bar') + ' w-full'}>
-            <ModeToggleBtn
-              value={inputMode}
-              onChange={handleInputModeChange}
-              disabled={modeSwitchDisabled}
-              showLabel
-              agentLabel={AGENT_LABEL[agentType] || 'Claude'}
-            />
-            <div className="relative flex flex-1 min-w-0 items-end" ref={slashInputWrapRef}>
-              {slashMenuOpen && (
-                <SlashCommandMenu
-                  items={slashMenuItems}
-                  activeIndex={slashActiveIdx}
-                  onSelect={handleSlashSelect}
-                />
-              )}
-              {mentionOpen && !slashMenuOpen && (
-                <MentionMenu
-                  items={mentionItems}
-                  activeIndex={mentionActiveIdx}
-                  onSelect={handleMentionSelect}
-                />
-              )}
-              <textarea
-                ref={chatInputRef}
-                value={input}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setInput(value);
-                  try {
-                    localStorage.setItem(draftInputStorageKey(session.id), value);
-                  } catch (_) {}
-                  syncComposerMenus(value, e.target.selectionStart, inputMode);
-                }}
-                onSelect={(e) => syncComposerMenus(e.target.value, e.target.selectionStart, inputMode)}
-                onKeyDown={handleKeyDown}
-                disabled={isDisabled}
-                placeholder={inputMode === 'shell' ? `輸入 ${shellType || 'Shell'} 指令…` : '輸入指令…'}
-                rows={1}
-                className={[
-                  'flex-1 min-w-0 w-full resize-none overflow-hidden border-0 bg-transparent px-1 py-1.5 text-[13.5px] leading-relaxed placeholder-[oklch(0.5_0.01_264)] focus:outline-none disabled:opacity-40 min-h-[2rem] max-h-[min(40vh,12rem)] box-border',
-                  inputMode === 'shell' ? 'text-amber-50 font-mono placeholder-amber-900/60' : 'text-[oklch(0.9_0.01_264)]',
-                ].join(' ')}
+          <div className="w-full">
+            {inputMode !== 'shell' && (
+              <MentionChips items={mentionChips} onRemove={handleMentionChipRemove} />
+            )}
+            <div className={(inputMode === 'shell' ? 'ra-cmd-bar shell' : 'ra-cmd-bar') + ' w-full'}>
+              <ModeToggleBtn
+                value={inputMode}
+                onChange={handleInputModeChange}
+                disabled={modeSwitchDisabled}
+                showLabel
+                agentLabel={AGENT_LABEL[agentType] || 'Claude'}
               />
+              <div className="relative flex flex-1 min-w-0 items-end" ref={slashInputWrapRef}>
+                {slashMenuOpen && (
+                  <SlashCommandMenu
+                    items={slashMenuItems}
+                    activeIndex={slashActiveIdx}
+                    onSelect={handleSlashSelect}
+                  />
+                )}
+                {mentionOpen && !slashMenuOpen && (
+                  <MentionMenu
+                    items={mentionItems}
+                    activeIndex={mentionActiveIdx}
+                    onSelect={handleMentionSelect}
+                  />
+                )}
+                <textarea
+                  ref={chatInputRef}
+                  value={input}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setInput(value);
+                    try {
+                      localStorage.setItem(draftInputStorageKey(session.id), value);
+                    } catch (_) {}
+                    syncComposerMenus(value, e.target.selectionStart, inputMode);
+                  }}
+                  onSelect={(e) => syncComposerMenus(e.target.value, e.target.selectionStart, inputMode)}
+                  onKeyDown={handleKeyDown}
+                  disabled={isDisabled}
+                  placeholder={inputMode === 'shell' ? `輸入 ${shellType || 'Shell'} 指令…` : '輸入指令… @ 標記 session'}
+                  rows={1}
+                  className={[
+                    'flex-1 min-w-0 w-full resize-none overflow-hidden border-0 bg-transparent px-1 py-1.5 text-[13.5px] leading-relaxed placeholder-[oklch(0.5_0.01_264)] focus:outline-none disabled:opacity-40 min-h-[2rem] max-h-[min(40vh,12rem)] box-border',
+                    inputMode === 'shell' ? 'text-amber-50 font-mono placeholder-amber-900/60' : 'text-[oklch(0.9_0.01_264)]',
+                  ].join(' ')}
+                />
+              </div>
+              <button type="button" onClick={() => handleSend()} disabled={isDisabled || !input.trim()}
+                aria-label="送出"
+                title="送出（Enter）"
+                className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-[8px] ${inputMode === 'shell' ? 'bg-amber-700 hover:bg-amber-600' : 'bg-[oklch(0.62_0.19_275)] hover:brightness-110'} disabled:opacity-30 text-white transition-colors text-sm`}>
+                ➤
+              </button>
             </div>
-            <button type="button" onClick={() => handleSend()} disabled={isDisabled || !input.trim()}
-              aria-label="送出"
-              title="送出（Enter）"
-              className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-[8px] ${inputMode === 'shell' ? 'bg-amber-700 hover:bg-amber-600' : 'bg-[oklch(0.62_0.19_275)] hover:brightness-110'} disabled:opacity-30 text-white transition-colors text-sm`}>
-              ➤
-            </button>
           </div>
         )}
       </div>

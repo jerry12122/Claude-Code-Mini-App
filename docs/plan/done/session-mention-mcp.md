@@ -9,9 +9,11 @@
 - 送出時前置 `[miniapp] self / mention`，指示當前 agent 用 MCP 提問
 
 ## 行為
-- `@` 只寫進當前 prompt，按送出不會自動 ping 對方
+- `@` 開啟選單；選完後文字區清掉 `@query`，在輸入框**上方**顯示可移除 chip（不塞 uuid）
+- 送出時依 chips 前置 `[miniapp] self / mention`，指示當前 agent 用 MCP 提問
+- 按送出不會自動 ping 對方
 - 接收方看到的 user 訊息含 `from_session_id` 與「你是 session_id」，後續可 MCP 回嘴
-- shell 模式不開 mention；slash `/` 與 `@` 不同時開
+- shell 模式不開 mention／chips；slash `/` 與 `@` 不同時開
 - Forward modal 不變
 
 ## 檔案

@@ -24,7 +24,7 @@
 | 5 | `js/chat/ForwardModal.js` | `ForwardModal` 元件。 |
 | 6 | `js/session/SessionView.js` | `SessionView`（session 列表畫面）。 |
 | 7 | `js/chat/chat-header.js` | `SlashCommandMenu` + `ChatSessionHeader`。 |
-| 8 | `js/chat/MentionMenu.js` | `@mention` 選單與 token／`[miniapp]` 展開（詢問／討論，不是 Forward）。 |
+| 8 | `js/chat/MentionMenu.js` | `@mention` 選單、上方 chips、送出時 `[miniapp]` 展開（詢問／討論，不是 Forward）。 |
 | 9 | `js/chat/ChatView.js` | `ChatView`（聊天主畫面，render + 操作 handler；WS 邏輯已移至 `useChatSocket`）。 |
 | 10 | `js/app.js` | `PasswordView`、`DebugBanner`、`App`，以及 `ReactDOM.createRoot(document.getElementById('root')).render(<App />)`。**必須最後載入**。 |
 
