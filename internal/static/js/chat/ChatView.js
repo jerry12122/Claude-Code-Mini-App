@@ -40,6 +40,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const chatNearBottomRef = useRef(true);
   const chatInputRef = useRef(null);
   const slashInputWrapRef = useRef(null);
+  const composerWrapRef = useRef(null);
   const { collapsed: headerCollapsed, toggle: toggleHeader, setCollapsed: setHeaderCollapsed } = useChatHeaderCollapsed();
 
   const syncChatNearBottom = useCallback(() => {
@@ -387,13 +388,14 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   useEffect(() => {
     if (!composerMenuOpen) return;
     const onDocMouseDown = (e) => {
-      if (slashInputWrapRef.current && !slashInputWrapRef.current.contains(e.target)) {
+      const root = mentionOpen ? composerWrapRef.current : slashInputWrapRef.current;
+      if (root && !root.contains(e.target)) {
         closeComposerMenus();
       }
     };
     document.addEventListener('mousedown', onDocMouseDown);
     return () => document.removeEventListener('mousedown', onDocMouseDown);
-  }, [composerMenuOpen]);
+  }, [composerMenuOpen, mentionOpen]);
 
   /** 聊天輸入框：依內容動態增高；未達上限不出現卷軸 */
   useLayoutEffect(() => {
@@ -651,9 +653,16 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             中斷
           </button>
         ) : (
-          <div className="w-full">
+          <div className="w-full relative" ref={composerWrapRef}>
             {inputMode !== 'shell' && (
               <MentionChips items={mentionChips} onRemove={handleMentionChipRemove} />
+            )}
+            {mentionOpen && !slashMenuOpen && (
+              <MentionMenu
+                items={mentionItems}
+                activeIndex={mentionActiveIdx}
+                onSelect={handleMentionSelect}
+              />
             )}
             <div className={(inputMode === 'shell' ? 'ra-cmd-bar shell' : 'ra-cmd-bar') + ' w-full'}>
               <ModeToggleBtn
@@ -669,13 +678,6 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                     items={slashMenuItems}
                     activeIndex={slashActiveIdx}
                     onSelect={handleSlashSelect}
-                  />
-                )}
-                {mentionOpen && !slashMenuOpen && (
-                  <MentionMenu
-                    items={mentionItems}
-                    activeIndex={mentionActiveIdx}
-                    onSelect={handleMentionSelect}
                   />
                 )}
                 <textarea

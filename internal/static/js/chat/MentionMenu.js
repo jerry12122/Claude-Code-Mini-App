@@ -114,12 +114,13 @@ function MentionMenu({ items, activeIndex, onSelect }) {
       ref={listRef}
       role="listbox"
       aria-label="提及 session"
-      className="absolute bottom-full left-0 right-0 z-20 mb-1 max-h-48 overflow-y-auto app-scroll rounded-lg border border-gray-700 bg-gray-800/98 py-1 shadow-lg backdrop-blur-sm"
+      className="absolute bottom-full left-0 right-0 z-20 mb-1 max-h-[min(50vh,16rem)] overflow-y-auto app-scroll rounded-lg border border-gray-700 bg-gray-800/98 py-1 shadow-lg backdrop-blur-sm"
     >
       {items.length === 0 ? (
         <div className="px-3 py-2 text-xs text-gray-500">沒有可標記的 session</div>
       ) : items.map((s, i) => {
         const shortDir = workDirGroupShortLabel(s.work_dir);
+        const name = s.name || '未命名';
         return (
           <button
             key={s.id}
@@ -129,19 +130,23 @@ function MentionMenu({ items, activeIndex, onSelect }) {
             data-mention-idx={i}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => onSelect(s)}
-            className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-gray-700/80 ${
+            className={`flex w-full flex-col items-stretch gap-0.5 px-3 py-2.5 text-left transition-colors hover:bg-gray-700/80 ${
               i === activeIndex ? 'bg-gray-700' : ''
             }`}
           >
-            <span
-              className={`inline-flex items-center gap-0.5 shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-mono uppercase ${getAgentBadgeClass(s.agent_type)}`}
-            >
-              <AgentBadgeIcon agentType={s.agent_type} />
-              {s.agent_type || 'claude'}
+            <span className="text-sm leading-snug text-slate-100 break-words whitespace-normal">
+              {name}
             </span>
-            <span className="min-w-0 flex-1 truncate text-slate-200">{s.name || '未命名'}</span>
-            <span className="shrink-0 max-w-[40%] truncate font-mono text-[10px] text-slate-500" title={s.work_dir || ''}>
-              {shortDir}
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span
+                className={`inline-flex items-center gap-0.5 shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-mono uppercase ${getAgentBadgeClass(s.agent_type)}`}
+              >
+                <AgentBadgeIcon agentType={s.agent_type} />
+                {s.agent_type || 'claude'}
+              </span>
+              <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-slate-500" title={s.work_dir || ''}>
+                {shortDir}
+              </span>
             </span>
           </button>
         );
