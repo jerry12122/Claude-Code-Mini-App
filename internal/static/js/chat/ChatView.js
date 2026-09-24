@@ -31,11 +31,16 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const [forwardHints, setForwardHints] = useState({});
   const [slashMenuItems, setSlashMenuItems] = useState([]);
   const [slashActiveIdx, setSlashActiveIdx] = useState(0);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionItems, setMentionItems] = useState([]);
+  const [mentionActiveIdx, setMentionActiveIdx] = useState(0);
+  const [mentionChips, setMentionChips] = useState([]);
   const bottomRef = useRef(null);
   const chatScrollRef = useRef(null);
   const chatNearBottomRef = useRef(true);
   const chatInputRef = useRef(null);
   const slashInputWrapRef = useRef(null);
+  const composerWrapRef = useRef(null);
   const { collapsed: headerCollapsed, toggle: toggleHeader, setCollapsed: setHeaderCollapsed } = useChatHeaderCollapsed();
 
   const syncChatNearBottom = useCallback(() => {
@@ -106,7 +111,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     return () => window.removeEventListener('beforeunload', handler);
   }, [state]);
 
-  // session 切換時重置輸入框草稿與 slash 選單（訊息／連線狀態由 useChatSocket 自行重置）
+  // session 切換時重置輸入框草稿與 composer 選單（訊息／連線狀態由 useChatSocket 自行重置）
   useEffect(() => {
     let draft = '';
     try {
@@ -115,6 +120,10 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     setInput(draft);
     setSlashMenuItems([]);
     setSlashActiveIdx(0);
+    setMentionOpen(false);
+    setMentionItems([]);
+    setMentionActiveIdx(0);
+    setMentionChips([]);
   }, [session.id]);
 
   const prevChatStateRef = useRef(null);
@@ -166,6 +175,66 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     }, 2000);
   };
 
+  const closeComposerMenus = () => {
+    setSlashMenuItems([]);
+    setMentionOpen(false);
+    setMentionItems([]);
+    setMentionActiveIdx(0);
+  };
+
+  const syncComposerMenus = (value, cursor, mode) => {
+    if (mode === 'shell') {
+      closeComposerMenus();
+      return;
+    }
+    if (String(value || '').startsWith('/')) {
+      const q = String(value).toLowerCase();
+      const filtered = SLASH_COMMANDS.filter(
+        (c) => (!c.modes || c.modes.includes(mode)) && c.command.toLowerCase().startsWith(q)
+      );
+      setSlashMenuItems(filtered);
+      setSlashActiveIdx(0);
+      setMentionOpen(false);
+      setMentionItems([]);
+      return;
+    }
+    setSlashMenuItems([]);
+    const hit = mentionQueryAtCursor(value, cursor);
+    if (!hit) {
+      setMentionOpen(false);
+      setMentionItems([]);
+      return;
+    }
+    const excludeIds = mentionChips.map((s) => s.id);
+    const filtered = filterMentionSessions(allSessions, session.id, hit.query, excludeIds);
+    setMentionOpen(true);
+    setMentionItems(filtered);
+    setMentionActiveIdx(0);
+  };
+
+  const handleMentionSelect = (s) => {
+    const el = chatInputRef.current;
+    const cursor = el ? el.selectionStart : input.length;
+    const next = consumeMentionQuery(input, cursor);
+    setInput(next.text);
+    try {
+      localStorage.setItem(draftInputStorageKey(session.id), next.text);
+    } catch (_) {}
+    setMentionChips((prev) => (prev.some((x) => x.id === s.id) ? prev : [...prev, s]));
+    setMentionOpen(false);
+    setMentionItems([]);
+    requestAnimationFrame(() => {
+      const ta = chatInputRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(next.cursor, next.cursor);
+    });
+  };
+
+  const handleMentionChipRemove = (id) => {
+    setMentionChips((prev) => prev.filter((s) => s.id !== id));
+  };
+
   const handleSend = (overrideText) => {
     const raw = overrideText !== undefined && overrideText !== null ? String(overrideText) : input;
     const trimmed = raw.trim();
@@ -176,7 +245,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       send({ type: 'reset_context' });
       clearDraftInputForSession(session.id);
       setInput('');
-      setSlashMenuItems([]);
+      closeComposerMenus();
       return;
     }
     if (inputMode === 'shell') {
@@ -185,26 +254,28 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       send({ type: 'shell_exec', data: trimmed });
       clearDraftInputForSession(session.id);
       setInput('');
-      setSlashMenuItems([]);
+      closeComposerMenus();
       return;
     }
     if (state !== 'IDLE' && state !== 'SHELL_IDLE') return;
     if (!flushPendingModes()) return;
-    if (!send({ type: 'input', data: trimmed })) return;
+    const expanded = expandMentionPrompt(trimmed, session, mentionChips);
+    if (!send({ type: 'input', data: expanded })) return;
     clearDraftInputForSession(session.id);
     setInput('');
-    setSlashMenuItems([]);
+    setMentionChips([]);
+    closeComposerMenus();
   };
 
   const handleSlashSelect = (command) => {
     setInput(command);
-    setSlashMenuItems([]);
+    closeComposerMenus();
     handleSend(command);
   };
 
   const handleKeyDown = (e) => {
-    const slashMenuOpen = slashMenuItems.length > 0;
-    if (slashMenuOpen) {
+    const slashMenuOpenNow = slashMenuItems.length > 0;
+    if (slashMenuOpenNow) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setSlashActiveIdx((i) => Math.min(i + 1, slashMenuItems.length - 1));
@@ -224,6 +295,32 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       if (e.key === 'Escape') {
         e.preventDefault();
         setSlashMenuItems([]);
+        return;
+      }
+    }
+    if (mentionOpen) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setMentionActiveIdx((i) => Math.min(i + 1, Math.max(mentionItems.length - 1, 0)));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setMentionActiveIdx((i) => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === 'Enter' && !e.shiftKey) {
+        if (mentionItems.length > 0) {
+          e.preventDefault();
+          const item = mentionItems[mentionActiveIdx];
+          if (item) handleMentionSelect(item);
+          return;
+        }
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMentionOpen(false);
+        setMentionItems([]);
         return;
       }
     }
@@ -265,16 +362,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     try {
       localStorage.setItem(inputModeStorageKey(session.id), newMode);
     } catch (_) {}
-    if (input.startsWith('/')) {
-      const q = input.toLowerCase();
-      const filtered = SLASH_COMMANDS.filter(
-        (c) => (!c.modes || c.modes.includes(newMode)) && c.command.toLowerCase().startsWith(q)
-      );
-      setSlashMenuItems(filtered);
-      setSlashActiveIdx(0);
-    } else {
-      setSlashMenuItems([]);
-    }
+    const el = chatInputRef.current;
+    syncComposerMenus(input, el ? el.selectionStart : input.length, newMode);
   };
 
   const handleShellApprove = () => {
@@ -290,21 +379,23 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const isDisabled = state === 'THINKING' || state === 'STREAMING' || state === 'AWAITING_CONFIRM' || state === 'SHELL_RUNNING' || state === 'SHELL_AWAITING_APPROVAL' || state === 'SHELL_EXEC' || state === 'AWAITING_SHELL_CONFIRM';
   const modeSwitchDisabled = ['THINKING', 'STREAMING', 'AWAITING_CONFIRM', 'SHELL_RUNNING', 'SHELL_AWAITING_APPROVAL', 'SHELL_EXEC', 'AWAITING_SHELL_CONFIRM'].includes(state);
   const slashMenuOpen = slashMenuItems.length > 0;
+  const composerMenuOpen = slashMenuOpen || mentionOpen;
 
   useEffect(() => {
-    if (isDisabled) setSlashMenuItems([]);
+    if (isDisabled) closeComposerMenus();
   }, [isDisabled]);
 
   useEffect(() => {
-    if (!slashMenuOpen) return;
+    if (!composerMenuOpen) return;
     const onDocMouseDown = (e) => {
-      if (slashInputWrapRef.current && !slashInputWrapRef.current.contains(e.target)) {
-        setSlashMenuItems([]);
+      const root = mentionOpen ? composerWrapRef.current : slashInputWrapRef.current;
+      if (root && !root.contains(e.target)) {
+        closeComposerMenus();
       }
     };
     document.addEventListener('mousedown', onDocMouseDown);
     return () => document.removeEventListener('mousedown', onDocMouseDown);
-  }, [slashMenuOpen]);
+  }, [composerMenuOpen, mentionOpen]);
 
   /** 聊天輸入框：依內容動態增高；未達上限不出現卷軸 */
   useLayoutEffect(() => {
@@ -562,60 +653,62 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             中斷
           </button>
         ) : (
-          <div className={(inputMode === 'shell' ? 'ra-cmd-bar shell' : 'ra-cmd-bar') + ' w-full'}>
-            <ModeToggleBtn
-              value={inputMode}
-              onChange={handleInputModeChange}
-              disabled={modeSwitchDisabled}
-              showLabel
-              agentLabel={AGENT_LABEL[agentType] || 'Claude'}
-            />
-            <div className="relative flex flex-1 min-w-0 items-end" ref={slashInputWrapRef}>
-              {slashMenuOpen && (
-                <SlashCommandMenu
-                  items={slashMenuItems}
-                  activeIndex={slashActiveIdx}
-                  onSelect={handleSlashSelect}
-                />
-              )}
-              <textarea
-                ref={chatInputRef}
-                value={input}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setInput(value);
-                  try {
-                    localStorage.setItem(draftInputStorageKey(session.id), value);
-                  } catch (_) {}
-                  if (value.startsWith('/')) {
-                    const q = value.toLowerCase();
-                    const filtered = SLASH_COMMANDS.filter(
-                      (c) =>
-                        (!c.modes || c.modes.includes(inputMode)) &&
-                        c.command.toLowerCase().startsWith(q)
-                    );
-                    setSlashMenuItems(filtered);
-                    setSlashActiveIdx(0);
-                  } else {
-                    setSlashMenuItems([]);
-                  }
-                }}
-                onKeyDown={handleKeyDown}
-                disabled={isDisabled}
-                placeholder={inputMode === 'shell' ? `輸入 ${shellType || 'Shell'} 指令…` : '輸入指令…'}
-                rows={1}
-                className={[
-                  'flex-1 min-w-0 w-full resize-none overflow-hidden border-0 bg-transparent px-1 py-1.5 text-[13.5px] leading-relaxed placeholder-[oklch(0.5_0.01_264)] focus:outline-none disabled:opacity-40 min-h-[2rem] max-h-[min(40vh,12rem)] box-border',
-                  inputMode === 'shell' ? 'text-amber-50 font-mono placeholder-amber-900/60' : 'text-[oklch(0.9_0.01_264)]',
-                ].join(' ')}
+          <div className="w-full relative" ref={composerWrapRef}>
+            {inputMode !== 'shell' && (
+              <MentionChips items={mentionChips} onRemove={handleMentionChipRemove} />
+            )}
+            {mentionOpen && !slashMenuOpen && (
+              <MentionMenu
+                items={mentionItems}
+                activeIndex={mentionActiveIdx}
+                onSelect={handleMentionSelect}
               />
+            )}
+            <div className={(inputMode === 'shell' ? 'ra-cmd-bar shell' : 'ra-cmd-bar') + ' w-full'}>
+              <ModeToggleBtn
+                value={inputMode}
+                onChange={handleInputModeChange}
+                disabled={modeSwitchDisabled}
+                showLabel
+                agentLabel={AGENT_LABEL[agentType] || 'Claude'}
+              />
+              <div className="relative flex flex-1 min-w-0 items-end" ref={slashInputWrapRef}>
+                {slashMenuOpen && (
+                  <SlashCommandMenu
+                    items={slashMenuItems}
+                    activeIndex={slashActiveIdx}
+                    onSelect={handleSlashSelect}
+                  />
+                )}
+                <textarea
+                  ref={chatInputRef}
+                  value={input}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setInput(value);
+                    try {
+                      localStorage.setItem(draftInputStorageKey(session.id), value);
+                    } catch (_) {}
+                    syncComposerMenus(value, e.target.selectionStart, inputMode);
+                  }}
+                  onSelect={(e) => syncComposerMenus(e.target.value, e.target.selectionStart, inputMode)}
+                  onKeyDown={handleKeyDown}
+                  disabled={isDisabled}
+                  placeholder={inputMode === 'shell' ? `輸入 ${shellType || 'Shell'} 指令…` : '輸入指令… @ 標記 session'}
+                  rows={1}
+                  className={[
+                    'flex-1 min-w-0 w-full resize-none overflow-hidden border-0 bg-transparent px-1 py-1.5 text-[13.5px] leading-relaxed placeholder-[oklch(0.5_0.01_264)] focus:outline-none disabled:opacity-40 min-h-[2rem] max-h-[min(40vh,12rem)] box-border',
+                    inputMode === 'shell' ? 'text-amber-50 font-mono placeholder-amber-900/60' : 'text-[oklch(0.9_0.01_264)]',
+                  ].join(' ')}
+                />
+              </div>
+              <button type="button" onClick={() => handleSend()} disabled={isDisabled || !input.trim()}
+                aria-label="送出"
+                title="送出（Enter）"
+                className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-[8px] ${inputMode === 'shell' ? 'bg-amber-700 hover:bg-amber-600' : 'bg-[oklch(0.62_0.19_275)] hover:brightness-110'} disabled:opacity-30 text-white transition-colors text-sm`}>
+                ➤
+              </button>
             </div>
-            <button type="button" onClick={() => handleSend()} disabled={isDisabled || !input.trim()}
-              aria-label="送出"
-              title="送出（Enter）"
-              className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-[8px] ${inputMode === 'shell' ? 'bg-amber-700 hover:bg-amber-600' : 'bg-[oklch(0.62_0.19_275)] hover:brightness-110'} disabled:opacity-30 text-white transition-colors text-sm`}>
-              ➤
-            </button>
           </div>
         )}
       </div>

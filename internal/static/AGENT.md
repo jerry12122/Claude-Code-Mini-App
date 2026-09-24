@@ -24,8 +24,9 @@
 | 5 | `js/chat/ForwardModal.js` | `ForwardModal` 元件。 |
 | 6 | `js/session/SessionView.js` | `SessionView`（session 列表畫面）。 |
 | 7 | `js/chat/chat-header.js` | `SlashCommandMenu` + `ChatSessionHeader`。 |
-| 8 | `js/chat/ChatView.js` | `ChatView`（聊天主畫面，render + 操作 handler；WS 邏輯已移至 `useChatSocket`）。 |
-| 9 | `js/app.js` | `PasswordView`、`DebugBanner`、`App`，以及 `ReactDOM.createRoot(document.getElementById('root')).render(<App />)`。**必須最後載入**。 |
+| 8 | `js/chat/MentionMenu.js` | `@mention` 選單、上方 chips、送出時 `[miniapp]` 展開（詢問／討論，不是 Forward）。 |
+| 9 | `js/chat/ChatView.js` | `ChatView`（聊天主畫面，render + 操作 handler；WS 邏輯已移至 `useChatSocket`）。 |
+| 10 | `js/app.js` | `PasswordView`、`DebugBanner`、`App`，以及 `ReactDOM.createRoot(document.getElementById('root')).render(<App />)`。**必須最後載入**。 |
 
 後端：`cmd/server/main.go:136` 的 `app.Static("/", "./internal/static")`（Fiber）直接把整個目錄當靜態檔案伺服，**沒有 `go:embed`**。這代表：
 - 新增/修改 `js/*.js` 立刻生效，不用重啟、不用重編譯 Go binary。
@@ -39,7 +40,7 @@
 - A 檔定義的東西，B 檔可以直接用——**前提是 A 的 `<script>` 標籤排在 B 前面**，因為 script 是依序注入、依序執行的。
 - 一旦某個 `<script>` 加了 `async`，瀏覽器不保證依原順序執行，會打破「前面先定義」的假設，導致間歇性的 `ReferenceError`。**所以每個 script 標籤都不能加 `async`**（目前也確實都沒有）。
 
-有一個重要的例外：**元件互相參照（發生在 render body / JSX 裡）不受定義先後影響**，因為所有 JSX 只有在 `App` 被 `render()` 呼叫、實際渲染時才會執行，那時所有檔案早已全部載入完畢。例如 `chat/ChatView.js`（第 8 個）裡的 JSX 可以引用 `app.js`（第 9 個）定義的東西也不會報錯，只要不是在 `ChatView.js` 的 top-level 直接執行。
+有一個重要的例外：**元件互相參照（發生在 render body / JSX 裡）不受定義先後影響**，因為所有 JSX 只有在 `App` 被 `render()` 呼叫、實際渲染時才會執行，那時所有檔案早已全部載入完畢。例如 `chat/ChatView.js`（第 9 個）裡的 JSX 可以引用 `app.js`（第 10 個）定義的東西也不會報錯，只要不是在 `ChatView.js` 的 top-level 直接執行。
 
 真正需要在意順序的，是**檔案載入時就會立即執行的 top-level 程式碼**（例如 `core.js` 開頭那行 `const { useState, ... } = React` 的解構賦值、模組層級的初始化邏輯、`window.Telegram?.WebApp` 檢查等）。這類程式碼依賴的東西，必須在更前面的檔案已經定義好。
 
