@@ -91,6 +91,10 @@ Each user message spawns a short-lived subprocess. Details: [`docs/spec/plan.md`
 
 > `poc/` (probe scripts, one-off samples) is local investigation scratch, not tracked in the repo.
 
+## Testing
+
+This project is tested with BrowserStack.
+
 ## License
 
 MIT
