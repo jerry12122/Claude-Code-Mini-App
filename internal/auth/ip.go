@@ -8,19 +8,33 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// RealIP 依序嘗試取得真實用戶端 IP：
-// 1. CF-Connecting-IP（Cloudflare Tunnel 設定）
-// 2. X-Forwarded-For 的第一個條目
-// 3. 直連 IP（c.IP()）
+// RealIP 只採信已設定的可信代理；代理須覆寫 CF-Connecting-IP 或附加直連來源至 X-Forwarded-For。
+// X-Forwarded-For 由右往左跳過可信代理，避免使用者偽造最左側的 IP。
 func RealIP(c *fiber.Ctx) string {
-	if ip := c.Get("CF-Connecting-IP"); ip != "" {
-		return strings.TrimSpace(ip)
+	remote := c.Context().RemoteIP().String()
+	if !c.App().Config().EnableTrustedProxyCheck || !c.IsProxyTrusted() {
+		return remote
+	}
+	if raw := c.Get("CF-Connecting-IP"); raw != "" {
+		if ip := net.ParseIP(strings.TrimSpace(raw)); ip != nil {
+			return ip.String()
+		}
+		return "" // 代理提供無效來源時拒絕 IP 白名單判斷，不回退成代理的內網 IP
 	}
 	if xff := c.Get("X-Forwarded-For"); xff != "" {
-		parts := strings.SplitN(xff, ",", 2)
-		return strings.TrimSpace(parts[0])
+		trusted, _ := ParseCIDRs(c.App().Config().TrustedProxies) // server 啟動時已驗證設定
+		parts := strings.Split(xff, ",")
+		for i := len(parts) - 1; i >= 0; i-- {
+			ip := net.ParseIP(strings.TrimSpace(parts[i]))
+			if ip == nil {
+				return ""
+			}
+			if !IsAllowed(ip.String(), trusted) || i == 0 {
+				return ip.String()
+			}
+		}
 	}
-	return c.IP()
+	return remote
 }
 
 // ParseCIDRs 將字串陣列解析為 net.IPNet 清單。

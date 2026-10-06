@@ -6,7 +6,7 @@
 
 - **多代理** — Claude Code、Cursor Agent、Codex、Kiro ACP（透過 Agent Client Protocol 提供互動式授權提示）；依 Session 選擇。既有的 Kiro CLI Session 仍可執行，新建請改用 Kiro ACP（Gemini / Antigravity 因 headless 限制暫停）。模型清單於啟動時向各 CLI 取得（含 Claude），也可在 設定 → 一般 不重啟直接重新抓取
 - **Session 管理** — 多對話、各自綁定代理、`work_dir` 與權限模式
-- **權限流程** — Claude 遭拒時顯示完整指令／檔案內容；Kiro ACP 支援回合中途授權；可「允許一次」，或（僅限編輯類工具）允許並自動允許編輯
+- **權限流程** — 顯示完整指令／檔案內容；Claude prompt-tool 與 Kiro ACP 可允許單次操作。舊 Claude 遭拒後選「允許工具並重試」，會在本次重試放行列出的工具；編輯類工具另可允許並自動允許編輯
 - **用量徽章** — Session header 顯示帳戶用量（如 Claude `5h 16% · Week 9%`）
 - **未讀追蹤** — 列表標示有新動態的 Session，可一鍵「全部標為已讀」。列表透過 `/events` WebSocket 即時更新（輪詢 30 秒作為保底）；分頁標題顯示未讀數，其他 Session 完成或待授權時會跳 toast
 - **快速跳轉** — Ctrl/Cmd+P 開啟類 VS Code 的跳轉面板，可依名稱、目錄、分支搜尋並切換 Session
@@ -24,7 +24,7 @@
 
 - **臨時共享** — 以連結 + 6 位數 PIN + 暱稱把 Session 分享給朋友（預設 1 小時，最長 7 天）。訪客用任何瀏覽器加入，角色為唯讀 `viewer` 或完整權限 `editor`；訊息會標示說話者，結束分享即刻踢出所有訪客
 - **MCP server** — 透過 Streamable HTTP（`POST /mcp`）讓其他 agent 操作 session、讀聊天紀錄、查跨 session 活動；`ask_session` 同步詢問另一個 session 並取回答覆，互問有跳數上限（`mcp_max_hops`）防止無限迴圈（預設關閉）
-- **驗證** — Telegram `initData` + 白名單；可選內網密碼登入
+- **驗證** — Telegram `initData` + 白名單；可選內網密碼登入。`web.trusted_proxies` 預設只信任同機 loopback 代理的 IP 標頭；其他代理須設定精確 CIDR，空清單則停用標頭解析
 - **選用 Shell** — 於 `work_dir` 執行指令（預設關閉）；開啟後會在會話 header 顯示「開啟 VSCode／開啟目錄」按鈕（僅桌面版）
 - **日誌檢視** — 設定 → 日誌即時串流伺服器日誌（等級篩選、搜尋、暫停、複製；可在執行期切換 Debug）。桌面版沒有 console 時很好用；只顯示本次啟動後的日誌，完整紀錄仍在 `logs/server.log`
 

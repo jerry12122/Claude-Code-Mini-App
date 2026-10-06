@@ -8,12 +8,19 @@ web:
   password: "change-me"
 
   # 允許使用 web 密碼登入的 IP 範圍（內網 + 本機）
-  # 真實 IP 取自 CF-Connecting-IP > X-Forwarded-For > 直連 IP
+  # 只有可信代理送來的轉發標頭會影響 IP 判斷
   allowed_cidrs:
     - "127.0.0.0/8"
     - "10.0.0.0/8"
     - "172.16.0.0/12"
     - "192.168.0.0/16"
+
+  # 可信代理的直連來源，預設僅 loopback，保留同機 cloudflared 的行為。
+  # 別台代理請加入該機器的精確 CIDR；代理須覆寫 CF-Connecting-IP
+  # 或在 X-Forwarded-For 尾端附加來源 IP。設 [] 可完全停用轉發標頭。
+  trusted_proxies:
+    - "127.0.0.1/32"
+    - "::1/128"
 
   # Session cookie 有效期（登入後免重新輸入密碼的時間）
   session_ttl: "168h"

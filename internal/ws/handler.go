@@ -105,6 +105,7 @@ type serverMsg struct {
 	Content      string             `json:"content,omitempty"`
 	ID           int64              `json:"id,omitempty"`
 	Tools        interface{}        `json:"tools,omitempty"`
+	RetryTools   bool               `json:"retry_tools,omitempty"` // 舊 Claude 重跑：本輪放行整個工具，而非單次操作
 	Messages     json.RawMessage    `json:"messages,omitempty"`
 	InputMode    string             `json:"input_mode,omitempty"`
 	ShellType    string             `json:"shell_type,omitempty"`
@@ -288,7 +289,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 		}
 
 		if isClaude && sess.PendingDenials != "" {
-			send(serverMsg{Type: "permission_request", Tools: json.RawMessage(sess.PendingDenials)})
+			send(serverMsg{Type: "permission_request", Tools: json.RawMessage(sess.PendingDenials), RetryTools: true})
 			slog.Info(fmt.Sprintf("[ws] restored pending_denials session=%s", sessionID))
 		}
 		if tools, ok := permPending(sessionID); ok {
@@ -712,7 +713,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 							slog.Info(fmt.Sprintf("[ws] UpdateSessionStatus awaiting_confirm: %v", err))
 						}
 						broadcast(serverMsg{Type: "status", Value: StateAwaitingConfirm})
-						broadcast(serverMsg{Type: "permission_request", Tools: pending})
+						broadcast(serverMsg{Type: "permission_request", Tools: pending, RetryTools: true})
 						notifyTaskAsync(botToken, confirmNotifyID(), notifyCfg, tg.TaskAlert{
 							SessionName: sess.Name,
 							Outcome:     tg.OutcomeConfirm,

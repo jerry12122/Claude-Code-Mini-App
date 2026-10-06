@@ -13,6 +13,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
   const [messages, setMessages]   = useState([]);
   const [state, setState]         = useState('IDLE');
   const [permTools, setPermTools] = useState([]);
+  const [permRetryTools, setPermRetryTools] = useState(false);
   const [mode, setMode]           = useState(() => normalizePermMode(agentType, session.permission_mode || 'default'));
   const [modelSel, setModelSel]   = useState(() => session.model || '');
   const [effortSel, setEffortSel] = useState(() => session.effort || '');
@@ -63,6 +64,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
     setState('IDLE');
     setOnline([]);
     setPermTools([]);
+    setPermRetryTools(false);
     setShellRequest(null);
     setQueue([]);
     setQueuePaused(false);
@@ -328,6 +330,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
 
         if (msg.type === 'permission_request') {
           setPermTools(msg.tools || []);
+          setPermRetryTools(msg.retry_tools === true);
         }
 
         if (msg.type === 'message_result_text') {
@@ -590,7 +593,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
   return {
     messages,
     state,
-    permTools, setPermTools,
+    permTools, setPermTools, permRetryTools,
     mode, setMode,
     modelSel, setModelSel,
     effortSel, setEffortSel,

@@ -81,6 +81,9 @@ func Start(ctx context.Context) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("CIDR 設定錯誤: %v", err)
 	}
+	if _, err := auth.ParseCIDRs(cfg.Web.TrustedProxies); err != nil {
+		return nil, fmt.Errorf("web.trusted_proxies 設定錯誤: %v", err)
+	}
 
 	sessionTTL, err := time.ParseDuration(cfg.Web.SessionTTL)
 	if err != nil {
@@ -112,7 +115,9 @@ func Start(ctx context.Context) (*Server, error) {
 	}
 
 	app := fiber.New(fiber.Config{
-		DisableStartupMessage: false,
+		DisableStartupMessage:   false,
+		EnableTrustedProxyCheck: true,
+		TrustedProxies:          cfg.Web.TrustedProxies,
 		// 預設 4MB；使用者上傳不限制大小，故放寬到 fasthttp 可表示的最大值（約 2GB）。
 		// ponytail: 全域放寬，只有上傳需要；若要收緊，改成只對 /sessions/:id/uploads 放寬。
 		BodyLimit: math.MaxInt32,

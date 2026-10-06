@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/fasthttp/websocket"
 
@@ -153,5 +154,65 @@ func TestKiroACPPermission_StaleAwaitingConfirmCleared(t *testing.T) {
 	_ = database.UpdateSessionStatus(cs.ID, db.SessionStatusAwaitingConfirm)
 	if clearStaleAwaitingConfirm(database, cs.ID) {
 		t.Fatal("有 pending_denials 的 Claude session 不應被當成殘留清掉")
+	}
+}
+
+// 前端必須能分辨單次操作與整輪工具放行；舊 denial 重連後仍須保留範圍資訊。
+func TestPermissionRequestRetryTools(t *testing.T) {
+	for _, mode := range []string{"claude-live", "claude-restored", "kiro-operation", "kiro-restored"} {
+		t.Run(mode, func(t *testing.T) {
+			database, wsURL := startTestServer(t)
+			agentType := agent.TypeClaude
+			if mode == "kiro-operation" || mode == "kiro-restored" {
+				agentType = agent.TypeKiroACP
+			}
+			s, err := database.CreateSession("scope", "", t.TempDir(), "default", agentType, nil, "agent")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode == "claude-restored" {
+				if err := database.UpdatePendingDenials(s.ID, `[{"tool_name":"Bash"}]`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if mode == "kiro-restored" {
+				pe := &pendingPermEntry{ch: make(chan bool, 1), tools: []agent.PermissionDenial{{ToolName: "Write"}}}
+				permSet(s.ID, pe)
+				defer permClear(s.ID, pe)
+			}
+			conn, _, err := websocket.DefaultDialer.Dial(wsURL(s.ID), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			if mode == "claude-live" || mode == "kiro-operation" {
+				if err := conn.WriteJSON(map[string]string{"type": "input", "data": "needperm"}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+				t.Fatal(err)
+			}
+			for {
+				var msg serverMsg
+				if err := conn.ReadJSON(&msg); err != nil {
+					t.Fatal(err)
+				}
+				if msg.Type != "permission_request" {
+					continue
+				}
+				wantRetry := agentType == agent.TypeClaude
+				if msg.RetryTools != wantRetry {
+					t.Fatalf("retry_tools = %v，預期 %v", msg.RetryTools, wantRetry)
+				}
+				if mode == "kiro-operation" {
+					if err := conn.WriteJSON(map[string]string{"type": "deny_once"}); err != nil {
+						t.Fatal(err)
+					}
+					waitFor(t, "授權任務結束", func() bool { return !taskIsActive(s.ID) })
+				}
+				break
+			}
+		})
 	}
 }

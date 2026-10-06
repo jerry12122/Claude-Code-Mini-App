@@ -33,15 +33,16 @@ type Notify struct {
 
 // Shell 直連 shell 執行（等同伺服器端任意指令，預設關閉）。
 type Shell struct {
-	Enabled          bool     `mapstructure:"enabled"`
-	Timeout          string   `mapstructure:"timeout"`           // 例如 "60s"
-	MaxOutputBytes   int      `mapstructure:"max_output_bytes"` // 單次輸出上限（位元組）
-	AllowedCommands  []string `mapstructure:"allowed_commands"` // 非空時僅允許第一個指令名稱在白名單內；空則不限制
+	Enabled         bool     `mapstructure:"enabled"`
+	Timeout         string   `mapstructure:"timeout"`          // 例如 "60s"
+	MaxOutputBytes  int      `mapstructure:"max_output_bytes"` // 單次輸出上限（位元組）
+	AllowedCommands []string `mapstructure:"allowed_commands"` // 非空時僅允許第一個指令名稱在白名單內；空則不限制
 }
 
 type Web struct {
 	Password          string   `mapstructure:"password"`
 	AllowedCIDRs      []string `mapstructure:"allowed_cidrs"`
+	TrustedProxies    []string `mapstructure:"trusted_proxies"`
 	SessionTTL        string   `mapstructure:"session_ttl"`
 	DefaultNotifyTgID int64    `mapstructure:"default_notify_tg_id"` // 網頁登入時預設綁定的 TG 通知對象（須在白名單）；0 表示未指定
 }
@@ -64,6 +65,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("server.port", 8080)
 	viper.SetDefault("db.path", "./claude-miniapp.db")
 	viper.SetDefault("web.session_ttl", "168h")
+	viper.SetDefault("web.trusted_proxies", []string{"127.0.0.1/32", "::1/128"})
 	viper.SetDefault("web.allowed_cidrs", []string{
 		"127.0.0.0/8",
 		"10.0.0.0/8",

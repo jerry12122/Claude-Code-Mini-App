@@ -158,9 +158,11 @@ CREATE TABLE work_dirs (
 ```json
 { "type": "status",             "value": "STREAMING" }
 { "type": "delta",              "content": "### Hello" }
-{ "type": "permission_request", "tools": [{ "name": "Write", "input": { "file_path": "..." } }] }
+{ "type": "permission_request", "tools": [{ "tool_name": "Write", "tool_input": { "file_path": "..." } }], "retry_tools": true }
 { "type": "result",             "session_id": "...", "cost_usd": 0.01 }
 ```
+
+`permission_request.retry_tools` 僅在舊 Claude denial 重跑路徑為 `true`：允許後重試任務，並在該次重跑放行列出的工具，不限定單一操作、不永久記住。Claude prompt-tool／Kiro ACP 的中途授權不帶此欄位，仍為單次操作。
 
 ### 5.3 CLI 執行範本
 

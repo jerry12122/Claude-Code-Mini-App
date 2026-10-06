@@ -9,7 +9,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const {
     messages,
     state,
-    permTools, setPermTools,
+    permTools, setPermTools, permRetryTools,
     mode, setMode,
     modelSel, setModelSel,
     effortSel, setEffortSel,
@@ -900,11 +900,16 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
           <div className="rounded-xl border border-yellow-700 bg-yellow-950/40 px-4 py-3 text-sm mr-8">
             <div className="text-yellow-400 font-semibold mb-2">需要授權</div>
             {permTools.map((t, i) => <PermToolDetail key={i} tool={t} />)}
+            {permRetryTools && (
+              <div className="mt-2 text-xs text-yellow-200/90">
+                允許後會重試任務，並在本次重試中放行以上工具，不限於畫面上的單一操作。這次允許不會永久記住。
+              </div>
+            )}
             {!canAct && <div className="mt-2 text-xs text-yellow-200/70">等待有權限的人處理…</div>}
             <div className={canAct ? 'flex gap-2 mt-3' : 'hidden'}>
               <button onClick={handleAllowOnce}
                 className="px-3 py-1.5 bg-yellow-700 hover:bg-yellow-600 text-white rounded-lg text-xs">
-                允許此操作
+                {permRetryTools ? '允許工具並重試' : '允許此操作'}
               </button>
               {/* 切到 acceptEdits 只對編輯類工具有效；Bash 等會再被拒一次，所以只在全是編輯工具時顯示 */}
               {!isGuest && permTools.every((t) => EDIT_TOOL_NAMES.has(t.tool_name)) && (
@@ -1327,4 +1332,3 @@ function ChatImageLightbox({ src, onClose }) {
     </div>
   );
 }
-

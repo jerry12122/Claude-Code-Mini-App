@@ -38,11 +38,12 @@
 - web 密碼登入後可正常建立 session、送訊息、WS 連線；`tg_id` 為 0 時無 panic、無通知。
 - 既有 `go test ./...` 通過。
 
-### 2.2 第二期：RealIP 只信任已知代理（建議與第一期同批，否則 TG 拿掉後白名單可被繞過）
+### 2.2 第二期：RealIP 只信任已知代理（2026-10-06 已獨立完成）
 
-已列於 `todo.md`（共享聊天室對外開放項）。做法：
-- 新增 `web.trusted_proxies`（CIDR 清單）。直連來源（`c.IP()`）在清單內才採信 `CF-Connecting-IP`／`X-Forwarded-For`；否則一律用 `c.IP()`。
-- 預設值：`127.0.0.0/8`、`::1`（只信任本機代理，如同機的 `cloudflared`），讓現有 Tunnel 部署不用改設定。代理在別台機器時須自行補此 key，否則所有外部請求會被視為該代理的內網 IP（白名單失效，只剩 web 密碼）。
+已完成，見 [紀錄](../done/trusted-proxy-and-permission-scope.md)：
+- 新增 `web.trusted_proxies`（CIDR 清單）。只在原始直連來源受信任時採信轉發標頭；XFF 由右往左跳過可信代理，不直接使用可偽造的最左側值。
+- 預設值：`127.0.0.1/32`、`::1/128`，保留同機 `cloudflared` 的行為。代理在別台機器時須補該機器的精確 CIDR；空清單停用轉發標頭。
+- 代理須覆寫 CF 標頭或在 XFF 尾端附加來源；無效來源回空值，避免回退成代理內網 IP 通過白名單。
 
 完成標準：
 - 直連帶 `X-Forwarded-For: 192.168.1.1` 的外網請求，不會被視為內網。
@@ -63,7 +64,7 @@
 ## 4. 待決策
 
 1. 沒有 TG 後，要靠「內網 IP 白名單 + web 密碼」，還是需要第 2.3 期的上游認證？
-2. `trusted_proxies` 預設值：已傾向 loopback（見 2.2）。若改為空，現有 Tunnel 部署升級後會壞，違反第 6 節契約。
+2. `trusted_proxies` 預設值已確定採 loopback（見 2.2），不再是待決策項。
 3. 現有使用 TG 登入的部署是否要保證不變？本計劃的設計是向下相容（有 token 時行為不變）。
 
 ## 6. config.yaml 契約變更
@@ -79,5 +80,5 @@
 ## 5. 風險與驗證
 
 - 最大風險是 B：漏掉任何一個 `initData` 入口（HTTP header、`?initData=` query、WS）。全部都經過 `authMiddleware`，實作後用 grep 確認 `tg.Verify` 只有一個呼叫點。
-- 升級行為：2.2 若預設不信任 header，既有走 Cloudflare Tunnel 的部署會全部變成「代理 IP」，需先在 `config.yaml` 補 `trusted_proxies` 才不會被鎖在外面（共享聊天室的訪客走 guest token 不受影響）。
+- 升級行為：2.2 預設信任 loopback，同機 Tunnel 保留來源判斷；代理在其他機器須補 `trusted_proxies`，並確認它會覆寫／附加來源標頭。
 - 手動驗證：用 curl 偽造 header 重現 B、C 兩種繞過，修改前後各跑一次。
