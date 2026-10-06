@@ -481,6 +481,15 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				OnStart:      func(pid int) { taskSetPid(sessionID, msgID, pid) },
 			}
 
+			// 等授權一定要有人處理：由 MCP（mcp_token）發起的 run 沒有 tg_id，退回白名單唯一使用者；訪客不退回。
+			confirmNotifyID := func() int64 {
+				if tgUserID == 0 && !isGuest {
+					id, _ := database.DefaultNotifyTgIDIfSingle()
+					return id
+				}
+				return tgUserID
+			}
+
 			// askUser：中途授權共用流程（kiroacp 的 RequestPermission 與 Claude 的 --permission-prompt-tool 都走這裡）。
 			// 廣播 permission_request 給前端並阻塞，直到使用者 allow_once/deny_once 或 rctx 取消。
 			askUser := func(rctx context.Context, tools any) bool {
@@ -490,7 +499,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				_ = database.UpdateSessionStatus(sessionID, db.SessionStatusAwaitingConfirm)
 				broadcast(serverMsg{Type: "status", Value: StateAwaitingConfirm})
 				broadcast(serverMsg{Type: "permission_request", Tools: tools})
-				notifyTaskAsync(botToken, tgUserID, notifyCfg, tg.TaskAlert{
+				notifyTaskAsync(botToken, confirmNotifyID(), notifyCfg, tg.TaskAlert{
 					SessionName: sess.Name,
 					Outcome:     tg.OutcomeConfirm,
 				})
@@ -704,7 +713,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 						}
 						broadcast(serverMsg{Type: "status", Value: StateAwaitingConfirm})
 						broadcast(serverMsg{Type: "permission_request", Tools: pending})
-						notifyTaskAsync(botToken, tgUserID, notifyCfg, tg.TaskAlert{
+						notifyTaskAsync(botToken, confirmNotifyID(), notifyCfg, tg.TaskAlert{
 							SessionName: sess.Name,
 							Outcome:     tg.OutcomeConfirm,
 						})
