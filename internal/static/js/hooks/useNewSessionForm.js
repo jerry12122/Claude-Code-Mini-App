@@ -14,12 +14,20 @@ function useNewSessionForm(defaults = {}) {
   const [workDir, setWorkDir]   = useState(defaults.workDir || '');
   const [agent, setAgentRaw]    = useState(agentTypeForCreate(defaults.agent));
   const [mode, setMode]         = useState(defaults.mode || 'default');
-  const [cliExtra, setCliExtra] = useState('');
-  const [model, setModel]       = useState('');
+  const [cliExtra, setCliExtra] = useState(defaults.cliExtra || '');
+  const [model, setModel]       = useState(defaults.model || '');
+  const [effort, setEffort]     = useState(defaults.effort || '');
 
-  /** 切換 agent 時，權限模式要跟著正規化（例如切到 codex 就不能是 acceptEdits） */
+  /** 切換 agent 時，權限模式要跟著正規化（例如切到 codex 就不能是 acceptEdits）；
+   * model／自訂 CLI 引數／effort 是各供應商專屬格式或不支援（如 Cursor 無 effort），
+   * 跨供應商不相容，一併清空避免帶著舊設定送出。 */
   const setAgent = (next) => {
     const a = agentTypeForCreate(next);
+    if (a !== agent) {
+      setModel('');
+      setCliExtra('');
+      setEffort('');
+    }
     setAgentRaw(a);
     setMode((prev) => normalizePermMode(a, prev));
   };
@@ -32,6 +40,7 @@ function useNewSessionForm(defaults = {}) {
     setMode(overrides.mode || 'default');
     setCliExtra('');
     setModel('');
+    setEffort('');
   };
 
   /** 依既有 session 的設定回填表單（ForwardModal「複製自」用） */
@@ -43,6 +52,7 @@ function useNewSessionForm(defaults = {}) {
     const parts = Array.isArray(s.cli_extra_args) ? s.cli_extra_args : [];
     setModel(extractModelFromCliArgs(parts));
     setCliExtra(cliArgsWithoutModel(parts).join('\n'));
+    setEffort(a === 'cursor' ? '' : (s.effort || ''));
   };
 
   const buildCreatePayload = (extra = {}) => {
@@ -53,6 +63,7 @@ function useNewSessionForm(defaults = {}) {
       permission_mode: mode,
       agent_type: agent,
       cli_extra_args: parseCliExtraArgs(cliMerged),
+      effort: agent === 'cursor' ? '' : effort,
       ...extra,
     };
   };
@@ -64,6 +75,7 @@ function useNewSessionForm(defaults = {}) {
     mode, setMode,
     cliExtra, setCliExtra,
     model, setModel,
+    effort, setEffort,
     reset,
     applyFromSession,
     buildCreatePayload,

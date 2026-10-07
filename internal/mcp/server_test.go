@@ -13,7 +13,8 @@ func TestNewHTTPHandlerRegistersTools(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	if NewHTTPHandler(database, nil, 1, "tok", 0) == nil {
+	reg := NewRegistry(func(string) string { return "ws://127.0.0.1:1" }, nil)
+	if NewHTTPHandler(database, nil, reg, 0) == nil {
 		t.Fatal("handler nil")
 	}
 }

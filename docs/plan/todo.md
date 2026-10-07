@@ -11,9 +11,17 @@
 - [ ] 驗證 Codex／Cursor／Kiro 能以絕對路徑讀取上傳的圖片（Claude 的 Read 工具可讀圖）
 - [ ] （未來優化，2026-10-06 決定暫緩）agent 圖片的 session／分享驗證與歷史 URL 遷移；目前 `internal/static/uploads` 仍由公開靜態路由讀取，需先確認相容性與授權載入方式
 - [ ] 主要情境即時回饋與可靠性：授權／中斷 send 失敗處理、WS 斷線指示、用量刷新（手機）、建立 session 重複、載入中與登入卡住（見 [計劃](todo/ux-feedback.md)）
+- [ ] Kiro 故障復原：重新建置／啟動新版後觀察真實 EmptyResponse；自動接手的權限／工具設定與連鎖防護仍待 review（手動入口及 handoff 測試 race 已完成，見 [驗收紀錄](done/kiro-fault-recovery.md)）
+- [ ] 接手提示的整頁重載／離線恢復，及 TG WebView／真實供應商接手實機驗收（目前提示保存在 App 記憶體，見 [紀錄](done/manual-session-handoff.md)）
+
+## ✅ 本輪完成（2026-10-07）
+
+- [x] Kiro ACP 故障判斷與有限重試：隔離 log、啟動／idle 逾時、取消與收尾、阻塞寫入、EOF 錯誤保留、授權序列與回收；全專案測試、Kiro race 及真 CLI 2.28.0 smoke 通過（見 [驗收紀錄](done/kiro-fault-recovery.md)）；尚未重啟服務，接手流程見下項
+- [x] 故障後手動建立接手會話：ErrHandoff 自動交接未成功時廣播結構化資訊，沿用 `NewSessionComposer` 預填設定與可編輯接手訊息，可改供應商；MCP 關閉時改帶入有限歷史；訪客不可見（見 [驗收紀錄](done/manual-session-handoff.md)）
 
 ## ✅ 本輪完成（2026-10-06）
 
+- [x] 跨供應商工作接續 PoC：Claude 真實額度耗盡切到 Codex、Codex／Kiro 雙向摘要交接、無最後摘要恢復及原生 resume 基線（見 [實測紀錄](../../poc/agent-handoff/agent-handoff-poc.md)）；尚未接入聊天 UI／DB
 - [x] 2026-10-06：`RealIP` 只採信設定的代理（預設 loopback），XFF 由右往左找來源，拒絕無效來源；Claude 舊重跑授權明確提示本次放行工具，新中途授權保留單次操作（見 [紀錄](done/trusted-proxy-and-permission-scope.md)）
 
 ## ✅ 本輪完成（2026-09-30）

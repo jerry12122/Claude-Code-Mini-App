@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -144,6 +145,8 @@ func (h *SessionHandler) Create(c *fiber.Ctx) error {
 		AgentType      string   `json:"agent_type"`
 		CliExtraArgs   []string `json:"cli_extra_args"`
 		InputMode      string   `json:"input_mode"`
+		// Effort：選填，空字串＝不指定交給 CLI 用預設。沿用既有 set_effort 的自由字串，不另驗證合法值。
+		Effort string `json:"effort"`
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
@@ -165,6 +168,17 @@ func (h *SessionHandler) Create(c *fiber.Ctx) error {
 	s, err := h.db.CreateSession(body.Name, body.Description, body.WorkDir, body.PermissionMode, body.AgentType, cliExtra, body.InputMode)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	if strings.TrimSpace(body.Effort) != "" {
+		if err := h.db.UpdateEffort(s.ID, body.Effort); err != nil {
+			// 比照 ws/handoff.go 的半成品清除：effort 寫入失敗就刪掉剛建立的 session 再回錯，
+			// 不留下沒有 effort 的半成品，否則使用者重按建立會重複產生 session。
+			if delErr := h.db.DeleteSession(s.ID); delErr != nil {
+				slog.Info(fmt.Sprintf("[api] 建立 session 後 UpdateEffort 失敗，清除半成品 %s 也失敗: %v", s.ID, delErr))
+			}
+			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		}
+		s.Effort = body.Effort
 	}
 	enrichGitBranch(s)
 	return c.Status(201).JSON(s)

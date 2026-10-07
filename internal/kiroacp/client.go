@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 
@@ -50,16 +51,23 @@ func (r rpcResponse) intID() (int64, bool) {
 }
 
 type rpcError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
+	Code    int             `json:"code"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data,omitempty"` // -32603 "Internal error" 的真正原因常在這裡
 }
 
 func (e *rpcError) Error() string {
 	if e == nil {
 		return ""
 	}
+	if len(e.Data) > 0 && string(e.Data) != "null" {
+		return fmt.Sprintf("jsonrpc error %d: %s (%s)", e.Code, e.Message, truncateBytes(e.Data, 300))
+	}
 	return fmt.Sprintf("jsonrpc error %d: %s", e.Code, e.Message)
 }
+
+// errStdoutClosed：kiro-cli 的 stdout 關閉（進程死掉／被殺）。
+var errStdoutClosed = errors.New("acp stdout closed")
 
 // sessionNewResult 對應 session/new（與 load）的主要欄位。
 type sessionNewResult struct {
@@ -157,9 +165,21 @@ type client struct {
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
 
-	mu      sync.Mutex
+	mu      sync.Mutex // 只保護 pending；絕不可在持有它時寫 stdin
 	nextID  atomic.Int64
 	pending map[int64]chan rpcResponse
+
+	// 寫入 stdin 可能卡在 pipe（CLI 不讀 stdin、params 又大於 pipe 容量）。寫入都在獨立 goroutine、由 wmu 序列化，
+	// 呼叫端用自己的 ctx／close 放棄等待；真正解除阻塞的是子進程結束（讀端關閉）。
+	wmu            sync.Mutex
+	broken         atomic.Bool  // 曾放棄過一次寫入：串流可能停在半行，之後一律不再寫，避免把壞資料送給下一輪
+	inflightWrites atomic.Int32 // 測試用：還沒結束的寫入 goroutine 數
+	closed         chan struct{}
+	closeOnce      sync.Once
+	// 授權請求逐一處理（WS 一次只持有一個待授權），但不佔用 readLoop。
+	// 佇列上限 permQueueSize：超量的授權請求直接回「取消」，絕不阻塞 readLoop（否則讀不到 EOF／回應）。
+	permQ    chan func()
+	permDone chan struct{} // permWorker 結束時關閉：收尾時用來確認舊授權流程已結束
 
 	onUpdate func(sessionUpdateBody)
 	// onPermission 處理 server→client 的 session/request_permission。
@@ -177,9 +197,28 @@ func newClient(cmd *exec.Cmd, stdout io.ReadCloser, stdin io.WriteCloser) *clien
 		stdout:   stdout,
 		pending:  make(map[int64]chan rpcResponse),
 		readDone: make(chan struct{}),
+		closed:   make(chan struct{}),
+		permQ:    make(chan func(), permQueueSize),
+		permDone: make(chan struct{}),
 	}
 	go c.readLoop()
+	go c.permWorker()
 	return c
+}
+
+// permQueueSize：等待中的授權請求上限。實務上 kiro 一次只會問一個；這個數字只是防護上限。
+const permQueueSize = 32
+
+func (c *client) permWorker() {
+	defer close(c.permDone)
+	for {
+		select {
+		case f := <-c.permQ:
+			f()
+		case <-c.closed:
+			return
+		}
+	}
 }
 
 func (c *client) readLoop() {
@@ -212,13 +251,20 @@ func (c *client) dispatch(msg rpcResponse) {
 			if err := json.Unmarshal(msg.Params, &p); err != nil {
 				slog.Info(fmt.Sprintf("[kiroacp] request_permission unmarshal: %v", err))
 			} else {
-				optionID := c.onPermission(p)
-				c.replyPermission(msg.ID, optionID)
+				// 交給 permWorker 依序處理（一次只問一個）：不可卡住 readLoop，否則等授權期間進程死掉／回應 prompt 都讀不到，
+				// 這一輪收尾不了，也就無法取消這次 attempt 的 ctx 來釋放還在等的授權。
+				id, cb := msg.ID, c.onPermission
+				select {
+				case c.permQ <- func() { c.replyPermission(id, cb(p)) }:
+				default:
+					// 佇列已滿：直接取消這個超量的授權（在獨立 goroutine 回覆，不佔用 readLoop）。
+					slog.Info(fmt.Sprintf("[kiroacp] 授權請求超過上限 %d，直接取消: %s", permQueueSize, p.ToolCall.Title))
+					go c.replyPermission(id, "")
+				}
 				return
 			}
 		}
 		// 其他 client 請求（例如 fs）或無 handler：回 method not found，避免卡住。
-		c.mu.Lock()
 		errResp := map[string]any{
 			"jsonrpc": "2.0",
 			"id":      msg.ID,
@@ -228,8 +274,7 @@ func (c *client) dispatch(msg rpcResponse) {
 			},
 		}
 		b, _ := json.Marshal(errResp)
-		_, _ = c.stdin.Write(append(b, '\n'))
-		c.mu.Unlock()
+		go func() { _ = c.writeLine(context.Background(), b) }() // 不可在 readLoop 內同步寫
 		return
 	}
 
@@ -263,19 +308,51 @@ func (c *client) dispatch(msg rpcResponse) {
 	}
 }
 
-func (c *client) write(req rpcRequest) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+var errWriteAbandoned = errors.New("acp stdin 寫入已放棄")
+
+// writeLine 寫一行到 stdin，受 ctx 與 close() 控制。放棄等待後 broken 會擋掉之後所有寫入（含仍在排隊的）。
+// 卡在 pipe 的那次 Write 會留在它的 goroutine 裡，直到子進程結束讀端關閉；每個 client 只對應一個子進程，
+// 不會有跨 attempt 的寫入者。
+func (c *client) writeLine(ctx context.Context, b []byte) error {
+	if c.broken.Load() {
+		return errWriteAbandoned
+	}
+	line := append(append([]byte(nil), b...), '\n')
+	done := make(chan error, 1)
+	c.inflightWrites.Add(1)
+	go func() {
+		defer c.inflightWrites.Add(-1)
+		c.wmu.Lock()
+		defer c.wmu.Unlock()
+		if c.broken.Load() {
+			done <- errWriteAbandoned
+			return
+		}
+		_, err := c.stdin.Write(line)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		c.broken.Store(true)
+		return ctx.Err()
+	case <-c.closed:
+		c.broken.Store(true)
+		return errWriteAbandoned
+	}
+}
+
+func (c *client) write(ctx context.Context, req rpcRequest) error {
 	b, err := json.Marshal(req)
 	if err != nil {
 		return err
 	}
-	_, err = c.stdin.Write(append(b, '\n'))
-	return err
+	return c.writeLine(ctx, b)
 }
 
-func (c *client) notify(method string, params any) error {
-	return c.write(rpcRequest{JSONRPC: "2.0", Method: method, Params: params})
+func (c *client) notify(ctx context.Context, method string, params any) error {
+	return c.write(ctx, rpcRequest{JSONRPC: "2.0", Method: method, Params: params})
 }
 
 // replyPermission 回覆 session/request_permission。
@@ -287,14 +364,12 @@ func (c *client) replyPermission(id json.RawMessage, optionID string) {
 	} else {
 		outcome = map[string]any{"outcome": "cancelled"}
 	}
-	c.mu.Lock()
 	b, _ := json.Marshal(map[string]any{
 		"jsonrpc": "2.0",
 		"id":      id,
 		"result":  map[string]any{"outcome": outcome},
 	})
-	_, _ = c.stdin.Write(append(b, '\n'))
-	c.mu.Unlock()
+	_ = c.writeLine(context.Background(), b) // 受 close() 控制；不綁 attempt ctx，因為授權回覆本來就該在 attempt 進行中送出
 }
 
 func (c *client) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
@@ -304,13 +379,19 @@ func (c *client) call(ctx context.Context, method string, params any) (json.RawM
 	c.pending[id] = ch
 	c.mu.Unlock()
 
-	if err := c.write(rpcRequest{JSONRPC: "2.0", ID: id, Method: method, Params: params}); err != nil {
+	if err := c.write(ctx, rpcRequest{JSONRPC: "2.0", ID: id, Method: method, Params: params}); err != nil {
 		c.mu.Lock()
 		delete(c.pending, id)
 		c.mu.Unlock()
 		return nil, err
 	}
 
+	result := func(msg rpcResponse) (json.RawMessage, error) {
+		if msg.Error != nil {
+			return nil, msg.Error
+		}
+		return msg.Result, nil
+	}
 	select {
 	case <-ctx.Done():
 		c.mu.Lock()
@@ -318,19 +399,30 @@ func (c *client) call(ctx context.Context, method string, params any) (json.RawM
 		c.mu.Unlock()
 		return nil, ctx.Err()
 	case <-c.readDone:
-		return nil, fmt.Errorf("acp stdout closed: %w", c.readErr)
-	case msg := <-ch:
-		if msg.Error != nil {
-			return nil, msg.Error
+		// 回應與 EOF 同時就緒時（例如 kiro 回完錯誤就退出）以回應為準：error.data 是分類用的證據，不能被 select 隨機丟掉。
+		// readLoop 先派送回應、才關 readDone，所以此時回應若存在一定已在 ch 裡。
+		select {
+		case msg := <-ch:
+			return result(msg)
+		default:
 		}
-		return msg.Result, nil
+		if c.readErr != nil {
+			return nil, fmt.Errorf("%w: %v", errStdoutClosed, c.readErr)
+		}
+		return nil, errStdoutClosed
+	case msg := <-ch:
+		return result(msg)
 	}
 }
 
+// close 放棄所有等待中的寫入並關閉 stdin。實測（Windows、Go os.File pipe）寫入卡在 pipe 時 Close 會立刻返回，
+// 並讓卡住的 Write 以「file already closed」結束；子進程結束（讀端關閉）同樣會解除。
 func (c *client) close() {
-	_ = c.stdin.Close()
+	c.closeOnce.Do(func() {
+		close(c.closed)
+		_ = c.stdin.Close()
+	})
 }
-
 func truncateBytes(b []byte, n int) string {
 	if len(b) <= n {
 		return string(b)

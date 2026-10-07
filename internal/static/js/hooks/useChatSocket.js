@@ -2,7 +2,7 @@
  * ChatView 的 WebSocket 生命週期 + 串流解析 + 訊息／設定狀態。
  * 從 ChatView.js 抽出（原本塞在元件裡的 330 行 init effect）。
  */
-function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelect, guest = null }) {
+function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelect, guest = null, onHandoffChange }) {
   // 分享訪客：{ nickname, role, mode, ... }；null＝擁有者。snapshot 模式只讀歷史、不連 WS。
   const isGuest = !!guest;
   const guestSnapshot = isGuest && guest.mode === 'snapshot';
@@ -32,6 +32,8 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
   /** 執行中先送出、等待前一輪完成的訊息（後端持久化，sync / queue_update 同步） */
   const [queue, setQueue] = useState([]);
   const [queuePaused, setQueuePaused] = useState(false);
+  const onHandoffChangeRef = useRef(onHandoffChange);
+  onHandoffChangeRef.current = onHandoffChange;
 
   const shellBuf = useRef([]);
   const shellRenderPending = useRef(false);
@@ -240,6 +242,11 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
           return;
         }
 
+        if (msg.type === 'handoff_available') {
+          onHandoffChangeRef.current?.(session.id, msg.handoff || null);
+          return;
+        }
+
         if (msg.type === 'status') {
           setState(msg.value);
           if (msg.value !== 'AWAITING_SHELL_CONFIRM') {
@@ -249,6 +256,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
             streamBuf.current = '';
             thinkingMode.current = false;
             setActivityHint('');
+            onHandoffChangeRef.current?.(session.id, null);
             setMessages((prev) => {
               const last = prev[prev.length - 1];
               if (last && last.role === 'claude' && last.streaming && last.status === 'pending') {

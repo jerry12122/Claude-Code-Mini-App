@@ -3,7 +3,12 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 )
+
+// ErrHandoff 表示復原策略建議換新會話；不代表已證明 session 永久損壞。
+// 以 errors.Is 判斷，由呼叫端告知使用者並處理接手。
+var ErrHandoff = errors.New("agent: session 無法繼續，需換新會話接手")
 
 // RunOptions 是啟動 AI 工具子進程的共用參數。
 //

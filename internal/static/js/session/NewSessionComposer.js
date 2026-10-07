@@ -17,7 +17,7 @@ function autoSessionName(agentType, message) {
 
 function NewSessionComposer({ prefill, onCreated, onCancel }) {
   const newForm = useNewSessionForm(prefill || {});
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState(prefill?.message || '');
   const [loading, setLoading] = useState(false);
   const [errText, setErrText] = useState('');
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -156,6 +156,17 @@ function NewSessionComposer({ prefill, onCreated, onCancel }) {
                     onChange={(e) => newForm.setModel(e.target.value)}
                     placeholder="例如 sonnet、claude-sonnet-4.6、auto"
                     className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 font-mono focus:outline-none focus:border-violet-600"
+                  />
+                </div>
+              )}
+              {newForm.agent !== 'cursor' && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">Effort（選填）</div>
+                  <EffortSelect
+                    value={newForm.effort}
+                    onChange={newForm.setEffort}
+                    id="new-session-effort"
+                    className="w-full py-2 text-sm"
                   />
                 </div>
               )}

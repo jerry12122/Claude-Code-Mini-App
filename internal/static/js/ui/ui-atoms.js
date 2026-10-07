@@ -1008,3 +1008,53 @@ function MessageCopyButton({ text, className }) {
   );
 }
 
+// 接手草稿：MCP 讀原歷史，否則帶入有限歷史；最後需求始終完整。
+function buildHandoffDraftMessage(handoff, historyMessages) {
+  const h = handoff || {};
+  const lastPrompt = String(h.last_prompt || '').trim();
+  const reason = String(h.reason || '').trim();
+  const head = `原會話（miniapp session_id=${h.old_session_id || ''}，名稱「${h.old_name || ''}」）的 ${h.agent_type || ''} 這次執行失敗（${reason}），需要你接手。\n接手前請先確認 git／檔案現況，避免重做已完成的步驟。`;
+
+  let historyBlock;
+  if (h.mcp_enabled) {
+    historyBlock = `有 miniapp MCP：請先呼叫 get_messages（session_id="${h.old_session_id || ''}"）讀取舊會話完整歷史，弄清楚進度。`;
+  } else {
+    const all = (Array.isArray(historyMessages) ? historyMessages : [])
+      .filter((m) => m && (m.role === 'user' || m.role === 'claude') && String(m.content || m.resultText || '').trim());
+    const countTruncated = all.length > 20;
+    const lines = all.slice(-20);
+    if (lines.length === 0) {
+      historyBlock = 'MCP 未啟用，且目前讀不到舊會話的歷史訊息，請只依下方「最後需求」處理。';
+    } else {
+      let remaining = 20000;
+      let charTruncated = false;
+      const kept = [];
+      // ponytail: 最近 20 則、文字最多 20,000 字元，優先保留最新尾段；完整歷史由 MCP 讀取。
+      for (let i = lines.length - 1; i >= 0; i--) {
+        if (remaining === 0) {
+          charTruncated = true;
+          break;
+        }
+        const m = lines[i];
+        const full = String(m.role === 'claude' ? (m.resultText || m.content || '') : (m.content || '')).trim();
+        if (!full) continue;
+        charTruncated ||= full.length > remaining;
+        const text = full.slice(-remaining);
+        remaining -= text.length;
+        kept.unshift(`[${m.role === 'user' ? '使用者' : h.agent_type || 'agent'}] ${text}`);
+      }
+      const noteParts = [];
+      if (countTruncated) noteParts.push(`僅最近 20 則，共 ${all.length} 則，有限裁切`);
+      if (charTruncated) noteParts.push('已達字數上限，較舊內容已截斷');
+      const note = noteParts.length ? `（${noteParts.join('；')}）` : '';
+      historyBlock = `MCP 未啟用，附上現有聊天室的有限歷史${note}：\n---\n${kept.join('\n---\n')}\n---`;
+    }
+  }
+
+  const tail = lastPrompt
+    ? `請完成使用者最後這則需求：\n---\n${lastPrompt}`
+    : '原會話沒有可接續的最後需求文字。';
+
+  return `${head}\n${historyBlock}\n${tail}`;
+}
+

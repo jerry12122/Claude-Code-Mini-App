@@ -120,8 +120,9 @@ type serverMsg struct {
 	Model        *model.Payload     `json:"model,omitempty"`
 	Queue        []db.QueuedMessage `json:"queue,omitempty"`
 	QueuePaused  bool               `json:"queue_paused,omitempty"`
-	Author       string             `json:"author,omitempty"` // 說話者暱稱；空字串＝擁有者。presence 事件中為事件主角
-	Online       []string           `json:"online,omitempty"` // presence：目前在線名單
+	Author       string             `json:"author,omitempty"`  // 說話者暱稱；空字串＝擁有者。presence 事件中為事件主角
+	Online       []string           `json:"online,omitempty"`  // presence：目前在線名單
+	Handoff      *manualHandoffInfo `json:"handoff,omitempty"` // type=handoff_available：自動交接未成功時的手動接手資訊
 }
 
 type shellPendingPayload struct {
@@ -789,7 +790,23 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 					cancelled = true
 				}
 
-				if err != nil {
+				// agent session 救不回來：保留本會話，另開新會話讓它透過 MCP 讀本會話後接手。
+				// 自動交接沒有成功建立新會話時，廣播結構化資訊讓前端提供「建立接手會話」按鈕（不解析錯誤顯示字串）。
+				handedOff := false
+				if err != nil && !cancelled && errors.Is(err, agent.ErrHandoff) {
+					ns, herr := startHandoff(database, s, userPrompt, err)
+					if herr != nil {
+						slog.Info(fmt.Sprintf("[ws] %s 自動交接失敗，改回報原錯誤: %v", agentType, herr))
+						info := newManualHandoffInfo(s, userPrompt, err)
+						broadcast(serverMsg{Type: "handoff_available", Handoff: &info})
+					} else {
+						handedOff = true
+						slog.Info(fmt.Sprintf("[ws] %s 已自動交接 %s → %s", agentType, sessionID, ns.ID))
+						appendNotice(fmt.Sprintf("⚠️ %s 這個會話執行失敗（%v）。已自動建立新會話「%s」接手，它會讀取本會話的對話後繼續處理，請到側欄查看。", agentType, strings.TrimPrefix(err.Error(), agent.ErrHandoff.Error()+": "), ns.Name))
+					}
+				}
+
+				if err != nil && !handedOff {
 					if cancelled {
 						slog.Info(fmt.Sprintf("[ws] %s.Run cancelled", agentType))
 					} else {

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math"
 	"net"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -369,8 +370,14 @@ func Start(ctx context.Context) (*Server, error) {
 	app.Get("/sessions/:id/ws", authMiddleware, fiberws.New(ws.NewHandler(database, cfg.BotToken, shellOpts, quotaSvc, notifyCfg)))
 
 	if cfg.McpToken != "" {
-		mcpHandler := mymcp.NewHTTPHandler(database, quotaSvc, cfg.Server.Port, cfg.McpToken, cfg.McpMaxHops)
+		header := http.Header{"Authorization": {"Bearer " + cfg.McpToken}}
+		reg := mymcp.NewRegistry(func(sessionID string) string {
+			return fmt.Sprintf("ws://127.0.0.1:%d/sessions/%s/ws", cfg.Server.Port, sessionID)
+		}, header)
+		mcpHandler := mymcp.NewHTTPHandler(database, quotaSvc, reg, cfg.McpMaxHops)
 		app.Post("/mcp", authMiddleware, adaptor.HTTPHandler(mcpHandler))
+		// agent session 失效時的自動交接要靠 MCP 讀舊會話，所以跟著 mcp_token 一起啟用。
+		ws.SetHandoffStarter(reg.SendMessage)
 		// Claude 的 --permission-prompt-tool 專用端點（只有一個工具）。沿用 mcp_token 的 Bearer 認證，不另開 token。
 		ws.SetClaudePermMCP(fmt.Sprintf("http://127.0.0.1:%d/mcp/perm", cfg.Server.Port), cfg.McpToken)
 		app.Post("/mcp/perm", authMiddleware, adaptor.HTTPHandler(mymcp.NewPermHTTPHandler(ws.AskClaudePermission)))

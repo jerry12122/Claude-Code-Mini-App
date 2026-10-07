@@ -1,6 +1,6 @@
 const EMPTY_SUGGESTIONS = ['看一下目前 git 狀態與最近的變更', '概覽這個專案的結構', '跑測試並整理失敗原因'];
 
-function ChatView({ session, onBack, showBack = true, fullHeight = true, usePermModeDropdown = false, onJumpToSession, allSessions = [], guest = null }) {
+function ChatView({ session, onBack, showBack = true, fullHeight = true, usePermModeDropdown = false, onJumpToSession, allSessions = [], guest = null, onOpenComposer, handoffInfo = null, onHandoffChange }) {
   const jumpToSession = typeof onJumpToSession === 'function' ? onJumpToSession : () => {};
   const agentType = session.agent_type || 'claude';
   // Claude / Cursor / Antigravity 皆支援 mode 切換（Codex 暫無對應概念）
@@ -30,7 +30,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     commitPermMode,
     online,
     shareEnded,
-  } = useChatSocket({ session, agentType, showPermModeSelect, showEffortSelect, guest });
+  } = useChatSocket({ session, agentType, showPermModeSelect, showEffortSelect, guest, onHandoffChange });
 
   // ── 分享聊天室 ──
   // guest 為 null＝擁有者；否則是訪客（viewer 唯讀、editor 可輸入、snapshot 只能看歷史）。
@@ -626,6 +626,24 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     setShellPendingCmd(null);
   };
 
+  const openHandoffComposer = () => {
+    if (!handoffInfo || typeof onOpenComposer !== 'function') return;
+    const h = handoffInfo;
+    const cliArgs = Array.isArray(h.cli_extra_args) ? h.cli_extra_args : [];
+    // 舊 model 可能只存在 --model 引數；統一交給表單的 model 欄位處理。
+    const model = h.model || extractModelFromCliArgs(cliArgs);
+    onOpenComposer({
+      name: `${h.old_name || ''}（接手）`,
+      workDir: h.old_work_dir || '',
+      agent: h.agent_type,
+      mode: normalizePermMode(agentTypeForCreate(h.agent_type), h.permission_mode || 'default'),
+      model,
+      cliExtra: cliArgsWithoutModel(cliArgs).join('\n'),
+      effort: h.effort || '',
+      message: buildHandoffDraftMessage(h, messages),
+    });
+  };
+
   const agentRunning = state === 'THINKING' || state === 'STREAMING';
   const taskRunning = agentRunning || state === 'SHELL_RUNNING' || state === 'SHELL_EXEC';
   // Agent 執行中／等授權時仍可送出：後端排入佇列，前一輪成功後依序執行。
@@ -950,6 +968,17 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 拒絕
               </button>
             </div>
+          </div>
+        )}
+
+        {handoffInfo && !isGuest && (
+          <div className="rounded-xl border border-rose-700/70 bg-rose-950/30 px-4 py-3 text-sm mr-8">
+            <div className="text-rose-300 font-semibold mb-1">⚠️ 這個會話無法繼續，自動接手未成功</div>
+            <div className="text-gray-400 text-xs mb-3">原因：{handoffInfo.reason}</div>
+            <button type="button" onClick={openHandoffComposer}
+              className="px-3 py-1.5 bg-rose-800 hover:bg-rose-700 text-white rounded-lg text-xs font-medium">
+              建立接手會話
+            </button>
           </div>
         )}
 

@@ -4,6 +4,24 @@
 
 發版流程：更新 `VERSION`、`internal/version/version.go`、README 版本徽章與本檔 → commit → 打 `vX.Y.Z` tag 並 push，GitHub Actions 會自動建置並發佈 Release（說明文字取自本檔對應段落）。
 
+## [Unreleased]
+
+### 新增
+- Claude 授權：新增 `/mcp/perm`（`--permission-prompt-tool` 專用，沿用 `mcp_token`），`bypassPermissions` 下命中 `permissions.ask` 規則時會跳出允許／拒絕，按允許後同輪執行；未設定 `mcp_token` 時行為與過去相同
+- 設定新增 `web.trusted_proxies`（預設 `127.0.0.1/32`、`::1/128`），只有來自可信代理的連線才採信 `CF-Connecting-IP`／`X-Forwarded-For`
+- 故障後手動建立接手會話：ErrHandoff 自動交接未成功時，聊天室顯示「建立接手會話」，沿用 `NewSessionComposer` 預填原名稱／工作目錄／供應商／權限／model／effort 與可編輯接手首則訊息，可改供應商（切換時清除不相容的 model／CLI 參數／effort）；`POST /sessions` 新增可選 `effort` 欄位供建立時寫入；MCP 關閉時改帶入現有聊天室的有限歷史（含裁切標示）；僅擁有者可見，訪客不可建立
+
+### 變更
+- 真實 IP 判斷改為：僅在連線來自可信代理時才讀取代理標頭，`X-Forwarded-For` 由右往左跳過可信代理，避免偽造左側 IP 繞過 `allowed_cidrs`
+- 授權提示明確標示授權範圍
+- 文件：README 重新定位為多代理控制台，補上三種入口、下載安裝、臨時共享與示範截圖，功能細節移至 `docs/features`
+- Release 說明加上下載與首次設定指引
+
+### 修正
+- Kiro ACP 故障復原：以本輪專屬 log／完整 RPC 原因分類，補齊啟動逾時、有限重試、取消與進程／授權收尾；修正 stdin 阻塞、EOF 蓋掉 RPC 錯誤及歷史工具回放影響 watchdog，授權請求維持依序處理
+- 被 deny 規則擋下的呼叫（`non_execution_kind=permission-rule`）不再被誤判為等待授權，允許重跑後仍被拒也不會無限等授權
+- MCP 發起的 run 沒有 `tg_id` 時，待授權通知在白名單僅一人且非訪客的情況下改退回該使用者推送 Telegram
+
 ## [0.7.0] - 2026-10-06
 
 ### 新增

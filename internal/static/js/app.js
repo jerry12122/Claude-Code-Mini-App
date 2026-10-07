@@ -110,6 +110,19 @@ function App() {
     setCreating(false);
     setSession(s);
   }, []);
+  // ponytail: 接手提示只存本頁記憶體；取消表單不丟失，新一輪清除。需要離線恢復時再持久化。
+  const [handoffBySession, setHandoffBySession] = useState({});
+  const handleHandoffChange = useCallback((sessionId, value) => {
+    setHandoffBySession((prev) => {
+      if (value == null) {
+        if (!(sessionId in prev)) return prev;
+        const next = { ...prev };
+        delete next[sessionId];
+        return next;
+      }
+      return { ...prev, [sessionId]: value };
+    });
+  }, []);
   const [isWideScreen, setIsWideScreen] = useState(() => window.matchMedia('(min-width: 1024px)').matches);
   // 非 TMA 環境：mount 時試探 cookie 是否仍有效
   const [checking, setChecking] = useState(!isTelegram);
@@ -239,7 +252,7 @@ function App() {
         return <NewSessionComposer prefill={composerPrefill} onCreated={handleCreated} onCancel={closeComposer} />;
       }
       if (session) {
-        return <ChatView session={session} onBack={() => selectSession(null)} usePermModeDropdown onJumpToSession={selectSession} allSessions={sidebarSortedSessions} />;
+        return <ChatView session={session} onBack={() => selectSession(null)} usePermModeDropdown onJumpToSession={selectSession} allSessions={sidebarSortedSessions} onOpenComposer={openComposer} handoffInfo={handoffBySession[session.id] || null} onHandoffChange={handleHandoffChange} />;
       }
       return <SessionView onEnter={selectSession} onSessionsLoaded={mergeSessionMetaFromList} onSortedSessionsChange={setSidebarSortedSessions} activeSessionId={session?.id} onCreateNew={openComposer} onOpenSettings={() => setSettingsOpen(true)} />;
     }
@@ -274,7 +287,7 @@ function App() {
           {creating ? (
             <NewSessionComposer prefill={composerPrefill} onCreated={handleCreated} onCancel={closeComposer} />
           ) : session ? (
-            <ChatView session={session} onBack={() => selectSession(null)} showBack={false} fullHeight={false} onJumpToSession={selectSession} allSessions={sidebarSortedSessions} />
+            <ChatView session={session} onBack={() => selectSession(null)} showBack={false} fullHeight={false} onJumpToSession={selectSession} allSessions={sidebarSortedSessions} onOpenComposer={openComposer} handoffInfo={handoffBySession[session.id] || null} onHandoffChange={handleHandoffChange} />
           ) : (
             <div className="h-full flex flex-col items-center justify-center gap-3 bg-[oklch(0.15_0.02_264)]">
               <div className="w-10 h-10 rounded-[10px] bg-gradient-to-br from-[oklch(0.62_0.19_275)] to-[oklch(0.6_0.17_300)] flex items-center justify-center opacity-80" aria-hidden>
