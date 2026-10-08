@@ -2,7 +2,7 @@
 
 > A self-hosted **multi-agent console** for Claude Code, Cursor Agent, Codex and Kiro. Run and supervise all your coding agents in one place — from a desktop window, any browser, or a Telegram Mini App on your phone. **One Go binary**, no separate frontend build.
 
-[![Version](https://img.shields.io/badge/version-0.7.0-blue)](#) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white)](#)
+[![Version](https://img.shields.io/badge/version-0.8.0-blue)](#) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white)](#)
 
 [繁體中文](README.zh-TW.md)
 

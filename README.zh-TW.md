@@ -2,7 +2,7 @@
 
 > 自架的**多代理（multi-agent）控制台**，統一管理 Claude Code、Cursor Agent、Codex 與 Kiro。可從桌面視窗、任何瀏覽器，或手機上的 Telegram Mini App 操作。**單一 Go 二進位**，無需獨立前端建置。
 
-[![Version](https://img.shields.io/badge/version-0.7.0-blue)](#) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white)](#)
+[![Version](https://img.shields.io/badge/version-0.8.0-blue)](#) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white)](#)
 
 [English](README.md)
 

@@ -4,7 +4,7 @@
 
 發版流程：更新 `VERSION`、`internal/version/version.go`、README 版本徽章與本檔 → commit → 打 `vX.Y.Z` tag 並 push，GitHub Actions 會自動建置並發佈 Release（說明文字取自本檔對應段落）。
 
-## [Unreleased]
+## [0.8.0] - 2026-10-08
 
 ### 新增
 - Claude 授權：新增 `/mcp/perm`（`--permission-prompt-tool` 專用，沿用 `mcp_token`），`bypassPermissions` 下命中 `permissions.ask` 規則時會跳出允許／拒絕，按允許後同輪執行；未設定 `mcp_token` 時行為與過去相同
@@ -21,6 +21,8 @@
 - Kiro ACP 故障復原：以本輪專屬 log／完整 RPC 原因分類，補齊啟動逾時、有限重試、取消與進程／授權收尾；修正 stdin 阻塞、EOF 蓋掉 RPC 錯誤及歷史工具回放影響 watchdog，授權請求維持依序處理
 - 被 deny 規則擋下的呼叫（`non_execution_kind=permission-rule`）不再被誤判為等待授權，允許重跑後仍被拒也不會無限等授權
 - MCP 發起的 run 沒有 `tg_id` 時，待授權通知在白名單僅一人且非訪客的情況下改退回該使用者推送 Telegram
+- Kiro ACP 讀取 stdout 的單行上限提高到 16MB，避免大型 tool 結果觸發 `bufio.Scanner: token too long` 而無法恢復
+- 停止鈕在呼吸燈期間仍可再按：第一次送出優雅停止，稍後再按才強制停止
 
 ## [0.7.0] - 2026-10-06
 
