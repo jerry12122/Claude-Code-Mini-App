@@ -74,8 +74,9 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   composerSessionRef.current = session.id;
   const pendingSendRef = useRef(null);
   const [sending, setSending] = useState(false);
-  // 按下後等伺服器回應的狀態：避免連點，也讓使用者知道有按到。逾時或狀態變化後重設（見 taskRunning 之後的 effect）。
+  // 已送出優雅停止：只驅動呼吸燈與「再按一次強制停止」文案，不鎖按鈕。任務停或切換 session 時重設。
   const [interrupting, setInterrupting] = useState(false);
+  const interruptSentAtRef = useRef(0);
   const [shellConfirmPending, setShellConfirmPending] = useState(false);
   const updateAttachments = useCallback((update) => {
     const next = update(attachmentItemsRef.current);
@@ -190,6 +191,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     pendingSendRef.current = null;
     setSending(false);
     setInterrupting(false);
+    interruptSentAtRef.current = 0;
     setShellConfirmPending(false);
     setLightboxSrc(null);
     setDragOver(false);
@@ -513,8 +515,12 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   };
 
   const handleInterrupt = () => {
-    if (interrupting) return;
-    if (sendOrToast({ type: 'interrupt' })) setInterrupting(true);
+    const now = Date.now();
+    // 只擋誤觸連點；刻意再按（約 300ms 後）會送第二次 interrupt，後端才強制停止。
+    if (now - interruptSentAtRef.current < 300) return;
+    if (!sendOrToast({ type: 'interrupt' })) return;
+    interruptSentAtRef.current = now;
+    setInterrupting(true);
   };
 
   // 點了之後等伺服器回應：避免對 Shell 允許／拒絕連點（這三顆不會立刻收起面板）
@@ -658,14 +664,14 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     if (isDisabled) closeComposerMenus();
   }, [isDisabled]);
 
-  // 中斷：任務停下來就解除；Shell 確認：狀態或請求一變就解除。兩者都有 10 秒保底，避免伺服器沒回應時按鈕永遠鎖住。
+  // 中斷呼吸燈：任務停下來就解除。Shell 確認：狀態或請求一變就解除，另有 10 秒保底，避免伺服器沒回應時按鈕永遠鎖住。
   useEffect(() => { if (!taskRunning) setInterrupting(false); }, [taskRunning]);
   useEffect(() => { setShellConfirmPending(false); }, [state, shellRequest]);
   useEffect(() => {
-    if (!interrupting && !shellConfirmPending) return undefined;
-    const t = setTimeout(() => { setInterrupting(false); setShellConfirmPending(false); }, 10000);
+    if (!shellConfirmPending) return undefined;
+    const t = setTimeout(() => setShellConfirmPending(false), 10000);
     return () => clearTimeout(t);
-  }, [interrupting, shellConfirmPending]);
+  }, [shellConfirmPending]);
 
   useEffect(() => {
     if (!composerMenuOpen) return;
@@ -1009,9 +1015,9 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
       >
         {taskRunning && !canQueue ? (
-          <button onClick={handleInterrupt} disabled={interrupting}
-            className="w-full py-2 bg-red-900/60 hover:bg-red-800 text-red-300 rounded-lg text-sm disabled:opacity-60">
-            {interrupting ? '中斷中…' : '中斷'}
+          <button onClick={handleInterrupt}
+            className={`w-full py-2 bg-red-900/60 hover:bg-red-800 text-red-300 rounded-lg text-sm ${interrupting ? 'animate-pulse' : ''}`}>
+            {interrupting ? '再按一次強制停止' : '中斷'}
           </button>
         ) : (
           <div className="w-full relative" ref={composerWrapRef}>
@@ -1104,9 +1110,9 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               {/* 把中斷／送出推到按鈕列右側 */}
               <div className="flex-1" aria-hidden="true" />
               {agentRunning && (
-                <button type="button" onClick={handleInterrupt} disabled={interrupting}
-                  aria-label={interrupting ? '中斷中' : '中斷'}
-                  title={interrupting ? '中斷中…' : '中斷'}
+                <button type="button" onClick={handleInterrupt}
+                  aria-label={interrupting ? '再按一次強制停止' : '中斷'}
+                  title={interrupting ? '再按一次強制停止' : '中斷'}
                   className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-[8px] bg-red-900/70 hover:bg-red-800 text-red-200 text-sm ${interrupting ? 'animate-pulse' : ''}`}>
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2" /></svg>
                 </button>
