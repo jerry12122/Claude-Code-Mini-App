@@ -224,7 +224,8 @@ func (c *client) permWorker() {
 func (c *client) readLoop() {
 	defer close(c.readDone)
 	sc := bufio.NewScanner(c.stdout)
-	sc.Buffer(make([]byte, 1024*1024), 1024*1024)
+	// 單行 JSON-RPC 可能含大型 tool 結果／base64 圖片，上限與 claude runner 對齊為 16MB，避免 bufio.ErrTooLong。
+	sc.Buffer(make([]byte, 1024*1024), 16*1024*1024)
 	for sc.Scan() {
 		line := sc.Bytes()
 		if len(line) == 0 {
