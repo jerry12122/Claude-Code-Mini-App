@@ -20,14 +20,22 @@ func TestDetectType(t *testing.T) {
 func TestRunEcho(t *testing.T) {
 	dir := t.TempDir()
 	var out strings.Builder
+	var shellErr string
 	ctx := context.Background()
-	err := Run(ctx, RunOptions{Command: echoCmd(), WorkDir: dir, Timeout: 10}, func(e Event) {
-		if e.Type == EventDeltaStdout || e.Type == EventDeltaStderr {
+	// GitHub Windows runner 冷啟動 powershell.exe 可能超過 10 秒；逾時時 Run 仍回 nil，只送 EventError。
+	err := Run(ctx, RunOptions{Command: echoCmd(), WorkDir: dir, Timeout: 60}, func(e Event) {
+		switch e.Type {
+		case EventDeltaStdout, EventDeltaStderr:
 			out.WriteString(e.Text)
+		case EventError:
+			shellErr = e.Text
 		}
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if shellErr != "" {
+		t.Fatalf("shell error: %s; output: %q", shellErr, out.String())
 	}
 	if !strings.Contains(out.String(), "hi_shell") {
 		t.Fatalf("output: %q", out.String())
