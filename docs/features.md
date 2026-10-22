@@ -15,10 +15,6 @@
 - **Shortcuts** — `Ctrl+\` splits the active tab into a new group (needs at least two tabs) or merges two groups back; `Ctrl+Alt+←/→` moves focus between groups; `Ctrl+Alt+O` switches side-by-side/stacked. They are ignored during IME composition
 - **Message queue** — Messages sent while a task is running are queued (persisted in the DB, survives restarts) and run in order; the queue pauses on failure or interrupt, and can be resumed or edited. If the agent has answered but its process is still waiting (for example for a scheduled wake-up), the stop button stays available and a new message is queued until it ends
 
-![Split view: two groups side by side, each with its own tab bar and a different session streaming; the right group is focused and outlined](images/split-view.png)
-
-_Split view on desktop: two groups, each with its own tab bar. The focused group (right) has a highlighted frame; unread badges stay in the sidebar._
-
 ## Chat
 
 - **Live streaming** — WebSocket chat with Markdown; multi-tab sync
@@ -50,3 +46,27 @@ go build -tags production -ldflags "-H windowsgui" -o claude-miniapp-desktop.exe
 Put the exe next to `config.yaml` and `internal/static/` (same layout as the server binary). From a repo checkout, `go run ./cmd/desktop` uses the working directory's config. `-tags production` embeds the frontend in the exe and turns off Wails debug logging. The in-app updater needs it, so release builds always use it. `go run ./cmd/desktop` stays in development mode and reads `internal/static/` from disk.
 
 Frontend files are served from disk, so editing `internal/static/` only needs a reload (F5), not a rebuild. If a change still doesn't show up, use Settings → General → "Clear cache & reload".
+
+### Desktop auto-update
+
+The Windows desktop app can check GitHub Releases and update itself. Only `claude-miniapp-desktop.exe` is replaced.
+
+- **Upgrade once by hand first.** Versions before the updater cannot update themselves. Download the new `claude-miniapp-v<X.Y.Z>-windows-amd64.zip` and replace `claude-miniapp-desktop.exe` in your existing folder, keeping `config.yaml` and your data. After that, updates happen inside the app.
+- **Check:** tray → Check for updates, or Settings → Desktop update. The app also checks at startup and every 6 hours, and only shows the result. It never downloads or restarts on its own.
+- **Download and restart are separate clicks.** Download starts only when you click it. Restart and update also needs a click, and the app refuses it while work is busy.
+- **Busy refusal:** a restart is refused (`update_busy`) while any session has a running task, a shell command, a pending approval, or any queued message, even if the queue is paused. Finish the work or clear the queue, then try again. The downloaded update is kept.
+- **Writable folder required:** the folder containing the exe must be writable by your user. The updater does not ask for administrator rights.
+- **Kept as-is:** `config.yaml`, `claude-miniapp.db`, `workspace/` (attachments), `logs/`, and `internal/static/` are not changed. Only `claude-miniapp-desktop.exe` is replaced.
+- **Leftover previous exe:** Windows cannot delete a running executable, so the updater renames the old one aside as `<name>.exe.old.<number>`. The app deletes every such leftover the next time it starts, so no rollback copy is kept — back up the exe yourself before updating if you want one.
+- **Not auto-updated:** the Windows server (`claude-miniapp.exe`) and Linux builds. Update those by hand.
+- **Manual restore:** before upgrading, keep a backup copy of the current exe. To go back, close the app and copy the backup over the exe:
+
+```powershell
+Copy-Item .\claude-miniapp-desktop.exe .\claude-miniapp-desktop.previous.exe
+# To roll back: close the app, then
+Copy-Item .\claude-miniapp-desktop.previous.exe .\claude-miniapp-desktop.exe -Force
+```
+
+  Only the exe files are touched. Data is not downgraded automatically.
+- **Integrity:** downloads are checked against the SHA256 in `checksums.txt`. That proves the file matches the release. It does not prove who published it, because there is no signature check yet.
+- **Network:** checking and downloading need access to GitHub. An update does not make the app work offline.

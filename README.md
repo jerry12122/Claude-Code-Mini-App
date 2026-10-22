@@ -6,7 +6,7 @@
 
 [繁體中文](README.zh-TW.md)
 
-![Agent Console: sessions for Claude, Codex, Kiro and Cursor grouped by project with unread badges, session tabs on top, and a streaming chat with usage bars and model controls](docs/images/console.png)
+![Agent Console: split view with Claude and Codex sessions, tab groups, unread badges, and sessions for Claude, Cursor, Codex, Kiro and Antigravity grouped by project](docs/images/split-view.png)
 
 <sub>Demo data on a throwaway instance. The UI is shown in Traditional Chinese.</sub>
 
@@ -22,44 +22,11 @@ All three talk to the same server and see the same sessions in real time.
 
 ## 🚀 Quick Start
 
-**First time? Follow [Getting started from scratch](docs/getting-started.md)** — installation, configuration, sign-in, and your first successful agent reply, with separate Windows and Linux commands. Downloaded builds do not require Go or a frontend build.
+1. Download the release archive for your OS from [Releases](https://github.com/jerry12122/Claude-Code-Mini-App/releases/latest) and extract it.
+2. Run `claude-miniapp-desktop.exe` (Windows desktop) or `claude-miniapp` (server). For server builds, open <http://127.0.0.1:8080>.
+3. Follow the first-run wizard in your browser or desktop window to set a password and detect available CLI agents.
 
-1. Download the Windows x64 zip or Linux x64 tar.gz from [Releases](https://github.com/jerry12122/Claude-Code-Mini-App/releases/latest). Extract the whole folder, including `internal/static/`.
-2. Install and sign in to **one** agent on that computer. [CLI links and checks](docs/getting-started.md#2-install-and-sign-in-to-one-agent) include the required command names.
-3. Start without `config.yaml` and follow the [first-run wizard](docs/getting-started.md#3-create-your-configuration) to set a password and check available CLIs. Telegram Mini App is off by default; local use needs no Bot Token or domain.
-4. Run **one** executable: Windows desktop `claude-miniapp-desktop.exe`, Windows server `claude-miniapp.exe`, or Linux server `./claude-miniapp`. For server builds, open <http://127.0.0.1:8080> on the host and enter `web.password`.
-5. [Create a session and send a test message](docs/getting-started.md#5-create-your-first-session). The working directory is a path on the server computer.
-
-**Telegram remote access:** complete local setup first, then follow [HTTPS tunnel, allowlist, and BotFather menu setup](docs/getting-started.md#6-optional-open-from-telegram). A Bot Token alone does not configure a Mini App button.
-
-> [!WARNING]
-> `no_auth: true` disables owner authentication but does **not** bind the server to localhost. Use it only in an isolated local development environment, never with a public tunnel.
-
-[Troubleshooting](docs/getting-started.md#troubleshooting) · [Build from source (Go 1.25+)](docs/getting-started.md#building-from-source) · [Desktop window and shortcuts](docs/features.md#desktop-window-windows)
-
-## 🔄 Desktop auto-update (Windows)
-
-The Windows desktop app can check GitHub Releases and update **itself**. Only `claude-miniapp-desktop.exe` is replaced.
-
-- **Upgrade once by hand first.** Versions before the updater cannot update themselves. Download the new `claude-miniapp-v<X.Y.Z>-windows-amd64.zip` and replace `claude-miniapp-desktop.exe` in your existing folder, keeping `config.yaml` and your data. After that, updates happen inside the app.
-- **Check:** tray → Check for updates, or Settings → Desktop update. The app also checks at startup and every 6 hours, and only shows the result. It never downloads or restarts on its own.
-- **Download and restart are separate clicks.** Download starts only when you click it. Restart and update also needs a click, and the app refuses it while work is busy.
-- **Busy refusal:** a restart is refused (`update_busy`) while any session has a running task, a shell command, a pending approval, or **any queued message, even if the queue is paused**. Finish the work or clear the queue, then try again. The downloaded update is kept.
-- **Writable folder required:** the folder containing the exe must be writable by your user. The updater does not ask for administrator rights.
-- **Kept as-is:** `config.yaml`, `claude-miniapp.db`, `workspace/` (attachments), `logs/`, and `internal/static/` are not changed. Only `claude-miniapp-desktop.exe` is replaced.
-- **Leftover previous exe:** Windows cannot delete a running executable, so the updater renames the old one aside as `<name>.exe.old.<number>`. The app deletes every such leftover the next time it starts, so **no rollback copy is kept** — back up the exe yourself before updating if you want one (see below).
-- **Not auto-updated:** the Windows server (`claude-miniapp.exe`) and Linux builds. Update those by hand.
-- **Manual restore:** before upgrading, keep a backup copy of the current exe. To go back, close the app and copy the backup over the exe:
-
-```powershell
-Copy-Item .\claude-miniapp-desktop.exe .\claude-miniapp-desktop.previous.exe
-# To roll back: close the app, then
-Copy-Item .\claude-miniapp-desktop.previous.exe .\claude-miniapp-desktop.exe -Force
-```
-
-  Only the exe files are touched. Data is not downgraded automatically.
-- **Integrity:** downloads are checked against the SHA256 in `checksums.txt`. That proves the file matches the release. It does **not** prove who published it, because there is no signature check yet.
-- **Network:** checking and downloading need access to GitHub. An update does not make the app work offline.
+Detailed walkthrough: [Getting started from scratch](docs/getting-started.md) · [Telegram remote setup](docs/getting-started.md#6-optional-open-from-telegram) · [Troubleshooting](docs/getting-started.md#troubleshooting)
 
 ## ✨ Features
 
@@ -71,6 +38,7 @@ Copy-Item .\claude-miniapp-desktop.previous.exe .\claude-miniapp-desktop.exe -Fo
 - **Attachments** — paste or drag & drop images and files; the agent gets them by path, stored outside your `work_dir`
 - **Temporary sharing** — link + 6-digit PIN + nickname, default 1 hour; guests join as read-only `viewer` or full-access `editor`
 - **MCP server** — let other agents operate sessions, read history and query activity; `ask_session` has a hop limit against agent-to-agent loops
+- **Desktop auto-update** (Windows) — in-app release check and one-click upgrade with task busy-guard ([details](docs/features.md#desktop-auto-update))
 - **Shell & logs** — optional shell in `work_dir` (off by default) and a live server-log viewer in Settings → Logs
 
 Every feature in detail: [docs/features.md](docs/features.md).
@@ -103,14 +71,7 @@ Each user message spawns a short-lived subprocess. Details: [`docs/spec/plan.md`
 
 ## 🔒 Security
 
-> [!WARNING]
-> Shell, shares and the MCP token all grant control of the host. Enable them only on networks you trust, and never use `no_auth` in production.
-
-- Keep real secrets out of git.
-- **`shell.enabled`** — shell access on the host for authenticated users. Allowlist rules: [`docs/spec/shell-allowlist-schema.md`](docs/spec/shell-allowlist-schema.md).
-- **Shares** — anyone holding the link and PIN can join until it expires or you end it; an `editor` has the same power as you (sending messages, approving tool use), so prefer `viewer`.
-- **`mcp_token`** — full session control (including shell) for any client holding it; treat it like `bot_token` and expose `/mcp` only on trusted networks.
-- **Uploads** — any authenticated user can write files of any type and size into `./workspace/uploads/<session_id>/` (not your `work_dir`), independent of `shell.enabled`.
+Designed for local and trusted network environments. Sensitive capabilities (direct host shell, web sharing, and MCP server) are opt-in and disabled by default. Never run with `no_auth: true` over public networks. Details & allowlist: [`docs/features.md`](docs/features.md) · [`docs/spec/shell-allowlist-schema.md`](docs/spec/shell-allowlist-schema.md).
 
 ## 📚 Documentation
 

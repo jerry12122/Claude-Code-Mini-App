@@ -15,10 +15,6 @@
 - **快捷鍵** — `Ctrl+\` 把作用中分頁分到新群組（至少要有兩個分頁）或把兩個群組合併；`Ctrl+Alt+←/→` 在群組間切換焦點；`Ctrl+Alt+O` 切換並排／堆疊。輸入法組字中不會觸發
 - **訊息佇列** — 執行中送出的訊息會排隊（存 DB、重啟不遺失）依序執行；失敗／中斷時暫停，可手動繼續或移除。若 agent 已回完話但程序仍在等待（例如排程喚醒），中斷鈕仍可使用，新訊息會排隊到程序結束
 
-![分割檢視：左右兩個群組，各自有分頁列並顯示不同的對話；右側為作用中群組，有高亮外框](images/split-view.png)
-
-_桌面版分割檢視：兩個群組各自有分頁列。作用中的群組（右）有高亮外框，側欄仍顯示未讀徽章。_
-
 ## 聊天
 
 - **即時串流** — WebSocket 對話與 Markdown 串流；多分頁同步
@@ -50,3 +46,27 @@ go build -tags production -ldflags "-H windowsgui" -o claude-miniapp-desktop.exe
 exe 要跟 `config.yaml`、`internal/static/` 放在一起（與伺服器版相同）。在專案根目錄開發時，`go run ./cmd/desktop` 會用目前工作目錄的設定。`-tags production` 會把前端嵌入執行檔，並關掉 Wails 的 debug log。桌面程式內更新需要此標籤，發佈版一律使用。`go run ./cmd/desktop` 維持開發模式，讀取磁碟上的 `internal/static/`。
 
 前端檔案是直接從磁碟讀取，改 `internal/static/` 只需重新載入（F5），不必重新編譯。若改了仍沒生效，到 設定 → 一般 →「清除快取並重新載入」。
+
+### 桌面版自動更新
+
+Windows 桌面版可以查詢 GitHub Release 並**自行更新**，只會替換 `claude-miniapp-desktop.exe`。
+
+- **先手動升級一次。** 沒有更新功能的舊版無法自我更新。請下載新版 `claude-miniapp-v<X.Y.Z>-windows-amd64.zip`，把現有資料夾中的 `claude-miniapp-desktop.exe` 換成新檔，保留 `config.yaml` 與資料。之後的版本可在程式內更新。
+- **檢查：** 系統匣 →「檢查更新」，或 設定 → 桌面更新。程式會在啟動時與之後每 6 小時檢查一次，只顯示結果，不會自行下載或重啟。
+- **下載與重啟分開確認。** 按「下載」才會開始下載；「重新啟動並更新」同樣需要點擊，工作忙碌時程式會拒絕。
+- **忙碌時拒絕重啟：** 只要有任一 session 正在執行任務、執行 shell 指令、有待授權項目，或**佇列有項目（即使暫停）**，重啟會被拒絕（`update_busy`）。請先完成工作或清空佇列再試；已下載的更新會保留。
+- **需要可寫入的安裝目錄：** `claude-miniapp-desktop.exe` 所在資料夾必須對目前使用者可寫入；更新程式不會要求系統管理員權限。
+- **保留不動的內容：** `config.yaml`、`claude-miniapp.db`、`workspace/`（附件）、`logs/`、`internal/static/` 都不會被更新動作改動，只替換 `claude-miniapp-desktop.exe`。
+- **殘留的舊版 exe：** Windows 無法刪除執行中的 exe，所以更新時會把舊版改名成 `<名稱>.exe.old.<數字>` 放在一旁。程式下次啟動時會把這類殘留檔**全部刪除**，所以**不會保留還原檔**；想要能回退，請在更新前自己備份 exe（見下方）。
+- **不會自動更新：** Windows server（`claude-miniapp.exe`）與 Linux 版本，請手動更新。
+- **手動恢復舊版：** 升級前請先保留一份目前 EXE 的備份。要回退時，關閉程式後把備份覆寫回去：
+
+```powershell
+Copy-Item .\claude-miniapp-desktop.exe .\claude-miniapp-desktop.previous.exe
+# 要回退時：先關閉程式，再執行
+Copy-Item .\claude-miniapp-desktop.previous.exe .\claude-miniapp-desktop.exe -Force
+```
+
+  只會動到 EXE 檔，資料不會自動降版。
+- **完整性：** 下載檔會以 `checksums.txt` 中的 SHA256 比對，確認檔案與本次發佈一致。這**不能**證明發佈者身分，因為目前沒有簽章驗證。
+- **網路：** 檢查與下載需要連到 GitHub；更新不代表程式可以離線使用。
