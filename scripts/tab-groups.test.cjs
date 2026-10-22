@@ -183,7 +183,7 @@ function deepFreeze(obj) {
   });
   const reordered = tabGroupsReducer(stateReorder, { type: 'move', sessionId: 'C', toGroup: 0, toIndex: 0 });
   assert.deepEqual(reordered.groups[0].tabs, ['C', 'A', 'B']);
-  assert.equal(reordered.groups[0].active, 'B');
+  assert.equal(reordered.groups[0].active, 'C');
 
   // 跨群組 move
   const stateMove = deepFreeze({
@@ -519,6 +519,20 @@ function deepFreeze(obj) {
   // 同列重排（索引相對於「移除自身後」的分頁）：B 拖到 A 之前
   s = apply(one, resolveDropAction(one, 'B', { kind: 'tabbar', group: 0, index: 0 }));
   assert.deepEqual(s.groups[0].tabs, ['B', 'A']);
+  assert.equal(s.groups[0].active, 'B', '拖入已開啟的非作用中會話應切換到該分頁');
+
+  // 目標群組未聚焦：同列放置仍須切換群組與作用中分頁
+  const unfocused = deepFreeze({ ...two, focused: 1 });
+  s = apply(unfocused, resolveDropAction(unfocused, 'B', { kind: 'tabbar', group: 0, index: 1 }));
+  assert.deepEqual(s.groups[0].tabs, ['A', 'B']);
+  assert.equal(s.groups[0].active, 'B');
+  assert.equal(s.focused, 0);
+
+  // 內容中央放置已開啟的會話：保留順序並切換分頁與群組焦點
+  s = apply(unfocused, resolveDropAction(unfocused, 'B', { kind: 'content', group: 0, region: 'center' }));
+  assert.deepEqual(s.groups[0].tabs, ['A', 'B']);
+  assert.equal(s.groups[0].active, 'B');
+  assert.equal(s.focused, 0);
 
   // 側欄拖已開啟在別群組的會話 → 視為移動（不是只聚焦）
   s = apply(two, resolveDropAction(two, 'C', { kind: 'content', group: 0, region: 'center' }));
@@ -531,8 +545,8 @@ function deepFreeze(obj) {
   assert.deepEqual(s.groups[0].tabs, ['A']);
   assert.deepEqual(s.groups[1].tabs, ['B', 'C']);
 
-  // 放回自己群組內容區中央 → 不動（回傳 null）
-  assert.equal(resolveDropAction(two, 'A', { kind: 'content', group: 0, region: 'center' }), null);
+  // 放回已聚焦且作用中的會話 → 狀態不變
+  assert.equal(apply(two, resolveDropAction(two, 'A', { kind: 'content', group: 0, region: 'center' })), two);
   // 單一群組、唯一分頁拖到邊緣 → 不會留下空群組
   const lone = { groups: [{ tabs: ['A'], active: 'A' }], focused: 0, orientation: 'horizontal', ratio: 0.5 };
   s = apply(lone, resolveDropAction(lone, 'A', { kind: 'content', group: 0, region: 'right' }));

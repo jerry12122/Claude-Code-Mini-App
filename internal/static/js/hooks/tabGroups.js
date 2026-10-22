@@ -183,8 +183,9 @@ function tabGroupsReducer(state, action) {
         ];
         return {
           ...state,
+          focused: fromGroup,
           groups: state.groups.map((group, i) =>
-            i === fromGroup ? { ...group, tabs: nextTabs } : group
+            i === fromGroup ? { ...group, tabs: nextTabs, active: sessionId } : group
           ),
         };
       }
@@ -655,7 +656,7 @@ function resolveDropAction(state, sessionId, target) {
   if (state.groups.length === 1 && target.region && target.region !== 'center') {
     return { type: 'splitDrop', sessionId, edge: target.region };
   }
-  if (loc === group) return null;
+  if (loc === group) return { type: 'open', sessionId, groupIndex: group };
   return loc === -1
     ? { type: 'open', sessionId, groupIndex: group }
     : { type: 'move', sessionId, toGroup: group };
