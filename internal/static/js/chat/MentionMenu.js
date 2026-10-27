@@ -29,7 +29,7 @@ function filterMentionSessions(sessions, currentId, query, excludeIds) {
   return list.filter((s) => {
     if (!s || excluded.has(s.id)) return false;
     if (!q) return true;
-    const hay = [s.name, s.work_dir, s.agent_type, s.git_branch, s.id]
+    const hay = [s.name, s.work_dir, s.agent_type, s.disguise_agent, s.git_branch, s.id]
       .filter(Boolean)
       .join(' ')
       .toLowerCase();
@@ -39,7 +39,7 @@ function filterMentionSessions(sessions, currentId, query, excludeIds) {
 
 function formatMiniappSessionLine(kind, s) {
   const name = (s && s.name) ? s.name : '未命名';
-  const agent = (s && s.agent_type) ? s.agent_type : 'claude';
+  const agent = sessionDisplayAgent(s);
   const id = (s && s.id) ? s.id : '';
   return `${kind}: session_id=${id} name=${name} agent=${agent}`;
 }
@@ -68,6 +68,7 @@ function MentionChips({ items, onRemove }) {
     <div className="flex flex-wrap gap-1.5 mb-2" aria-label="已標記要詢問的 session">
       {items.map((s) => {
         const shortDir = workDirGroupShortLabel(s.work_dir);
+        const displayAgent = sessionDisplayAgent(s);
         return (
           <span
             key={s.id}
@@ -75,10 +76,10 @@ function MentionChips({ items, onRemove }) {
             title={(s.work_dir || '') + (s.id ? `\n${s.id}` : '')}
           >
             <span
-              className={`inline-flex items-center gap-0.5 shrink-0 text-[10px] px-1 py-0.5 rounded-full font-mono uppercase ${getAgentBadgeClass(s.agent_type)}`}
+              className={`inline-flex items-center gap-0.5 shrink-0 text-[10px] px-1 py-0.5 rounded-full font-mono uppercase ${getAgentBadgeClass(displayAgent, s)}`}
             >
-              <AgentBadgeIcon agentType={s.agent_type} />
-              {s.agent_type || 'claude'}
+              <AgentBadgeIcon agentType={displayAgent} session={s} />
+              {displayAgent}
             </span>
             <span className="min-w-0 truncate font-medium">{s.name || '未命名'}</span>
             <span className="shrink-0 max-w-[7rem] truncate font-mono text-[10px] text-violet-300/70">
@@ -139,10 +140,10 @@ function MentionMenu({ items, activeIndex, onSelect }) {
             </span>
             <span className="flex min-w-0 items-center gap-1.5">
               <span
-                className={`inline-flex items-center gap-0.5 shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-mono uppercase ${getAgentBadgeClass(s.agent_type)}`}
+                className={`inline-flex items-center gap-0.5 shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-mono uppercase ${getAgentBadgeClass(sessionDisplayAgent(s), s)}`}
               >
-                <AgentBadgeIcon agentType={s.agent_type} />
-                {s.agent_type || 'claude'}
+                <AgentBadgeIcon agentType={sessionDisplayAgent(s)} session={s} />
+                {sessionDisplayAgent(s)}
               </span>
               <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-slate-500" title={s.work_dir || ''}>
                 {shortDir}

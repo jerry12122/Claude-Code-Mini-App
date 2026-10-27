@@ -89,6 +89,7 @@ function QuestionCard({ question, error, canAct, connected, send }) {
 function ChatView({ session, onBack, showBack = true, fullHeight = true, usePermModeDropdown = false, onJumpToSession, allSessions = [], guest = null, onOpenComposer, handoffInfo = null, onHandoffChange, isSplit = false, onToggleSplit = null, splitOrientation = 'horizontal', onToggleSplitOrientation = null, isSecondaryPane = false, onClosePane = null, isFocused = true }) {
   const jumpToSession = typeof onJumpToSession === 'function' ? onJumpToSession : () => {};
   const agentType = session.agent_type || 'claude';
+  const displayAgent = sessionDisplayAgent(session) || agentType;
   // Claude / Cursor / Antigravity 皆支援 mode 切換（Codex / Telegram 暫無對應概念）
   const showPermModeSelect = agentType !== 'codex' && agentType !== 'kiro' && agentType !== 'telegram';
   const showEffortSelect = agentType !== 'cursor' && agentType !== 'telegram';
@@ -1138,10 +1139,10 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               <div className="bubble-claude w-fit max-w-full min-w-0 flex flex-col gap-3">
                 <div className="flex items-center gap-2 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className={`inline-flex items-center justify-center w-[22px] h-[22px] rounded-md shrink-0 ${getAgentBadgeClass(agentType)}`} aria-hidden>
-                      <AgentBadgeIcon agentType={agentType} />
+                    <span className={`inline-flex items-center justify-center w-[22px] h-[22px] rounded-md shrink-0 ${getAgentBadgeClass(displayAgent, session)}`} aria-hidden>
+                      <AgentBadgeIcon agentType={displayAgent} session={session} />
                     </span>
-                    <span className="text-[13px] font-bold text-[oklch(0.85_0.01_264)]">{agentType === 'telegram' && m.author ? m.author : (AGENT_LABEL[agentType] || agentType || 'Claude')}</span>
+                    <span className="text-[13px] font-bold text-[oklch(0.85_0.01_264)]">{agentType === 'telegram' && m.author ? m.author : (AGENT_LABEL[displayAgent] || displayAgent || 'Claude')}</span>
                   </div>
                 </div>
                 {claudeAtts.length > 0 && <MessageAttachments items={claudeAtts} onPreview={setLightboxSrc} />}
@@ -1366,7 +1367,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                   value={inputMode}
                   onChange={handleInputModeChange}
                   disabled={modeSwitchDisabled || sending}
-                  agentLabel={AGENT_LABEL[agentType] || 'Claude'}
+                  agentLabel={AGENT_LABEL[displayAgent] || 'Claude'}
                 />
               )}
               {inputMode !== 'shell' && (

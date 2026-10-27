@@ -47,7 +47,8 @@ func (db *DB) migrate() error {
 			work_dir          TEXT NOT NULL DEFAULT '',
 			permission_mode   TEXT NOT NULL DEFAULT 'default',
 			allowed_tools     TEXT NOT NULL DEFAULT '',
-			last_active       TEXT NOT NULL DEFAULT (datetime('now'))
+			last_active       TEXT NOT NULL DEFAULT (datetime('now')),
+			disguise_agent    TEXT NOT NULL DEFAULT ''
 		);
 		CREATE TABLE IF NOT EXISTS messages (
 			id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -167,6 +168,8 @@ func (db *DB) migrate() error {
 	tryAlter(`ALTER TABLE sessions ADD COLUMN last_read_at TEXT NOT NULL DEFAULT ''`)
 	// queue_paused：上一個任務失敗／中斷時佇列暫停，需使用者手動繼續。
 	tryAlter(`ALTER TABLE sessions ADD COLUMN queue_paused INTEGER NOT NULL DEFAULT 0`)
+	// disguise_agent：Telegram 秘密會話的偽裝 agent（例如 claude、cursor、antigravity；空字串＝無偽裝）。
+	tryAlter(`ALTER TABLE sessions ADD COLUMN disguise_agent TEXT NOT NULL DEFAULT ''`)
 	// author：訊息說話者。空字串＝擁有者（含舊資料），訪客為其暱稱。
 	tryAlter(`ALTER TABLE messages ADD COLUMN author TEXT NOT NULL DEFAULT ''`)
 	tryAlter(`ALTER TABLE queued_messages ADD COLUMN author TEXT NOT NULL DEFAULT ''`)

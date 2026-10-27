@@ -5,7 +5,6 @@ const NEW_SESSION_AGENT_OPTIONS = [
   { value: 'antigravity', label: 'Antigravity' },
   { value: 'kiroacp', label: 'Kiro ACP' },
   { value: 'codex', label: 'Codex' },
-  { value: 'telegram', label: 'Telegram' },
 ];
 
 // 沒填名稱時的自動命名：有訊息就取首行，否則用 runner + 時間

@@ -419,8 +419,21 @@ function sessionStatusLabel(s) {
   return '';
 }
 
-function getAgentBadgeClass(agentType) {
-  const t = String(agentType || 'claude').toLowerCase();
+/** 回傳 session 顯示用的 agent_type（若為 Telegram 偽裝會話，回傳偽裝的 agent）。 */
+function sessionDisplayAgent(s) {
+  if (!s) return 'claude';
+  if (typeof s === 'string') return s;
+  if (s.agent_type === 'telegram' && s.disguise_agent) {
+    return s.disguise_agent;
+  }
+  return s.agent_type || 'claude';
+}
+
+function getAgentBadgeClass(agentType, session) {
+  let t = String(agentType || 'claude').toLowerCase();
+  if (session && session.agent_type === 'telegram' && session.disguise_agent) {
+    t = session.disguise_agent.toLowerCase();
+  }
   const map = {
     claude: 'bg-orange-500/20 text-orange-300',
     cursor: 'bg-emerald-500/20 text-emerald-300',
@@ -460,8 +473,11 @@ const AGENT_BADGE_INLINE_SVG = {
   },
 };
 
-function AgentBadgeIcon({ agentType }) {
-  const t0 = String(agentType || 'claude').toLowerCase();
+function AgentBadgeIcon({ agentType, session }) {
+  let t0 = String(agentType || 'claude').toLowerCase();
+  if (session && session.agent_type === 'telegram' && session.disguise_agent) {
+    t0 = session.disguise_agent.toLowerCase();
+  }
   const t = t0 === 'kiroacp' ? 'kiro' : t0;
   const inline = AGENT_BADGE_INLINE_SVG[t];
   if (inline) {

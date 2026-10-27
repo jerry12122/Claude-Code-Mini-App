@@ -105,3 +105,69 @@ func TestSessionListReturnsUnreadCount(t *testing.T) {
 	}
 }
 
+func TestCreateSessionTelegramDisguise(t *testing.T) {
+	database := testDB(t)
+	app := fiber.New()
+	handler := NewSessionHandler(database)
+	app.Post("/sessions", handler.Create)
+	app.Get("/sessions", handler.List)
+
+	// 使用 work_dir: "tg://@friend" 且 agent_type: "antigravity"
+	payload := `{"name":"","work_dir":"tg://@friend","agent_type":"antigravity","permission_mode":"default"}`
+	req := httptest.NewRequest("POST", "/sessions", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	res, err := app.Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != 201 {
+		t.Fatalf("expected HTTP 201, got %d", res.StatusCode)
+	}
+
+	var created db.Session
+	if err := json.NewDecoder(res.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+
+	if created.AgentType != "telegram" {
+		t.Fatalf("expected agent_type=telegram, got %s", created.AgentType)
+	}
+	if created.DisguiseAgent != "antigravity" {
+		t.Fatalf("expected disguise_agent=antigravity, got %s", created.DisguiseAgent)
+	}
+	if created.Description != "tg_target:@friend" {
+		t.Fatalf("expected description=tg_target:@friend, got %s", created.Description)
+	}
+	if created.WorkDir != "" {
+		t.Fatalf("expected work_dir='', got %s", created.WorkDir)
+	}
+	if !strings.HasPrefix(created.Name, "Antigravity · ") {
+		t.Fatalf("expected name to start with 'Antigravity · ', got %s", created.Name)
+	}
+
+	// 測試 GET /sessions 列表也有回傳 disguise_agent
+	reqList := httptest.NewRequest("GET", "/sessions", nil)
+	resList, err := app.Test(reqList)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resList.Body.Close()
+
+	var list []*db.Session
+	if err := json.NewDecoder(resList.Body).Decode(&list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(list))
+	}
+	if list[0].DisguiseAgent != "antigravity" {
+		t.Fatalf("expected list session disguise_agent=antigravity, got %s", list[0].DisguiseAgent)
+	}
+	if list[0].AgentType != "telegram" {
+		t.Fatalf("expected list session agent_type=telegram, got %s", list[0].AgentType)
+	}
+}
+
+

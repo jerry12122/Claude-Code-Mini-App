@@ -150,6 +150,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
           s.git_branch,
           s.description,
           s.agent_type,
+          s.disguise_agent,
           s.agent_session_id,
           s.id,
           ...(Array.isArray(s.cli_extra_args) ? s.cli_extra_args : []),
@@ -236,7 +237,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
     for (const s of displaySessions) {
       const raw = s.work_dir != null ? String(s.work_dir).trim() : '';
       let key = raw || unset;
-      if (s.agent_type === 'telegram') {
+      if (s.agent_type === 'telegram' && !s.disguise_agent) {
         key = 'Telegram 聊天室';
       }
       if (!map.has(key)) map.set(key, []);
@@ -320,7 +321,8 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
   const renderSessionRow = (s) => {
     const active = activeSessionId != null && s.id === activeSessionId;
     const extraArgN = Array.isArray(s.cli_extra_args) ? s.cli_extra_args.length : 0;
-    const agentLabel = AGENT_LABEL[s.agent_type] || s.agent_type || 'claude';
+    const displayAgent = sessionDisplayAgent(s);
+    const agentLabel = AGENT_LABEL[displayAgent] || displayAgent || 'claude';
     const unread = !active && isUnread(s);
     const unreadCountNum = typeof s.unread_count === 'number' ? s.unread_count : 1;
     const unreadBadgeText = unreadCountNum > 99 ? '99+' : String(unreadCountNum > 0 ? unreadCountNum : 1);
@@ -364,8 +366,8 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
             />
           ) : (
             <div className="flex items-center gap-2 min-w-0" title={rowTitle}>
-              <span className={`inline-flex shrink-0 items-center justify-center w-[22px] h-[22px] rounded-[6px] ${getAgentBadgeClass(s.agent_type)}`} title={agentLabel}>
-                <AgentBadgeIcon agentType={s.agent_type} />
+              <span className={`inline-flex shrink-0 items-center justify-center w-[22px] h-[22px] rounded-[6px] ${getAgentBadgeClass(displayAgent, s)}`} title={agentLabel}>
+                <AgentBadgeIcon agentType={displayAgent} session={s} />
               </span>
               <span
                 className={
@@ -637,7 +639,8 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
               {dirSessions.map((s) => {
                 const active = activeSessionId != null && s.id === activeSessionId;
                 const unread = !active && isUnread(s);
-                const agentLabel = AGENT_LABEL[s.agent_type] || s.agent_type || 'claude';
+                const displayAgent = sessionDisplayAgent(s);
+                const agentLabel = AGENT_LABEL[displayAgent] || displayAgent || 'claude';
                 const unreadCountNum = typeof s.unread_count === 'number' ? s.unread_count : 1;
                 const unreadBadgeText = unreadCountNum > 99 ? '99+' : String(unreadCountNum > 0 ? unreadCountNum : 1);
                 return (
@@ -668,10 +671,10 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
                     className={
                       'relative flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] transition-colors ' +
                       (active ? 'ring-2 ring-violet-500 ' : 'hover:brightness-110 ') +
-                      getAgentBadgeClass(s.agent_type)
+                      getAgentBadgeClass(displayAgent, s)
                     }
                   >
-                    <AgentBadgeIcon agentType={s.agent_type} />
+                    <AgentBadgeIcon agentType={displayAgent} session={s} />
                     {unread && (
                       <span
                         className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-violet-600 text-white text-[10px] font-bold flex items-center justify-center leading-none pointer-events-none ring-2 ring-[oklch(0.15_0.02_264)]"

@@ -44,13 +44,15 @@ type Session struct {
 	// Model/Effort 為使用者要求值（空字串＝不指定，交給 CLI 用預設）。
 	Model  string `json:"model"`
 	Effort string `json:"effort"`
+	// DisguiseAgent 為 Telegram 會話的偽裝外觀（例如 claude、cursor、antigravity；空字串＝無偽裝）。
+	DisguiseAgent string `json:"disguise_agent,omitempty"`
 	// LastReadAt 為使用者最後一次「正在看」此 session 的時間；配合 LastActive 判斷未讀（見前端 isUnread）。
 	LastReadAt string `json:"last_read_at"`
 	// UnreadCount 為在 last_read_at 之後接收到的非 user 訊息數量。
 	UnreadCount int `json:"unread_count"`
 }
 
-func (db *DB) CreateSession(name, description, workDir, permissionMode, agentType string, cliExtraArgs []string, inputMode string) (*Session, error) {
+func (db *DB) CreateSession(name, description, workDir, permissionMode, agentType string, cliExtraArgs []string, inputMode string, disguiseAgent ...string) (*Session, error) {
 	id := uuid.New().String()
 	workDir = strings.TrimSpace(workDir)
 	if permissionMode == "" {
@@ -76,9 +78,13 @@ func (db *DB) CreateSession(name, description, workDir, permissionMode, agentTyp
 		}
 		extraJSON = string(b)
 	}
+	disguise := ""
+	if len(disguiseAgent) > 0 {
+		disguise = strings.TrimSpace(disguiseAgent[0])
+	}
 	_, err := db.Exec(
-		`INSERT INTO sessions (id, name, description, work_dir, permission_mode, agent_type, cli_extra_args, input_mode, last_read_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-		id, name, description, workDir, permissionMode, agentType, extraJSON, inputMode,
+		`INSERT INTO sessions (id, name, description, work_dir, permission_mode, agent_type, cli_extra_args, input_mode, disguise_agent, last_read_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+		id, name, description, workDir, permissionMode, agentType, extraJSON, inputMode, disguise,
 	)
 	if err != nil {
 		return nil, err
@@ -88,7 +94,7 @@ func (db *DB) CreateSession(name, description, workDir, permissionMode, agentTyp
 
 func (db *DB) GetSession(id string) (*Session, error) {
 	row := db.QueryRow(
-		`SELECT s.id, s.agent_type, s.agent_session_id, s.name, s.description, s.work_dir, s.permission_mode, s.allowed_tools, s.pending_denials, s.last_active, s.status, s.cli_extra_args, s.input_mode, s.shell_pending, s.active_model, s.active_model_source, s.active_model_at, s.model, s.effort, s.last_read_at,
+		`SELECT s.id, s.agent_type, s.agent_session_id, s.name, s.description, s.work_dir, s.permission_mode, s.allowed_tools, s.pending_denials, s.last_active, s.status, s.cli_extra_args, s.input_mode, s.shell_pending, s.active_model, s.active_model_source, s.active_model_at, s.model, s.effort, s.last_read_at, s.disguise_agent,
 		       (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.created_at > s.last_read_at AND m.role != 'user' AND s.agent_type != 'telegram') AS unread_count
 		 FROM sessions s WHERE s.id = ?`, id,
 	)
@@ -97,7 +103,7 @@ func (db *DB) GetSession(id string) (*Session, error) {
 
 func (db *DB) ListSessions() ([]*Session, error) {
 	rows, err := db.Query(
-		`SELECT s.id, s.agent_type, s.agent_session_id, s.name, s.description, s.work_dir, s.permission_mode, s.allowed_tools, s.pending_denials, s.last_active, s.status, s.cli_extra_args, s.input_mode, s.shell_pending, s.active_model, s.active_model_source, s.active_model_at, s.model, s.effort, s.last_read_at,
+		`SELECT s.id, s.agent_type, s.agent_session_id, s.name, s.description, s.work_dir, s.permission_mode, s.allowed_tools, s.pending_denials, s.last_active, s.status, s.cli_extra_args, s.input_mode, s.shell_pending, s.active_model, s.active_model_source, s.active_model_at, s.model, s.effort, s.last_read_at, s.disguise_agent,
 		       (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.created_at > s.last_read_at AND m.role != 'user' AND s.agent_type != 'telegram') AS unread_count
 		 FROM sessions s ORDER BY s.last_active DESC`,
 	)
@@ -305,7 +311,7 @@ func scanSession(s scanner) (*Session, error) {
 	err := s.Scan(
 		&sess.ID, &sess.AgentType, &sess.AgentSessionID, &sess.Name, &sess.Description,
 		&sess.WorkDir, &sess.PermissionMode, &allowedTools, &sess.PendingDenials, &sess.LastActive, &sess.Status, &extraJSON, &sess.InputMode, &sess.ShellPending,
-		&sess.ActiveModel, &sess.ActiveModelSource, &sess.ActiveModelAt, &sess.Model, &sess.Effort, &sess.LastReadAt,
+		&sess.ActiveModel, &sess.ActiveModelSource, &sess.ActiveModelAt, &sess.Model, &sess.Effort, &sess.LastReadAt, &sess.DisguiseAgent,
 		&sess.UnreadCount,
 	)
 	if err != nil {

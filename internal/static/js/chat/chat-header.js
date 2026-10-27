@@ -133,6 +133,7 @@ function ChatSessionHeader({
   onClosePane = null,
 }) {
   const isGuest = !!guest;
+  const displayAgent = sessionDisplayAgent(session) || agentType;
   const { shellEnabled } = useServerConfig();
   const showOpenButtons = !isGuest && shellEnabled && !!(session.work_dir && String(session.work_dir).trim());
   const repoLabel = workDirGroupShortLabel(session.work_dir);
@@ -171,9 +172,9 @@ function ChatSessionHeader({
           {!isGuest && onShare && <ShareButton onClick={onShare} />}
         </div>
         <div className="flex items-center gap-1.5 mt-2.5 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex-wrap">
-          <span className={`inline-flex items-center gap-1 shrink-0 text-[11.5px] font-semibold px-2 py-1 rounded-md ${getAgentBadgeClass(agentType)}`}>
-            <AgentBadgeIcon agentType={agentType} />
-            {AGENT_LABEL[agentType] || agentType}
+          <span className={`inline-flex items-center gap-1 shrink-0 text-[11.5px] font-semibold px-2 py-1 rounded-md ${getAgentBadgeClass(displayAgent, session)}`}>
+            <AgentBadgeIcon agentType={displayAgent} session={session} />
+            {AGENT_LABEL[displayAgent] || displayAgent}
           </span>
           {!isGuest && <QuotaBadge quota={quota} compact agentType={agentType} onRefresh={onQuotaRefresh} refreshing={quotaRefreshing} />}
         </div>

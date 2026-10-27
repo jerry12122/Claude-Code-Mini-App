@@ -139,7 +139,7 @@ function SessionTabBar({
         const isActive = tabId === activeTab;
         const dotClass = sessionStatusDotClass(s);
         const statusLabel = sessionStatusLabel(s);
-        const agentType = s.agent_type || 'claude';
+        const agentType = sessionDisplayAgent(s);
 
         return (
           <div
@@ -206,7 +206,7 @@ function SessionTabBar({
               )}`}
               title={AGENT_LABEL[agentType] || agentType}
             >
-              <AgentBadgeIcon agentType={agentType} />
+              <AgentBadgeIcon agentType={agentType} session={s} />
             </span>
 
             {/* 背景/前景會話狀態點（執行中/待授權） */}

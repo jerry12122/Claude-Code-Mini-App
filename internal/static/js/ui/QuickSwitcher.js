@@ -78,26 +78,29 @@ function QuickSwitcher({ sessions, onSelect }) {
         />
         <div ref={listRef} className="max-h-[50vh] overflow-y-auto app-scroll py-1">
           {matches.length === 0 && <div className="px-4 py-3 text-xs text-slate-500">沒有符合的 session</div>}
-          {matches.map((s, i) => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => pick(s)}
-              onMouseMove={() => setIdx(i)}
-              className={`w-full flex items-center gap-2 px-4 py-2 text-left ${i === idx ? 'bg-cyan-500/15' : ''}`}
-            >
-              <span
-                className={`inline-flex shrink-0 items-center justify-center w-[22px] h-[22px] rounded-[6px] ${getAgentBadgeClass(s.agent_type)}`}
-                title={s.agent_type || 'claude'}
+          {matches.map((s, i) => {
+            const displayAgent = sessionDisplayAgent(s);
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => pick(s)}
+                onMouseMove={() => setIdx(i)}
+                className={`w-full flex items-center gap-2 px-4 py-2 text-left ${i === idx ? 'bg-cyan-500/15' : ''}`}
               >
-                <AgentBadgeIcon agentType={s.agent_type} />
-              </span>
+                <span
+                  className={`inline-flex shrink-0 items-center justify-center w-[22px] h-[22px] rounded-[6px] ${getAgentBadgeClass(displayAgent, s)}`}
+                  title={displayAgent}
+                >
+                  <AgentBadgeIcon agentType={displayAgent} session={s} />
+                </span>
               <span className="min-w-0 truncate text-sm text-slate-100">{s.name || '未命名'}</span>
               <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-slate-500" title={s.work_dir || ''}>
                 {workDirGroupShortLabel(s.work_dir)}
               </span>
             </button>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

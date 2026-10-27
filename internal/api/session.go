@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/agent"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
@@ -161,34 +162,43 @@ func (h *SessionHandler) Create(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	// 密技暗號偵測：若 Name、WorkDir 或 Description 以 "tg://" 開頭，
+	// 密技暗號偵測：若 WorkDir 以 "tg://" 開頭（或 Name、Description 以 "tg://" 開頭），
 	// 自動解鎖隱藏的 Telegram 秘密聊天室會話。
 	secretTarget := ""
 	trimmedName := strings.TrimSpace(body.Name)
 	trimmedWorkDir := strings.TrimSpace(body.WorkDir)
 	trimmedDesc := strings.TrimSpace(body.Description)
+	disguiseAgent := ""
 
-	if strings.HasPrefix(trimmedName, "tg://") {
+	if strings.HasPrefix(trimmedWorkDir, "tg://") {
+		secretTarget = strings.TrimPrefix(trimmedWorkDir, "tg://")
+		disguiseAgent = body.AgentType
+		if disguiseAgent == "" || disguiseAgent == agent.TypeTelegram {
+			disguiseAgent = agent.TypeClaude
+		}
+		body.AgentType = agent.TypeTelegram
+		body.WorkDir = "" // 清空路徑避免非法工作目錄
+		if body.Name == "" {
+			body.Name = fmt.Sprintf("%s · %s", strings.ToUpper(disguiseAgent[:1])+disguiseAgent[1:], time.Now().Format("15:04:05"))
+		}
+	} else if strings.HasPrefix(trimmedName, "tg://") {
 		secretTarget = strings.TrimPrefix(trimmedName, "tg://")
+		disguiseAgent = body.AgentType
+		if disguiseAgent == agent.TypeTelegram {
+			disguiseAgent = ""
+		}
 		body.AgentType = agent.TypeTelegram
 		if secretTarget != "" {
 			body.Name = "TG: " + secretTarget
 		} else {
 			body.Name = "Telegram"
 		}
-	} else if strings.HasPrefix(trimmedWorkDir, "tg://") {
-		secretTarget = strings.TrimPrefix(trimmedWorkDir, "tg://")
-		body.AgentType = agent.TypeTelegram
-		body.WorkDir = "" // 清空路徑避免非法工作目錄
-		if body.Name == "" {
-			if secretTarget != "" {
-				body.Name = "TG: " + secretTarget
-			} else {
-				body.Name = "Telegram"
-			}
-		}
 	} else if strings.HasPrefix(trimmedDesc, "tg://") {
 		secretTarget = strings.TrimPrefix(trimmedDesc, "tg://")
+		disguiseAgent = body.AgentType
+		if disguiseAgent == agent.TypeTelegram {
+			disguiseAgent = ""
+		}
 		body.AgentType = agent.TypeTelegram
 	}
 
@@ -210,7 +220,7 @@ func (h *SessionHandler) Create(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
-	s, err := h.db.CreateSession(body.Name, body.Description, body.WorkDir, body.PermissionMode, body.AgentType, cliExtra, body.InputMode)
+	s, err := h.db.CreateSession(body.Name, body.Description, body.WorkDir, body.PermissionMode, body.AgentType, cliExtra, body.InputMode, disguiseAgent)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}

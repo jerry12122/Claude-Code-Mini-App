@@ -153,6 +153,7 @@ function ForwardModal({
                 {targets.map((s) => {
                   const active = selectedId === s.id;
                   const shortDir = workDirGroupShortLabel(s.work_dir);
+                  const displayAgent = sessionDisplayAgent(s);
                   return (
                     <button
                       key={s.id}
@@ -165,10 +166,10 @@ function ForwardModal({
                       }`}
                     >
                       <span
-                        className={`inline-flex items-center gap-0.5 shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-mono uppercase ${getAgentBadgeClass(s.agent_type)}`}
+                        className={`inline-flex items-center gap-0.5 shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-mono uppercase ${getAgentBadgeClass(displayAgent, s)}`}
                       >
-                        <AgentBadgeIcon agentType={s.agent_type} />
-                        {s.agent_type || 'claude'}
+                        <AgentBadgeIcon agentType={displayAgent} session={s} />
+                        {displayAgent}
                       </span>
                       <span className="min-w-0 flex-1 truncate font-mono text-xs text-slate-300" title={s.work_dir || ''}>
                         {shortDir}
@@ -204,7 +205,7 @@ function ForwardModal({
                     ) : (
                       sessionsList.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {(s.agent_type || 'claude') + ' · ' + workDirGroupShortLabel(s.work_dir)}
+                          {(sessionDisplayAgent(s)) + ' · ' + workDirGroupShortLabel(s.work_dir)}
                         </option>
                       ))
                     )}
