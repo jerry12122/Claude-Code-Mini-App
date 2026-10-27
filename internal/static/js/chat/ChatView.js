@@ -174,6 +174,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     setAttachments(next);
   }, []);
   const [dragOver, setDragOver] = useState(false);
+  const chatRootRef = useRef(null);
   const dragDepthRef = useRef(0);
   const bottomRef = useRef(null);
   const chatScrollRef = useRef(null);
@@ -490,6 +491,23 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       clearTimeout(timer);
     };
   }, [histLoaded, session.id]);
+
+  // 監聽 Mermaid 圖表放大事件，傳入燈箱放大顯示
+  useEffect(() => {
+    const handleMermaidZoom = (e) => {
+      // 避免 SplitLayout（左右分割視窗）時兩側 ChatView 同時響應全域事件，導致開啟雙層燈箱（需按兩次關閉）
+      if (chatRootRef.current && e.target instanceof Node && !chatRootRef.current.contains(e.target)) {
+        return;
+      }
+      if (e.detail && (e.detail.svg || e.detail.src)) {
+        setLightboxSrc({ svg: e.detail.svg, src: e.detail.src });
+      }
+    };
+    document.addEventListener('ra-mermaid-zoom', handleMermaidZoom);
+    return () => {
+      document.removeEventListener('ra-mermaid-zoom', handleMermaidZoom);
+    };
+  }, []);
 
   // 狀態切回可輸入時（例如 THINKING／STREAMING 結束）自動 focus。
   // 只在閒置狀態 focus：執行中輸入框也可用（排隊），若每次狀態變化都 focus，手機鍵盤會反覆彈出。
@@ -995,6 +1013,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
 
   return (
     <div
+      ref={chatRootRef}
       className={`flex flex-col ${fullHeight ? 'h-app' : 'h-full'}`}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
@@ -1534,7 +1553,11 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       />
 
       {lightboxSrc && (
-        <ChatImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+        <ChatImageLightbox
+          src={typeof lightboxSrc === 'string' ? lightboxSrc : (lightboxSrc ? lightboxSrc.src : '')}
+          svg={typeof lightboxSrc === 'object' && lightboxSrc ? lightboxSrc.svg : null}
+          onClose={() => setLightboxSrc(null)}
+        />
       )}
 
       {shareOpen && !isGuest && (
@@ -1603,8 +1626,8 @@ function QueuedMessages({ items, paused, canResume, onRemove, onResume, sessionI
   );
 }
 
-/** 聊天截圖燈箱：鎖背景捲動，支援雙指縮放／單指拖曳／雙擊切換縮放。 */
-function ChatImageLightbox({ src, onClose }) {
+/** 聊天截圖與圖表燈箱：鎖背景捲動，支援雙指縮放／單指拖曳／雙擊切換縮放。 */
+function ChatImageLightbox({ src, svg, onClose }) {
   const [{ scale, x, y }, setTransform] = useState({ scale: 1, x: 0, y: 0 });
   const transformRef = useRef({ scale: 1, x: 0, y: 0 });
   const pinchRef = useRef(null);
@@ -1711,7 +1734,7 @@ function ChatImageLightbox({ src, onClose }) {
   const onWheel = (e) => {
     e.preventDefault();
     const cur = transformRef.current;
-    const next = cur.scale * (e.deltaY < 0 ? 1.1 : 0.9);
+    const next = cur.scale * (e.deltaY < 0 ? 1.15 : 0.85);
     applyTransform({ scale: next, x: cur.x, y: cur.y });
   };
 
@@ -1726,21 +1749,70 @@ function ChatImageLightbox({ src, onClose }) {
       onWheel={onWheel}
       role="presentation"
     >
-      <img
-        src={src}
-        alt=""
-        draggable={false}
-        className="max-w-[95vw] max-h-[95vh] object-contain rounded-lg select-none"
-        style={{
-          transform: `translate3d(${x}px, ${y}px, 0) scale(${scale})`,
-          transformOrigin: 'center center',
-          touchAction: 'none',
-          cursor: scale > 1 ? 'grab' : 'zoom-in',
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
         }}
-        onClick={(e) => e.stopPropagation()}
-      />
-      <div className="pointer-events-none absolute bottom-6 left-0 right-0 text-center text-[11px] text-white/55 px-4">
-        雙指縮放 · 放大後可拖曳 · 雙擊切換 · 點空白關閉
+        className="absolute top-4 right-4 z-[210] flex items-center justify-center w-10 h-10 rounded-full bg-white/10 hover:bg-white/25 text-white transition-colors cursor-pointer select-none"
+        aria-label="關閉"
+        title="關閉 (Esc)"
+      >
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+
+      {svg ? (
+        <div
+          className="ra-lightbox-svg-container pointer-events-none flex items-center justify-center p-4 select-none"
+          style={{
+            width: 'min(92vw, 1200px)',
+            height: '85vh',
+            transform: `translate3d(${x}px, ${y}px, 0) scale(${scale})`,
+            transformOrigin: 'center center',
+            touchAction: 'none',
+            cursor: scale > 1 ? 'grab' : 'zoom-in',
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (Date.now() - lastTapRef.current < 280) {
+              lastTapRef.current = 0;
+              applyTransform(transformRef.current.scale > 1.05 ? { scale: 1, x: 0, y: 0 } : { scale: 2.2, x: 0, y: 0 });
+            } else {
+              lastTapRef.current = Date.now();
+            }
+          }}
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
+      ) : (
+        <img
+          src={src}
+          alt=""
+          draggable={false}
+          className="max-w-[95vw] max-h-[95vh] object-contain rounded-lg select-none"
+          style={{
+            transform: `translate3d(${x}px, ${y}px, 0) scale(${scale})`,
+            transformOrigin: 'center center',
+            touchAction: 'none',
+            cursor: scale > 1 ? 'grab' : 'zoom-in',
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (Date.now() - lastTapRef.current < 280) {
+              lastTapRef.current = 0;
+              applyTransform(transformRef.current.scale > 1.05 ? { scale: 1, x: 0, y: 0 } : { scale: 2.5, x: 0, y: 0 });
+            } else {
+              lastTapRef.current = Date.now();
+            }
+          }}
+        />
+      )}
+
+      <div className="pointer-events-none absolute bottom-6 left-0 right-0 text-center text-[11px] text-white/55 px-4 select-none">
+        雙指縮放 · 放大後可拖曳 · 雙擊切換 · 點空白或按 ✕ 關閉
       </div>
     </div>
   );

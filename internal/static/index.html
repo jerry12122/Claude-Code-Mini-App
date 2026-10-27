@@ -133,6 +133,14 @@
     .prose table th { background: oklch(0.22 0.02 264); font-weight: 600; }
     .prose .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0.5em 0; }
     .prose img.chat-img { max-width: 240px; max-height: 240px; width: auto; height: auto; border-radius: 8px; display: block; margin: 0.5em 0; cursor: zoom-in; }
+    .ra-lightbox-svg-container svg {
+      width: 100% !important;
+      height: 100% !important;
+      max-width: 100% !important;
+      max-height: 100% !important;
+      object-fit: contain;
+      pointer-events: auto;
+    }
     /* 1a：使用者實心紫泡泡；Claude 無邊框文件流 */
     .bubble-claude {
       background: transparent;
@@ -300,6 +308,7 @@
 <script type="text/babel" data-presets="react-classic" src="./js/chat/MessageActions.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/chat/AttachmentCards.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/chat/SelectionQuotePopover.js"></script>
+<script src="./js/chat/MermaidBlock.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/chat/ChatView.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/setup/setupForm.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/setup/SetupWizard.js"></script>

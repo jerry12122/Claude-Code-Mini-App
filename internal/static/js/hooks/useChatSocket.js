@@ -369,9 +369,13 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
             // 否則只在連線建立當下標過一次，中途 agent 的新回覆會讓列表誤判成未讀。
             markRead();
             setMessages((prev) => {
-              const updated = prev.map((m, i) =>
-                i === prev.length - 1 ? { ...m, streaming: false, status: m.status === 'pending' ? 'done' : m.status } : m
-              );
+              const updated = prev.map((m, i) => {
+                if (i === prev.length - 1 && m.streaming) {
+                  const html = m.content ? parseMarkdown(m.content, { streaming: false }) : m.html;
+                  return { ...m, html, streaming: false, status: m.status === 'pending' ? 'done' : m.status };
+                }
+                return m;
+              });
               const last = updated[updated.length - 1];
               // 移除因中斷而從未收到任何內容的暫存 claude 泡泡（無 DB id、無內容）
               if (last && last.role === 'claude' && last.id == null && !last.content && !last.html) {
@@ -427,7 +431,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
             streamBuf.current = '';
           }
           streamBuf.current += msg.content;
-          const html = parseMarkdown(streamBuf.current);
+          const html = parseMarkdown(streamBuf.current, { streaming: true });
           setMessages((prev) => prev.map((m, i) =>
             i === prev.length - 1 ? { ...m, content: streamBuf.current, html, thinking: false, streaming: true, status: 'pending' } : m
           ));

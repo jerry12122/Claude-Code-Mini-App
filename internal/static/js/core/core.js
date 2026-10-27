@@ -449,7 +449,8 @@ marked.use({
   },
 });
 
-const parseMarkdown = (text) => {
+function parseMarkdown(text, options) {
+  const isStreaming = Boolean(options?.streaming || options === true);
   const html = marked.parse(text);
   return html
     .replace(/<table>/g, '<div class="table-wrap"><table>')
@@ -457,6 +458,10 @@ const parseMarkdown = (text) => {
     // <pre><code class="language-xxx">raw text</code></pre> → 用 hljs 上色 + 提升 data-lang 到 <pre> + 加複製按鈕。
     .replace(/<pre><code class="language-([\w+-]+)">([\s\S]*?)<\/code><\/pre>/g, (m, lang, inner) => {
       const raw = inner.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+      if (lang === 'mermaid') {
+        const b64 = btoa(unescape(encodeURIComponent(raw)));
+        return `<ra-mermaid data-code-b64="${b64}" data-streaming="${isStreaming ? 'true' : 'false'}"></ra-mermaid>`;
+      }
       let out;
       try {
         out = hljs.getLanguage(lang) ? hljs.highlight(raw, { language: lang }).value : hljs.highlightAuto(raw).value;
@@ -473,7 +478,7 @@ const parseMarkdown = (text) => {
     })
     // agent 傳回的圖片（如截圖）先縮成縮圖，點擊由 ChatView 的 handleProseClick 開燈箱放大。
     .replace(/<img /g, '<img class="chat-img" loading="lazy" ');
-};
+}
 
 /** 顯示用：permission_mode 值 → 中文標籤。包含 Claude/Cursor 與 Gemini 兩套值。 */
 const PERM_MODE_LABEL = {
