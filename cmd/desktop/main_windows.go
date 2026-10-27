@@ -88,6 +88,10 @@ func main() {
 		LogLevel:    slog.LevelInfo,
 		// 前端 → Go 的 raw message；Handle 會驗證來源與 action，這裡不做任何信任判斷。
 		RawMessageHandler: func(w application.Window, msg string, origin *application.OriginInfo) {
+			if msg == "open-devtools" {
+				w.OpenDevTools()
+				return
+			}
 			if bridge == nil {
 				return
 			}
@@ -143,7 +147,7 @@ func main() {
 			// DisableMenu 後 WebView2 內建的重整快捷鍵不一定生效；前端改了靠這個重載。
 			"f5":     func(w application.Window) { w.Reload() },
 			"ctrl+r": func(w application.Window) { w.Reload() },
-			"f12":    func(w application.Window) { w.OpenDevTools() }, // -tags production 時為空實作
+			"f12":    func(w application.Window) { w.OpenDevTools() }, // -tags "production,devtools" 或非 production 建置時啟用
 		},
 	})
 	show = func() {

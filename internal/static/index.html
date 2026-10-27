@@ -3,6 +3,7 @@
 <head>
   <!-- 必須最先載入：視窗載入外部 URL 時 Wails runtime 不會就緒，這段會送出 wails:runtime:ready 讓 Go 端 flush ExecJS 佇列 -->
   <script src="./js/wails-runtime-ready.js"></script>
+  <script src="./js/devtool-easter-egg.js"></script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
   <!-- 選用：反代下 API 與自動推算不一致時設 content="/部署前綴"（無則由目前 index.html 目錄自動推算） -->

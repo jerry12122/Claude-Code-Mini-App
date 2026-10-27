@@ -2,6 +2,7 @@
 /claude-miniapp
 /claude-miniapp.exe
 *.exe
+*.exe~
 *.out
 *.test
 

@@ -42,7 +42,7 @@ stage() { # $1=目錄名（位於 stage_root 底下）
 # Windows：server + 桌面（production 標籤，前端嵌入）
 stage "$w"
 go build -o "$stage_root/$w/claude-miniapp.exe" ./cmd/server
-go build -tags production -ldflags "-H windowsgui" -buildvcs=true \
+go build -tags "production,devtools" -ldflags "-H windowsgui" -buildvcs=true \
   -o "$stage_root/$w/claude-miniapp-desktop.exe" ./cmd/desktop
 (cd "$stage_root" && 7z a -tzip "$out/$zip_name" "$w" >/dev/null)
 
