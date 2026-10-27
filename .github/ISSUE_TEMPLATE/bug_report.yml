@@ -1,0 +1,76 @@
+name: Bug Report
+description: Create a report to help us fix an issue
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue! Please check if a similar issue or discussion already exists.
+  - type: dropdown
+    id: agent_type
+    attributes:
+      label: Agent CLI
+      description: Which coding agent was active when the bug occurred?
+      options:
+        - Claude Code
+        - Cursor Agent
+        - Codex
+        - Kiro ACP
+        - Antigravity
+        - Not agent-specific / General UI
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Operating Environment
+      description: How are you running Claude Code Mini App?
+      options:
+        - Windows Desktop App (claude-miniapp-desktop.exe)
+        - Windows Server (claude-miniapp.exe) + Browser
+        - Linux Server (claude-miniapp) + Browser
+        - Telegram Mini App (TMA)
+        - macOS (Built from source)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App Version
+      description: What version of Claude Code Mini App are you using? (Check Settings → Version)
+      placeholder: e.g. v0.15.0
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem Description
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Step-by-step instructions to reproduce the behavior.
+      placeholder: |
+        1. Open session ...
+        2. Send message ...
+        3. See error ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs or Error Output
+      description: Please paste any relevant server logs (`logs/server.log` or Settings → Logs) or console errors.
+      render: shell
+    validations:
+      required: false
