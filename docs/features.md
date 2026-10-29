@@ -28,6 +28,9 @@
 
 - **Temporary sharing** — Share a session with a friend via link + 6-digit PIN + nickname (default 1 hour, up to 7 days). Guests join from any browser as read-only `viewer` or full-access `editor`; messages show who said what, and ending the share kicks everyone out at once
 - **MCP server** — Expose sessions to other agents over Streamable HTTP (`POST /mcp`, off by default): operate sessions, read chat history, and query cross-session activity; `ask_session` asks another session and waits for its answer, with a hop limit (`mcp_max_hops`) to stop agent-to-agent loops
+
+  Queue tools use the same MCP authentication: `get_queue({"session_id":"…"})` returns `{"queue":[{"id":123,"content":"…","created_at":"…"}],"queue_paused":false}` in FIFO order (`queue: []` when empty). Items may also include `author` and `attachments`. `delete_queue_message({"session_id":"…","message_id":123})` removes only that session's queued item and broadcasts the updated queue, returning `{"ok":true}` even if the item is already absent. Both reject blank or unknown sessions; deletion also rejects non-positive IDs. Deletion does not interrupt running tasks or resume a paused queue.
+
 - **Auth** — Telegram `initData` + allowlist; optional web login on private IPs. Forwarded IP headers are accepted only from `web.trusted_proxies` (loopback by default); configure exact CIDRs for other proxies, or an empty list to disable header handling
 - **Optional shell** — Run commands in `work_dir` (off by default); when on, also shows "Open in VS Code" / "Open folder" buttons in the session header (desktop only)
 - **Version info** — Settings shows the app version and the Git commit it was built from

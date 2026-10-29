@@ -1430,10 +1430,9 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				dispatchInput(msg)
 
 			case "queue_remove":
-				if err := database.DeleteQueuedMessage(sessionID, msg.ID); err != nil {
+				if err := RemoveQueuedMessage(database, sessionID, msg.ID); err != nil {
 					slog.Info(fmt.Sprintf("[ws] DeleteQueuedMessage: %v", err))
 				}
-				broadcastQueue()
 
 			case "queue_resume":
 				resumeQueue()

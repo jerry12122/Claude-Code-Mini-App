@@ -118,6 +118,35 @@ func queueLen(database *db.DB, sessionID string) int {
 	return len(q)
 }
 
+func TestRemoveQueuedMessageBroadcasts(t *testing.T) {
+	database, _ := startTestServer(t)
+	s, err := database.CreateSession("queue-delete", "", t.TempDir(), "default", "fakeq", nil, "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	q, err := database.EnqueueMessage(s.ID, "remove me", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SetQueuePaused(s.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	events := make(chan serverMsg, 1)
+	unsub := hub.Subscribe(s.ID, func(msg serverMsg) bool { events <- msg; return true })
+	defer unsub()
+	if err := RemoveQueuedMessage(database, s.ID, q.ID); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case ev := <-events:
+		if ev.Type != "queue_update" || len(ev.Queue) != 0 || !ev.QueuePaused {
+			t.Fatalf("wrong queue update: %+v", ev)
+		}
+	default:
+		t.Fatal("queue deletion must notify subscribers")
+	}
+}
+
 func TestQueue_RunsInOrderAndPausesOnFailure(t *testing.T) {
 	database, wsURL := startTestServer(t)
 	s, err := database.CreateSession("q", "", t.TempDir(), "default", "fakeq", nil, "agent")

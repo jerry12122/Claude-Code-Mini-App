@@ -188,6 +188,51 @@ func toMessageOut(m *db.Message, maxChars int, includeResult bool) messageOut {
 	return o
 }
 
+// --- get_queue / delete_queue_message ---
+
+type getQueueOut struct {
+	Queue       []db.QueuedMessage `json:"queue"`
+	QueuePaused bool               `json:"queue_paused"`
+}
+
+func (d *deps) getQueue(_ context.Context, _ *gomcp.CallToolRequest, in sessionIDIn) (*gomcp.CallToolResult, getQueueOut, error) {
+	sessionID := strings.TrimSpace(in.SessionID)
+	if sessionID == "" {
+		return nil, getQueueOut{}, fmt.Errorf("session_id 不可為空")
+	}
+	paused, err := d.db.QueuePaused(sessionID)
+	if err != nil {
+		return nil, getQueueOut{}, err
+	}
+	queue, err := d.db.ListQueuedMessages(sessionID)
+	if err != nil {
+		return nil, getQueueOut{}, err
+	}
+	return nil, getQueueOut{Queue: queue, QueuePaused: paused}, nil
+}
+
+type deleteQueueMessageIn struct {
+	SessionID string `json:"session_id"`
+	MessageID int64  `json:"message_id" jsonschema:"get_queue 回傳的 queue 項目 id，必須大於 0"`
+}
+
+func (d *deps) deleteQueueMessage(_ context.Context, _ *gomcp.CallToolRequest, in deleteQueueMessageIn) (*gomcp.CallToolResult, okOut, error) {
+	sessionID := strings.TrimSpace(in.SessionID)
+	if sessionID == "" {
+		return nil, okOut{}, fmt.Errorf("session_id 不可為空")
+	}
+	if in.MessageID <= 0 {
+		return nil, okOut{}, fmt.Errorf("message_id 必須大於 0")
+	}
+	if _, err := d.db.GetSession(sessionID); err != nil {
+		return nil, okOut{}, err
+	}
+	if err := ws.RemoveQueuedMessage(d.db, sessionID, in.MessageID); err != nil {
+		return nil, okOut{}, err
+	}
+	return nil, okOut{OK: true}, nil
+}
+
 // --- list_activity ---
 
 type listActivityIn struct {
@@ -591,6 +636,8 @@ func registerTools(s *gomcp.Server, d *deps) {
 	gomcp.AddTool(s, &gomcp.Tool{Name: "create_session", Description: "建立新 session"}, d.createSession)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "delete_session", Description: "刪除 session"}, d.deleteSession)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "get_messages", Description: "讀取 session 歷史訊息；建議帶 since/until/limit，避免整包歷史"}, d.getMessages)
+	gomcp.AddTool(s, &gomcp.Tool{Name: "get_queue", Description: "讀取指定 session 尚未開始執行的訊息佇列（FIFO，含 id、內容、署名、時間與附件）及 queue_paused；空佇列回傳 []"}, d.getQueue)
+	gomcp.AddTool(s, &gomcp.Tool{Name: "delete_queue_message", Description: "刪除指定 session 的單則待執行訊息，message_id 取自 get_queue 的 id，並即時更新畫面。訊息已不在該佇列時仍回傳 ok；不會中斷已開始的任務或解除佇列暫停"}, d.deleteQueueMessage)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "list_activity", Description: "依時間列出跨 session 活動（日報／秘書用）。since 建議帶時區。預設只回 user 訊息。操控 session 仍用 create_session / send_message"}, d.listActivity)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "send_message", Description: "非阻塞送出給目標 session（對方忙碌時排入佇列）。session 互問／討論時必填 from_session_id（你自己的 miniapp session_id），伺服器會蓋上自介與回覆署名；立刻回傳，用 get_status 輪詢結果。要直接拿回答請用 ask_session"}, d.sendMessage)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "post_message", Description: "主動將回覆、通知或執行結果寫入指定 session，立刻呈現在聊天畫面中，不觸發目標 session 的 Agent 執行（不消耗額外 token、不啟動 CLI）。目標 session 正在執行其他任務時亦可寫入"}, d.postMessage)

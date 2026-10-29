@@ -28,6 +28,9 @@
 
 - **臨時共享** — 以連結 + 6 位數 PIN + 暱稱把 Session 分享給朋友（預設 1 小時，最長 7 天）。訪客用任何瀏覽器加入，角色為唯讀 `viewer` 或完整權限 `editor`；訊息會標示說話者，結束分享即刻踢出所有訪客
 - **MCP server** — 透過 Streamable HTTP（`POST /mcp`）讓其他 agent 操作 session、讀聊天紀錄、查跨 session 活動；`ask_session` 同步詢問另一個 session 並取回答覆，互問有跳數上限（`mcp_max_hops`）防止無限迴圈（預設關閉）
+
+  佇列工具沿用 MCP 驗證：`get_queue({"session_id":"…"})` 依 FIFO 回傳 `{"queue":[{"id":123,"content":"…","created_at":"…"}],"queue_paused":false}`（空佇列為 `queue: []`），項目也可能含 `author`、`attachments`。`delete_queue_message({"session_id":"…","message_id":123})` 只刪除該 session 的待執行項目並推播最新佇列，回傳 `{"ok":true}`；項目已不存在時仍成功。兩者皆拒絕空白或不存在的 session，刪除另拒絕非正整數 ID。不會中斷執行中的任務或恢復暫停的佇列。
+
 - **驗證** — Telegram `initData` + 白名單；可選內網密碼登入。`web.trusted_proxies` 預設只信任同機 loopback 代理的 IP 標頭；其他代理須設定精確 CIDR，空清單則停用標頭解析
 - **選用 Shell** — 於 `work_dir` 執行指令（預設關閉）；開啟後會在會話 header 顯示「開啟 VSCode／開啟目錄」按鈕（僅桌面版）
 - **版本資訊** — 設定頁顯示應用程式版本與建置所依據的 Git commit

@@ -124,6 +124,27 @@ func loadQueueState(database *db.DB, sessionID string) ([]db.QueuedMessage, bool
 	return q, paused
 }
 
+// RemoveQueuedMessage 與佇列啟動共用鎖，刪除後推播最新佇列給所有訂閱者。
+// 刪除是冪等操作：訊息不在指定 session 的佇列時仍成功。
+func RemoveQueuedMessage(database *db.DB, sessionID string, id int64) error {
+	dl := dispatchLock(sessionID)
+	dl.Lock()
+	defer dl.Unlock()
+	if err := database.DeleteQueuedMessage(sessionID, id); err != nil {
+		return err
+	}
+	q, err := database.ListQueuedMessages(sessionID)
+	if err != nil {
+		return err
+	}
+	paused, err := database.QueuePaused(sessionID)
+	if err != nil {
+		return err
+	}
+	hub.Broadcast(sessionID, serverMsg{Type: "queue_update", Queue: q, QueuePaused: paused})
+	return nil
+}
+
 // syncMsgRow 是 sync／telegram_scope 事件中的一則訊息（Telegram 欄位與 HTTP 分頁同一份 DTO）。
 type syncMsgRow struct {
 	ID          int64           `json:"id"`
