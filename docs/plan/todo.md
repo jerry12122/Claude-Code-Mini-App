@@ -20,6 +20,7 @@
 
 ## ✅ 本輪完成（2026-10-16，v0.12.0／v0.13.0）
 
+- [x] 深色／淺色／跟隨系統主題切換（設定頁「外觀」最上方，只存本機 `cc_theme_v1`，預設深色；語意 token 加 `tailwind.config` 映射，涵蓋 Ctrl+P、下拉選單、浮層、程式碼高亮與 Mermaid；規格見 `docs/spectra/specs/theme-switching`）
 - [x] 桌面版會話分頁：群組分頁列、側欄與分頁拖放（中央加入、單群組邊緣分割）、`Ctrl+\` 分割／合併、`Ctrl+Alt+←/→` 切換群組焦點；移除側欄「在副視窗開啟」按鈕；作用中面板與側欄選中列加外框（規格：`docs/spectra/specs/session-tabs`）
 - [x] 輸入列模型控制（Model／Effort／權限模式移到輸入列）與頂欄用量進度條（`docs/spectra/specs/composer-model-controls`、`quota-usage-bars`）
 - [x] 修正 claude 回完話但程序未退出（`ScheduleWakeup`）時畫面 IDLE、後端卻視為忙碌而讓新訊息排隊且無法中斷：超過 3 秒未退出改推 `lingering`，前端顯示中斷鈕

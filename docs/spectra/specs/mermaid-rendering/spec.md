@@ -214,10 +214,10 @@ tests:
 ---
 ### Requirement: Dark theme visual consistency
 
-The system SHALL initialize Mermaid with dark theme settings matching the application color variables.
+The system SHALL initialize Mermaid with theme settings matching the effective application theme: dark settings (`theme: 'dark'`) when the effective theme is dark or cannot be determined, and light settings (`theme: 'default'` with light application color variables) when the effective theme is light. When the effective theme changes, the system SHALL re-initialize Mermaid with the settings for the new theme and SHALL re-render every diagram that is currently displayed.
 
 #### Scenario: Dark theme configuration applied
-- **WHEN** the Mermaid library is initialized
+- **WHEN** the Mermaid library is initialized while the effective theme is dark
 - **THEN** the system SHALL apply dark mode with background, line color, and text colors matching the design system
 
 ##### Example: Theme initialization parameters
@@ -225,35 +225,54 @@ The system SHALL initialize Mermaid with dark theme settings matching the applic
 - **WHEN** `mermaid.initialize()` is executed
 - **THEN** the configuration includes `theme: 'dark'` and `securityLevel: 'strict'`
 
+#### Scenario: Light theme configuration applied
+- **WHEN** the Mermaid library is initialized while the effective theme is light
+- **THEN** the configuration SHALL include `theme: 'default'`, `themeVariables.darkMode` equal to `false`, a light background, and `securityLevel: 'strict'`
+
+#### Scenario: Unknown theme defaults to dark
+- **WHEN** the configuration is built in an environment where no effective theme can be read
+- **THEN** the configuration SHALL be the dark configuration
+
+#### Scenario: Displayed diagrams redraw on theme change
+- **WHEN** a rendered Mermaid diagram is visible and the user switches the theme from dark to light
+- **THEN** the system SHALL re-render that diagram with the light configuration, and the diagram toolbar and container SHALL use light-theme colors
+
+##### Example: Streaming diagram is not rendered by a theme change
+- **GIVEN** a Mermaid block whose message is still streaming
+- **WHEN** the theme changes
+- **THEN** the system SHALL NOT invoke SVG rendering for that block until streaming completes
+
 
 <!-- @trace
-source: mermaid-rendering
-updated: 2026-10-27
+source: theme-switch
+updated: 2026-11-03
 code:
-  - scripts/devtool-easter-egg.test.cjs
-  - internal/db/session.go
+  - internal/static/js/app.js
+  - internal/static/js/chat/MentionMenu.js
   - internal/static/js/chat/MermaidBlock.js
   - internal/static/js/core/core.js
-  - internal/static/js/chat/MentionMenu.js
-  - cmd/desktop/main_windows.go
-  - internal/static/js/ui/SessionTabs.js
-  - internal/static/js/devtool-easter-egg.js
-  - internal/static/js/chat/ForwardModal.js
-  - internal/static/js/ui/ui-atoms.js
-  - internal/static/js/chat/chat-header.js
-  - build.bat
-  - internal/static/js/hooks/useChatSocket.js
-  - internal/api/session.go
   - internal/static/js/session/SessionView.js
-  - internal/static/index.html
-  - internal/static/js/session/NewSessionComposer.js
-  - scripts/mermaid-render.test.cjs
-  - scripts/release/package.sh
-  - internal/static/js/ui/QuickSwitcher.js
-  - internal/db/db.go
+  - internal/static/js/share/ShareModal.js
+  - docs/plan/todo.md
+  - internal/static/js/ui/DesktopUpdateSection.js
+  - internal/static/js/ui/SessionTabs.js
+  - internal/static/js/share/JoinView.js
+  - internal/static/js/ui/SplitLayout.js
   - internal/static/js/chat/ChatView.js
+  - internal/static/index.html
+  - scripts/mermaid-render.test.cjs
+  - internal/static/js/ui/LogsSection.js
+  - internal/static/js/chat/SelectionQuotePopover.js
+  - internal/static/js/setup/SetupWizard.js
+  - internal/static/js/share/SharesSection.js
+  - internal/static/js/chat/chat-header.js
+  - internal/static/js/ui/SettingsModal.js
+  - internal/static/js/session/NewSessionComposer.js
+  - internal/static/js/ui/ui-atoms.js
+  - scripts/theme.test.cjs
+  - internal/static/js/chat/MessageActions.js
 tests:
-  - internal/api/session_test.go
+  - internal/mcp/queue_test.go
 -->
 
 ---
