@@ -115,7 +115,7 @@ function MentionMenu({ items, activeIndex, onSelect }) {
       ref={listRef}
       role="listbox"
       aria-label="提及 session"
-      className="absolute bottom-full left-0 right-0 z-20 mb-1 max-h-[min(50vh,16rem)] overflow-y-auto app-scroll rounded-lg border border-gray-700 bg-gray-800/98 py-1 shadow-lg backdrop-blur-sm"
+      className="absolute bottom-full left-0 right-0 z-20 mb-1 max-h-[min(50vh,16rem)] overflow-y-auto app-scroll rounded-lg border border-gray-700 bg-ra-card/95 py-1 shadow-lg backdrop-blur-sm"
     >
       {items.length === 0 ? (
         <div className="px-3 py-2 text-xs text-gray-500">沒有可標記的 session</div>

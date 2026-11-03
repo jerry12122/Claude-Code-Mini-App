@@ -79,7 +79,7 @@ function SplitDivider({ containerRef, ratio, onRatioChange, onReset, orientation
       aria-valuemin={Math.round(SPLIT_RATIO_MIN * 100)}
       aria-valuemax={Math.round(SPLIT_RATIO_MAX * 100)}
       title={isVertical ? '拖曳調整上下高度（雙擊重設為 50/50）' : '拖曳調整兩欄寬度（雙擊重設為 50/50）'}
-      className={`group relative shrink-0 select-none touch-none bg-[oklch(0.22_0.02_264)] hover:bg-[oklch(0.62_0.19_275_/30%)] transition-colors z-10 ${
+      className={`group relative shrink-0 select-none touch-none bg-ra-raised hover:bg-[oklch(0.62_0.19_275_/30%)] transition-colors z-10 ${
         isVertical ? 'h-1.5 w-full cursor-row-resize' : 'w-1.5 h-full cursor-col-resize'
       }`}
       onMouseDown={onMouseDown}
@@ -87,7 +87,7 @@ function SplitDivider({ containerRef, ratio, onRatioChange, onReset, orientation
       onDoubleClick={onReset}
     >
       <span
-        className={`pointer-events-none absolute bg-[oklch(0.32_0.02_264)] group-hover:bg-violet-400 transition-all ${
+        className={`pointer-events-none absolute bg-ra-active group-hover:bg-violet-400 transition-all ${
           isVertical
             ? 'left-0 right-0 top-1/2 h-px -translate-y-1/2 group-hover:h-0.5'
             : 'top-0 bottom-0 left-1/2 w-px -translate-x-1/2 group-hover:w-0.5'
@@ -155,9 +155,9 @@ function SplitChatContainer({
   // 窄螢幕模式：顯示分頁標籤（Tab Switcher），並渲染當前選取的面板
   if (effectiveNarrow) {
     return (
-      <div className="h-full w-full min-w-0 min-h-0 flex flex-col bg-[oklch(0.15_0.02_264)]">
+      <div className="h-full w-full min-w-0 min-h-0 flex flex-col bg-ra-bg">
         {/* 窄螢幕分頁切換列 */}
-        <div className="shrink-0 flex items-center justify-between border-b border-[oklch(0.26_0.02_264)] bg-[oklch(0.13_0.02_264)] px-3 py-1.5 gap-2">
+        <div className="shrink-0 flex items-center justify-between border-b border-ra-line-soft bg-ra-sunken px-3 py-1.5 gap-2">
           <div className="flex items-center gap-1 min-w-0 flex-1">
             <button
               type="button"
@@ -223,7 +223,7 @@ function SplitChatContainer({
       ref={containerRef}
       className={`h-full w-full min-w-0 min-h-0 flex ${
         isVertical ? 'flex-col' : 'flex-row'
-      } overflow-hidden relative bg-[oklch(0.15_0.02_264)]`}
+      } overflow-hidden relative bg-ra-bg`}
     >
       {/* 第一面板：主面板（左右時在左，上下時在上） */}
       <div
@@ -275,7 +275,7 @@ function SplitViewButton({ isSplit, onClick, disabled = false }) {
       className={`shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-md transition-colors disabled:opacity-40 ${
         isSplit
           ? 'bg-violet-600/25 text-violet-300 hover:bg-violet-600/35'
-          : 'text-[oklch(0.7_0.01_264)] hover:text-violet-300 hover:bg-[oklch(0.2_0.02_264)]'
+          : 'text-ra-t3 hover:text-violet-300 hover:bg-ra-card'
       }`}
     >
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -297,7 +297,7 @@ function SplitOrientationButton({ orientation = 'horizontal', onClick, onToggle,
       disabled={disabled}
       title={isVertical ? '切換為左右並排 (Ctrl+Alt+O)' : '切換為上下分割 (Ctrl+Alt+O)'}
       aria-label={isVertical ? '切換為左右並排' : '切換為上下分割'}
-      className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-md transition-colors text-[oklch(0.7_0.01_264)] hover:text-violet-300 hover:bg-[oklch(0.2_0.02_264)] disabled:opacity-40"
+      className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-md transition-colors text-ra-t3 hover:text-violet-300 hover:bg-ra-card disabled:opacity-40"
     >
       {isVertical ? (
         // 當前是上下分割，顯示目標「切換到左右並排」：兩條獨立直向膠囊 [||]

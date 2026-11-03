@@ -362,7 +362,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
               onKeyDown={(e) => handleRenameKey(e, s.id)}
               onBlur={() => commitRename(s.id)}
               onClick={(e) => e.stopPropagation()}
-              className="w-full bg-[oklch(0.19_0.02_264)] border border-violet-500 rounded-lg px-2 py-1 text-sm text-[oklch(0.94_0.01_264)] focus:outline-none"
+              className="w-full bg-ra-card border border-violet-500 rounded-lg px-2 py-1 text-sm text-ra-t1 focus:outline-none"
             />
           ) : (
             <div className="flex items-center gap-2 min-w-0" title={rowTitle}>
@@ -372,7 +372,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
               <span
                 className={
                   'flex-1 min-w-0 text-[13.5px] truncate leading-snug ' +
-                  (unread ? 'font-semibold text-[oklch(0.94_0.01_264)]' : 'font-medium text-[oklch(0.75_0.01_264)]')
+                  (unread ? 'font-semibold text-ra-t1' : 'font-medium text-ra-t3')
                 }
               >
                 {s.name || '未命名'}
@@ -383,7 +383,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
                   onClick={(e) => startRename(s, e)}
                   aria-label="重新命名"
                   title="重新命名"
-                  className="text-[oklch(0.5_0.01_264)] hover:text-violet-400 p-1 rounded transition-colors"
+                  className="text-ra-t5 hover:text-violet-400 p-1 rounded transition-colors"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5" aria-hidden="true">
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -395,7 +395,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
                   onClick={(e) => del(s.id, e)}
                   aria-label="刪除"
                   title="刪除"
-                  className="text-[oklch(0.5_0.01_264)] hover:text-red-400 p-1 rounded transition-colors inline-flex items-center justify-center"
+                  className="text-ra-t5 hover:text-red-400 p-1 rounded transition-colors inline-flex items-center justify-center"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5" aria-hidden="true">
                     <path d="M3 6h18" />
@@ -437,7 +437,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
           <div className="w-6 h-6 rounded-[6px] bg-gradient-to-br from-[oklch(0.62_0.19_275)] to-[oklch(0.6_0.17_300)] flex items-center justify-center shrink-0" aria-hidden>
             <div className="w-[9px] h-[9px] rounded-[2px] bg-white" />
           </div>
-          <span className="ra-display text-base text-[oklch(0.94_0.01_264)] tracking-tight">Agent Console</span>
+          <span className="ra-display text-base text-ra-t1 tracking-tight">Agent Console</span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {onToggleSplit && (
@@ -449,7 +449,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
               onClick={onToggleSidebar}
               aria-label="收合會話列表"
               title="收合會話列表"
-              className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[9px] border border-[oklch(0.28_0.02_264)] text-gray-400 hover:text-gray-200 hover:bg-[oklch(0.19_0.02_264)] transition-colors focus:outline-none"
+              className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[9px] border border-ra-line text-gray-400 hover:text-gray-200 hover:bg-ra-card transition-colors focus:outline-none"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 rotate-180" aria-hidden>
                 <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01-.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
@@ -462,15 +462,15 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
       {/* 搜尋／排序 — 設計列 */}
       <div className="px-5 pb-3 shrink-0 flex gap-2 min-w-0 items-center">
         {sessions.length > 0 && (
-          <div className="h-9 flex-1 min-w-0 flex items-center gap-1.5 bg-[oklch(0.19_0.02_264)] border border-[oklch(0.28_0.02_264)] rounded-[9px] px-2.5">
-            <span className="text-[oklch(0.5_0.01_264)] text-sm shrink-0" aria-hidden>⌕</span>
+          <div className="h-9 flex-1 min-w-0 flex items-center gap-1.5 bg-ra-card border border-ra-line rounded-[9px] px-2.5">
+            <span className="text-ra-t5 text-sm shrink-0" aria-hidden>⌕</span>
             <input
               type="search"
               value={sessionSearch}
               onChange={(e) => setSessionSearch(e.target.value)}
               placeholder="搜尋 session…"
               autoComplete="off"
-              className="flex-1 min-w-0 bg-transparent border-0 p-0 text-[13px] text-[oklch(0.9_0.01_264)] placeholder-[oklch(0.5_0.01_264)] focus:outline-none"
+              className="flex-1 min-w-0 bg-transparent border-0 p-0 text-[13px] text-ra-t1 placeholder-ra-t5 focus:outline-none"
             />
           </div>
         )}
@@ -491,7 +491,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
               onChange={(e) => setSessionSort(e.target.value)}
               title="排序"
               aria-label="排序"
-              className="shrink-0 bg-[oklch(0.19_0.02_264)] border border-[oklch(0.28_0.02_264)] rounded-[9px] px-2.5 py-2 text-xs text-[oklch(0.65_0.01_264)] focus:outline-none cursor-pointer max-w-[6.5rem]"
+              className="shrink-0 bg-ra-card border border-ra-line rounded-[9px] px-2.5 py-2 text-xs text-ra-t4 focus:outline-none cursor-pointer max-w-[6.5rem]"
             >
               {sortOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label.replace('活動 ', '')}</option>
@@ -504,7 +504,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
               onClick={handleReadAll}
               aria-label="全部標記已讀"
               title="全部標記已讀"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] border border-[oklch(0.28_0.02_264)] bg-[oklch(0.19_0.02_264)] text-[oklch(0.65_0.01_264)] hover:text-violet-300 hover:border-violet-500/50 transition-colors focus:outline-none"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] border border-ra-line bg-ra-card text-ra-t4 hover:text-violet-300 hover:border-violet-500/50 transition-colors focus:outline-none"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true">
                 <path d="M2 12.5l4 4 9-10" />
@@ -517,7 +517,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
       {/* Session 列表 */}
       <div className="flex-1 overflow-y-auto app-scroll px-3.5 pb-5">
         {sessions.length === 0 ? (
-          <div className="text-center text-[oklch(0.5_0.01_264)] mt-24 text-sm px-4">尚無 Session，點 + 建立</div>
+          <div className="text-center text-ra-t5 mt-24 text-sm px-4">尚無 Session，點 + 建立</div>
         ) : displaySessions.length === 0 ? (
           <div className="text-center text-gray-600 mt-24 text-sm px-4">沒有符合搜尋條件的 Session</div>
         ) : groupByDir && groupedSessions ? (
@@ -532,14 +532,14 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
                   <button
                     type="button"
                     onClick={() => toggleDirCollapsed(dirKey)}
-                    className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-[oklch(0.13_0.02_264)]"
+                    className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-ra-sunken"
                   >
-                    <span className="shrink-0 text-[oklch(0.5_0.01_264)] w-3 text-center text-[10px]" aria-hidden>
+                    <span className="shrink-0 text-ra-t5 w-3 text-center text-[10px]" aria-hidden>
                       {expanded ? '▾' : '▸'}
                     </span>
                     <span className="shrink-0 text-[13px] leading-none" aria-hidden>📁</span>
                     <span
-                      className="min-w-0 flex-1 truncate text-[12.5px] text-[oklch(0.72_0.01_264)] font-bold"
+                      className="min-w-0 flex-1 truncate text-[12.5px] text-ra-t3 font-bold"
                       title={dirKey + (expanded ? '' : `（${dirSessions.length}）`)}
                     >
                       {shortLabel}
@@ -547,7 +547,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
                   </button>
                   {dirBranch ? (
                     <span
-                      className="ra-mono shrink-0 max-w-[8rem] truncate text-[11px] text-[oklch(0.5_0.01_264)]"
+                      className="ra-mono shrink-0 max-w-[8rem] truncate text-[11px] text-ra-t5"
                       title={dirBranch}
                     >
                       {dirBranch}
@@ -564,7 +564,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
                   </button>
                 </div>
                 {expanded && (
-                  <div className="ml-[18px] border-l border-[oklch(0.26_0.02_264)] pl-2.5">
+                  <div className="ml-[18px] border-l border-ra-line-soft pl-2.5">
                     {dirSessions.map((s) => renderSessionRow(s))}
                   </div>
                 )}
@@ -577,11 +577,11 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
       </div>
 
       {/* 底部設定入口（仿 Claude Desktop 左下角） */}
-      <div className="shrink-0 px-3.5 py-2.5 border-t border-[oklch(0.24_0.02_264)]">
+      <div className="shrink-0 px-3.5 py-2.5 border-t border-ra-line-soft">
         <button
           type="button"
           onClick={onOpenSettings}
-          className="w-full flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-[oklch(0.6_0.01_264)] hover:bg-[oklch(0.19_0.02_264)] hover:text-[oklch(0.85_0.01_264)] transition-colors"
+          className="w-full flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-ra-t4 hover:bg-ra-card hover:text-ra-t2 transition-colors"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0" aria-hidden="true">
             <circle cx="12" cy="12" r="3" />
@@ -607,7 +607,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
             onClick={onToggleSidebar}
             aria-label="展開會話列表"
             title="展開會話列表"
-            className="flex h-9 w-9 items-center justify-center rounded-[9px] border border-[oklch(0.28_0.02_264)] text-gray-400 hover:text-gray-200 hover:bg-[oklch(0.19_0.02_264)] transition-colors focus:outline-none"
+            className="flex h-9 w-9 items-center justify-center rounded-[9px] border border-ra-line text-gray-400 hover:text-gray-200 hover:bg-ra-card transition-colors focus:outline-none"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 rotate-180" aria-hidden>
               <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
@@ -630,7 +630,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
           {(groupedSessions || []).map(([dirKey, dirSessions]) => (
             <React.Fragment key={dirKey}>
               <span
-                className="mt-1.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[13px] text-[oklch(0.5_0.01_264)]"
+                className="mt-1.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[13px] text-ra-t5"
                 title={workDirGroupShortLabel(dirKey) + '（' + dirKey + '）'}
                 aria-hidden
               >
@@ -677,7 +677,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
                     <AgentBadgeIcon agentType={displayAgent} session={s} />
                     {unread && (
                       <span
-                        className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-violet-600 text-white text-[10px] font-bold flex items-center justify-center leading-none pointer-events-none ring-2 ring-[oklch(0.15_0.02_264)]"
+                        className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-violet-600 text-white text-[10px] font-bold flex items-center justify-center leading-none pointer-events-none ring-2 ring-ra-bg"
                         aria-label={`未讀訊息 ${unreadBadgeText} 則`}
                       >
                         {unreadBadgeText}

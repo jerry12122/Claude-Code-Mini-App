@@ -269,9 +269,9 @@ function PermModeSwitch({ agentType, value, onChange, disabled, title }) {
               'focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50',
               active
                 ? danger
-                  ? 'bg-[oklch(0.75_0.15_70_/16%)] text-[oklch(0.75_0.15_70)] font-bold'
-                  : 'bg-[oklch(0.62_0.19_275_/18%)] text-[oklch(0.85_0.08_275)]'
-                : 'text-[oklch(0.55_0.01_264)] hover:text-[oklch(0.85_0.01_264)]',
+                  ? 'bg-[oklch(0.75_0.15_70_/16%)] text-ra-warn font-bold'
+                  : 'bg-[oklch(0.62_0.19_275_/18%)] text-ra-accent-text'
+                : 'text-ra-t5 hover:text-ra-t2',
             ].join(' ')}
           >
             {label}
@@ -443,7 +443,7 @@ function getAgentBadgeClass(agentType, session) {
     kiroacp: 'bg-fuchsia-500/20 text-fuchsia-300',
     telegram: 'bg-sky-500/20 text-sky-300',
   };
-  return map[t] || 'bg-[oklch(0.24_0.02_264)] text-[oklch(0.65_0.01_264)]';
+  return map[t] || 'bg-ra-raised text-ra-t4';
 }
 
 /**
@@ -487,7 +487,7 @@ function AgentBadgeIcon({ agentType, session }) {
         width={14}
         height={14}
         aria-hidden="true"
-        className="w-3.5 h-3.5 shrink-0 opacity-95"
+        className="ra-agent-glyph w-3.5 h-3.5 shrink-0 opacity-95"
         fill={inline.color}
         fillRule={inline.fillRule}
       >
@@ -506,7 +506,7 @@ function AgentBadgeIcon({ agentType, session }) {
       loading="lazy"
       decoding="async"
       referrerPolicy="no-referrer"
-      className="w-3.5 h-3.5 shrink-0 opacity-95 object-contain [content-visibility:auto]"
+      className="ra-agent-glyph w-3.5 h-3.5 shrink-0 opacity-95 object-contain [content-visibility:auto]"
       onError={(e) => {
         e.currentTarget.removeAttribute('src');
         e.currentTarget.style.display = 'none';
@@ -714,7 +714,7 @@ function QuotaBadge({ quota, onRefresh, refreshing, className = '', compact = fa
   const title = peak !== null ? quotaTooltip(quota, agentType) : [text, age, quota.error].filter(Boolean).join(' · ');
   const compactMaxW = ['kiro', 'kiroacp'].includes(String(agentType || '').toLowerCase()) ? 'max-w-[6.5rem]' : 'max-w-[4.5rem]';
   const chipCls = compact
-    ? 'inline-flex items-center shrink-0 ' + compactMaxW + ' px-2 py-1 rounded-md bg-[oklch(0.24_0.02_264)] '
+    ? 'inline-flex items-center shrink-0 ' + compactMaxW + ' px-2 py-1 rounded-md bg-ra-raised '
     : 'inline-flex items-center gap-0.5 min-w-0 max-w-full ';
   // 手機（compact）沒有獨立的刷新鍵，整個晶片可點擊來刷新
   const tappable = compact && !!onRefresh;

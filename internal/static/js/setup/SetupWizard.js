@@ -90,7 +90,7 @@ function SetupWizard({ status }) {
     <div className="flex items-center justify-center h-app p-4">
       <div className="w-full max-w-md space-y-4">
         <div className="text-center">
-          <div className="ra-display text-2xl" style={{ color: 'oklch(0.94 0.01 264)' }}>首次設定</div>
+          <div className="ra-display text-2xl" style={{ color: 'oklch(var(--ra-t1))' }}>首次設定</div>
           <div className="text-gray-500 text-sm">{step + 1} / {steps.length}</div>
         </div>
         {name === 'welcome' && (

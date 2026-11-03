@@ -89,7 +89,7 @@ function SessionTabBar({
       ref={tabBarRef}
       role="tablist"
       aria-label={`會話分頁列 ${groupIndex + 1}`}
-      className="session-tab-bar shrink-0 flex items-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex-nowrap bg-[oklch(0.13_0.02_264)] border-b border-[oklch(0.26_0.02_264)] px-1.5 pt-1.5 gap-1 select-none relative"
+      className="session-tab-bar shrink-0 flex items-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex-nowrap bg-ra-sunken border-b border-ra-line-soft px-1.5 pt-1.5 gap-1 select-none relative"
       onDragOver={(e) => {
         if (!isSessionDragTypes(e.dataTransfer.types)) return;
         e.preventDefault();
@@ -185,8 +185,8 @@ function SessionTabBar({
             }}
             className={`session-tab group/tab relative flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg text-xs cursor-pointer border-t border-x transition-all shrink-0 max-w-[200px] min-w-[90px] outline-none ${
               isActive
-                ? 'bg-[oklch(0.18_0.02_264)] text-[oklch(0.95_0.01_264)] font-medium border-[oklch(0.28_0.02_264)] shadow-sm'
-                : 'bg-transparent text-[oklch(0.65_0.01_264)] hover:bg-[oklch(0.15_0.02_264)] hover:text-[oklch(0.85_0.01_264)] border-transparent'
+                ? 'bg-ra-card text-ra-t1 font-medium border-ra-line shadow-sm'
+                : 'bg-transparent text-ra-t4 hover:bg-ra-bg hover:text-ra-t2 border-transparent'
             }`}
           >
             {/* 作用中分頁上方指示線：聚焦時為亮紫，非聚焦時為深紫/灰 */}
@@ -232,7 +232,7 @@ function SessionTabBar({
               }}
               aria-label={`關閉 ${s.name || '分頁'}`}
               title="關閉分頁"
-              className={`p-0.5 rounded text-[oklch(0.55_0.01_264)] hover:text-red-400 hover:bg-[oklch(0.25_0.02_264)] transition-opacity shrink-0 ${
+              className={`p-0.5 rounded text-ra-t5 hover:text-red-400 hover:bg-ra-raised transition-opacity shrink-0 ${
                 isActive ? 'opacity-80 hover:opacity-100' : 'opacity-0 group-hover/tab:opacity-100'
               }`}
             >

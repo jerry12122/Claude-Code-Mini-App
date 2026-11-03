@@ -34,32 +34,32 @@ function DesktopUpdateSection({ status, laterVersion = '', request, later, showO
   };
 
   return (
-    <div className="divide-y divide-[oklch(0.25_0.02_264)] [&>*]:py-6 [&>:first-child]:pt-0 [&>:last-child]:pb-0">
+    <div className="divide-y divide-ra-line-soft [&>*]:py-6 [&>:first-child]:pt-0 [&>:last-child]:pb-0">
       <div>
-        <div className="text-sm font-semibold text-[oklch(0.92_0.01_264)] mb-1">桌面程式更新</div>
-        <div className="text-[11px] text-[oklch(0.55_0.01_264)] mb-3 ra-mono">
+        <div className="text-sm font-semibold text-ra-t1 mb-1">桌面程式更新</div>
+        <div className="text-[11px] text-ra-t5 mb-3 ra-mono">
           目前版本 v{st.currentVersion || '—'} · SHA {desktopUpdateShortSha(st.currentSha)}
         </div>
 
-        <div className="text-xs text-[oklch(0.85_0.01_264)]">
+        <div className="text-xs text-ra-t2">
           狀態：{view.stateLabel}
           {st.availableVersion ? <span className="ml-2 ra-mono">可用版本 v{st.availableVersion}</span> : null}
         </div>
 
         {inProgress ? (
           <div className="mt-3">
-            <div className="h-1.5 w-full rounded-full bg-[oklch(0.22_0.02_264)] overflow-hidden">
+            <div className="h-1.5 w-full rounded-full bg-ra-raised overflow-hidden">
               <div className="h-full bg-violet-500 transition-[width]" style={{ width: percent + '%' }} />
             </div>
-            <div className="text-[11px] text-[oklch(0.55_0.01_264)] mt-1 ra-mono">{percent}%</div>
+            <div className="text-[11px] text-ra-t5 mt-1 ra-mono">{percent}%</div>
           </div>
         ) : null}
 
         {view.showNotes && notesHtml ? (
           <div className="mt-3">
-            <div className="text-[11px] text-[oklch(0.6_0.01_264)] mb-1">更新內容</div>
+            <div className="text-[11px] text-ra-t4 mb-1">更新內容</div>
             <div
-              className="ra-notes rounded-lg border border-[oklch(0.28_0.02_264)] bg-[oklch(0.16_0.02_264)] px-3 py-2 max-h-64 overflow-y-auto"
+              className="ra-notes rounded-lg border border-ra-line bg-ra-card px-3 py-2 max-h-64 overflow-y-auto"
               dangerouslySetInnerHTML={{ __html: notesHtml }}
             />
           </div>
@@ -68,8 +68,8 @@ function DesktopUpdateSection({ status, laterVersion = '', request, later, showO
         {st.errorCode ? (
           <div className="mt-3 text-xs text-red-400">
             {desktopUpdateErrorText(st.errorCode)}
-            {st.busyReason ? <div className="text-[11px] text-[oklch(0.7_0.01_264)] mt-0.5">原因：{desktopUpdateBusyReasonText(st.busyReason)}</div> : null}
-            {st.errorMessage ? <div className="text-[11px] text-[oklch(0.55_0.01_264)] mt-0.5 break-words">{st.errorMessage}</div> : null}
+            {st.busyReason ? <div className="text-[11px] text-ra-t3 mt-0.5">原因：{desktopUpdateBusyReasonText(st.busyReason)}</div> : null}
+            {st.errorMessage ? <div className="text-[11px] text-ra-t5 mt-0.5 break-words">{st.errorMessage}</div> : null}
           </div>
         ) : null}
 
@@ -83,7 +83,7 @@ function DesktopUpdateSection({ status, laterVersion = '', request, later, showO
               className={`px-3 py-1.5 rounded-lg text-xs font-medium border disabled:opacity-40 ${
                 a.id === 'download' || a.id === 'restart'
                   ? 'bg-violet-600 hover:bg-violet-500 border-violet-500 text-white'
-                  : 'bg-[oklch(0.24_0.02_264)] hover:bg-[oklch(0.28_0.03_264)] border-[oklch(0.34_0.03_264)] text-[oklch(0.9_0.01_264)]'
+                  : 'bg-ra-raised hover:bg-ra-raised border-ra-line-strong text-ra-t1'
               }`}
             >
               {a.label}
@@ -92,9 +92,9 @@ function DesktopUpdateSection({ status, laterVersion = '', request, later, showO
         </div>
 
         {showConfirm ? (
-          <div className="mt-3 rounded-lg border border-violet-500/40 bg-violet-950/20 px-3 py-3 text-xs text-[oklch(0.9_0.01_264)]">
+          <div className="mt-3 rounded-lg border border-violet-500/40 bg-violet-950/20 px-3 py-3 text-xs text-ra-t1">
             <div>確定要關閉桌面程式並套用更新嗎？</div>
-            <div className="text-[11px] text-[oklch(0.6_0.01_264)] mt-1">
+            <div className="text-[11px] text-ra-t4 mt-1">
               只有在沒有進行中的工作時才會套用；若仍有工作，更新會被拒絕並保留，之後可再試。
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -108,7 +108,7 @@ function DesktopUpdateSection({ status, laterVersion = '', request, later, showO
               <button
                 type="button"
                 onClick={() => setConfirming(false)}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium border bg-[oklch(0.24_0.02_264)] hover:bg-[oklch(0.28_0.03_264)] border-[oklch(0.34_0.03_264)] text-[oklch(0.9_0.01_264)]"
+                className="px-3 py-1.5 rounded-lg text-xs font-medium border bg-ra-raised hover:bg-ra-raised border-ra-line-strong text-ra-t1"
               >
                 取消
               </button>

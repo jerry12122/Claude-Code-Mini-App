@@ -1,8 +1,8 @@
 /** 設定頁「日誌」：即時顯示伺服器日誌（記憶體環形緩衝＋/logs/ws）。桌面版沒有 console 時用。 */
 const LOG_LEVEL_RANK = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 };
 const LOG_LEVEL_CLS = {
-  DEBUG: 'text-[oklch(0.55_0.01_264)]',
-  INFO: 'text-[oklch(0.8_0.01_264)]',
+  DEBUG: 'text-ra-t5',
+  INFO: 'text-ra-t2',
   WARN: 'text-amber-300',
   ERROR: 'text-red-400',
 };
@@ -14,8 +14,8 @@ const LogRow = React.memo(function LogRow({ e }) {
   const long = e.msg.length > LOG_COLLAPSE_AT;
   const cls = LOG_LEVEL_CLS[e.level] || LOG_LEVEL_CLS.INFO;
   return (
-    <div className="flex gap-2 px-2 py-0.5 hover:bg-[oklch(0.18_0.02_264)]">
-      <span className="shrink-0 text-[oklch(0.5_0.01_264)]">{e.ts.slice(11, 23)}</span>
+    <div className="flex gap-2 px-2 py-0.5 hover:bg-ra-card">
+      <span className="shrink-0 text-ra-t5">{e.ts.slice(11, 23)}</span>
       <span className={`shrink-0 w-11 ${cls}`}>{e.level}</span>
       <span
         className={`min-w-0 flex-1 whitespace-pre-wrap break-all ${cls} ${long && !open ? 'line-clamp-3 cursor-pointer' : ''}`}
@@ -28,7 +28,7 @@ const LogRow = React.memo(function LogRow({ e }) {
   );
 });
 
-const logBtnCls = 'px-2.5 py-1.5 rounded-lg bg-[oklch(0.22_0.02_264)] hover:bg-[oklch(0.26_0.02_264)] text-[oklch(0.85_0.01_264)] border border-[oklch(0.3_0.02_264)]';
+const logBtnCls = 'px-2.5 py-1.5 rounded-lg bg-ra-raised hover:bg-ra-raised text-ra-t2 border border-ra-line';
 
 function LogsSection() {
   const [entries, setEntries] = useState([]);
@@ -130,7 +130,7 @@ function LogsSection() {
         <select
           value={minLevel}
           onChange={(e) => setMinLevel(e.target.value)}
-          className="bg-[oklch(0.19_0.02_264)] border border-[oklch(0.3_0.02_264)] rounded-lg px-2 py-1.5 text-[oklch(0.85_0.01_264)]"
+          className="bg-ra-card border border-ra-line rounded-lg px-2 py-1.5 text-ra-t2"
         >
           <option value="DEBUG">DEBUG 以上</option>
           <option value="INFO">INFO 以上</option>
@@ -141,7 +141,7 @@ function LogsSection() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="搜尋日誌…"
-          className="flex-1 min-w-[8rem] bg-[oklch(0.19_0.02_264)] border border-[oklch(0.3_0.02_264)] rounded-lg px-2.5 py-1.5 text-[oklch(0.9_0.01_264)] placeholder-[oklch(0.5_0.01_264)] focus:outline-none focus:border-violet-500"
+          className="flex-1 min-w-[8rem] bg-ra-card border border-ra-line rounded-lg px-2.5 py-1.5 text-ra-t1 placeholder-ra-t5 focus:outline-none focus:border-violet-500"
         />
         <button type="button" onClick={() => setFrozen(frozen ? null : entries)} className={logBtnCls}>
           {frozen ? `繼續${entries.length > frozen.length ? `（+${entries.length - frozen.length}）` : ''}` : '暫停'}
@@ -153,10 +153,10 @@ function LogsSection() {
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="flex-1 min-h-0 overflow-y-auto app-scroll rounded-lg border border-[oklch(0.26_0.02_264)] bg-[oklch(0.12_0.02_264)] font-mono text-[11.5px] leading-relaxed py-1"
+        className="flex-1 min-h-0 overflow-y-auto app-scroll rounded-lg border border-ra-line-soft bg-ra-sunken font-mono text-[11.5px] leading-relaxed py-1"
       >
         {shown.length === 0 ? (
-          <div className="px-3 py-6 text-center text-[oklch(0.5_0.01_264)]">
+          <div className="px-3 py-6 text-center text-ra-t5">
             {connected ? '沒有符合的日誌' : '連線中…'}
           </div>
         ) : (
@@ -164,7 +164,7 @@ function LogsSection() {
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-3 text-[11px] text-[oklch(0.55_0.01_264)]">
+      <div className="flex items-center justify-between gap-3 text-[11px] text-ra-t5">
         <span className="inline-flex items-center gap-1.5 min-w-0">
           <span className={`w-1.5 h-1.5 shrink-0 rounded-full ${connected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
           <span className="truncate">

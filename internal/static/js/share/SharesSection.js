@@ -72,11 +72,11 @@ function SharesSection({ onJumpToSession = null }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="text-sm font-semibold text-[oklch(0.92_0.01_264)]">分享</div>
+        <div className="text-sm font-semibold text-ra-t1">分享</div>
         <div className="flex gap-1 ml-2">
           {SHARE_FILTERS.map((f) => (
             <button key={f.id} type="button" onClick={() => setFilter(f.id)}
-              className={`px-2.5 py-1 rounded-md text-xs ${filter === f.id ? 'bg-violet-500/20 text-violet-200' : 'text-[oklch(0.6_0.01_264)] hover:text-[oklch(0.85_0.01_264)]'}`}>
+              className={`px-2.5 py-1 rounded-md text-xs ${filter === f.id ? 'bg-violet-500/20 text-violet-200' : 'text-ra-t4 hover:text-ra-t2'}`}>
               {f.label}
             </button>
           ))}
@@ -89,9 +89,9 @@ function SharesSection({ onJumpToSession = null }) {
 
       {error && <div className="text-xs text-red-400">{error}</div>}
       {!loaded ? (
-        <div className="text-xs text-[oklch(0.5_0.01_264)]">載入中…</div>
+        <div className="text-xs text-ra-t5">載入中…</div>
       ) : visible.length === 0 ? (
-        <div className="text-xs text-[oklch(0.5_0.01_264)]">
+        <div className="text-xs text-ra-t5">
           {filter === 'active' ? '沒有進行中的分享。在聊天室頂欄按「分享」建立。' : '沒有符合的分享。'}
         </div>
       ) : (

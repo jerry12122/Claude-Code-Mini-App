@@ -44,11 +44,11 @@ function ColorField({ label, value, onChange, placeholder }) {
   const hex = cssColorToHex(value || placeholder);
   return (
     <div className="flex items-center gap-3">
-      <div className="w-24 shrink-0 text-[11px] text-[oklch(0.6_0.01_264)]">{label}</div>
+      <div className="w-24 shrink-0 text-[11px] text-ra-t4">{label}</div>
       <div className="flex-1 min-w-0 flex items-center gap-2">
         <label className="relative shrink-0 w-7 h-7 cursor-pointer" title="開啟調色盤">
           <span
-            className="absolute inset-0 rounded-full border border-[oklch(0.32_0.02_264)]"
+            className="absolute inset-0 rounded-full border border-ra-line-strong"
             style={{ background: value || placeholder }}
             aria-hidden
           />
@@ -66,7 +66,7 @@ function ColorField({ label, value, onChange, placeholder }) {
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           spellCheck={false}
-          className="flex-1 min-w-0 bg-[oklch(0.16_0.02_264)] border border-[oklch(0.28_0.02_264)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[oklch(0.9_0.01_264)] placeholder-[oklch(0.45_0.01_264)] focus:outline-none focus:border-violet-600"
+          className="flex-1 min-w-0 bg-ra-card border border-ra-line rounded-lg px-2.5 py-1.5 text-xs font-mono text-ra-t1 placeholder-ra-t5 focus:outline-none focus:border-violet-600"
         />
       </div>
     </div>
@@ -139,9 +139,9 @@ function GeneralSection() {
   };
 
   return (
-    <div className="divide-y divide-[oklch(0.25_0.02_264)] [&>*]:py-6 [&>:first-child]:pt-0 [&>:last-child]:pb-0">
+    <div className="divide-y divide-ra-line-soft [&>*]:py-6 [&>:first-child]:pt-0 [&>:last-child]:pb-0">
       <div>
-        <div className="text-sm font-semibold text-[oklch(0.92_0.01_264)] mb-1">開啟 VSCode</div>
+        <div className="text-sm font-semibold text-ra-t1 mb-1">開啟 VSCode</div>
         <label className="flex items-start gap-3 cursor-pointer">
           <input
             type="checkbox"
@@ -151,8 +151,8 @@ function GeneralSection() {
             className="mt-0.5 w-4 h-4 accent-violet-600 shrink-0"
           />
           <div className="min-w-0">
-            <div className="text-sm text-[oklch(0.9_0.01_264)]">以一般使用者權限開啟 VSCode</div>
-            <div className="text-[11px] text-[oklch(0.55_0.01_264)] mt-0.5">
+            <div className="text-sm text-ra-t1">以一般使用者權限開啟 VSCode</div>
+            <div className="text-[11px] text-ra-t5 mt-0.5">
               當伺服器程式本身以系統管理員身分執行時，直接開啟 VSCode 會因權限不一致出現
               「Another instance of Code is already running as administrator」錯誤。開啟此選項後，
               伺服器改透過 <code className="ra-mono">explorer.exe</code> 分派 <code className="ra-mono">vscode://</code> 連結以一般使用者權限啟動 VSCode（僅 Windows 有效）。
@@ -162,32 +162,82 @@ function GeneralSection() {
         {error ? <div className="text-xs text-red-400 mt-2">{error}</div> : null}
       </div>
       <div>
-        <div className="text-sm font-semibold text-[oklch(0.92_0.01_264)] mb-1">模型清單</div>
-        <div className="text-[11px] text-[oklch(0.55_0.01_264)] mb-2">
+        <div className="text-sm font-semibold text-ra-t1 mb-1">模型清單</div>
+        <div className="text-[11px] text-ra-t5 mb-2">
           程式啟動時會向各 CLI（Claude、Cursor、Codex、Kiro）取得可用模型。有新模型時按這裡即可更新，不必重啟。
         </div>
         <button
           type="button"
           onClick={refreshModels}
           disabled={refreshingModels}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[oklch(0.24_0.02_264)] hover:bg-[oklch(0.28_0.03_264)] text-[oklch(0.9_0.01_264)] border border-[oklch(0.34_0.03_264)] disabled:opacity-40"
+          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-ra-raised hover:bg-ra-raised text-ra-t1 border border-ra-line-strong disabled:opacity-40"
         >
           {refreshingModels ? '更新中…（需數秒）' : '重新抓取模型清單'}
         </button>
       </div>
       <div>
-        <div className="text-sm font-semibold text-[oklch(0.92_0.01_264)] mb-1">前端更新</div>
-        <div className="text-[11px] text-[oklch(0.55_0.01_264)] mb-2">
+        <div className="text-sm font-semibold text-ra-t1 mb-1">前端更新</div>
+        <div className="text-[11px] text-ra-t5 mb-2">
           改了前端檔案卻沒生效時使用：強制重抓本站所有腳本與樣式（覆寫瀏覽器快取）後重新載入頁面。
         </div>
         <button
           type="button"
           onClick={reloadFresh}
           disabled={refreshing}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[oklch(0.24_0.02_264)] hover:bg-[oklch(0.28_0.03_264)] text-[oklch(0.9_0.01_264)] border border-[oklch(0.34_0.03_264)] disabled:opacity-40"
+          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-ra-raised hover:bg-ra-raised text-ra-t1 border border-ra-line-strong disabled:opacity-40"
         >
           {refreshing ? '更新中…' : '清除快取並重新載入'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+const THEME_FIELD_OPTIONS = [
+  { value: 'system', label: '跟隨系統' },
+  { value: 'dark', label: '深色' },
+  { value: 'light', label: '淺色' },
+];
+
+/** 主題偏好：每裝置 localStorage，點選即 setThemePref，不走「儲存」。 */
+function ThemeField() {
+  const [pref, setPref] = useState(readThemePref);
+  const pick = (value) => {
+    setPref(value);
+    setThemePref(value);
+  };
+  return (
+    <div>
+      <div className="text-sm font-semibold text-ra-t1 mb-1">主題</div>
+      <div className="text-[11px] text-ra-t5 mb-3">
+        只影響這個裝置。跟隨系統會依作業系統的淺色或深色設定自動切換。
+      </div>
+      <div
+        role="radiogroup"
+        aria-label="主題"
+        className="inline-flex h-9 max-w-full flex-wrap items-stretch gap-0.5 rounded-lg border border-ra-line bg-ra-raised p-[3px]"
+      >
+        {THEME_FIELD_OPTIONS.map((opt) => {
+          const active = pref === opt.value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => pick(opt.value)}
+              className={[
+                'h-full flex items-center justify-center shrink-0 grow-0 px-3 text-xs font-semibold rounded-[7px] transition-[color,background-color] duration-150 whitespace-nowrap',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50',
+                active
+                  ? 'bg-[oklch(0.62_0.19_275_/18%)] text-ra-accent-text'
+                  : 'text-ra-t5 hover:text-ra-t2',
+              ].join(' ')}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -200,7 +250,7 @@ function ChatFontSizeField() {
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <div className="text-sm font-semibold text-[oklch(0.92_0.01_264)]">對話文字大小</div>
+        <div className="text-sm font-semibold text-ra-t1">對話文字大小</div>
         <button
           type="button"
           onClick={() => change(CHAT_FS_DEFAULT)}
@@ -210,7 +260,7 @@ function ChatFontSizeField() {
           重設
         </button>
       </div>
-      <div className="text-[11px] text-[oklch(0.55_0.01_264)] mb-3">
+      <div className="text-[11px] text-ra-t5 mb-3">
         即時套用，只影響這個裝置。手機輸入框不會小於 16px。
       </div>
       <div className="flex items-center gap-3">
@@ -224,9 +274,9 @@ function ChatFontSizeField() {
           aria-label="對話文字大小"
           className="flex-1 min-w-0 accent-violet-500"
         />
-        <span className="w-12 shrink-0 text-right text-xs ra-mono text-[oklch(0.8_0.01_264)]">{fs}px</span>
+        <span className="w-12 shrink-0 text-right text-xs ra-mono text-ra-t2">{fs}px</span>
       </div>
-      <div className="mt-3 rounded-lg border border-[oklch(0.28_0.02_264)] bg-[oklch(0.16_0.02_264)] px-3 py-2 text-[oklch(0.85_0.01_264)]" style={{ fontSize: fs + 'px', lineHeight: 1.8 }}>
+      <div className="mt-3 rounded-lg border border-ra-line bg-ra-card px-3 py-2 text-ra-t2" style={{ fontSize: fs + 'px', lineHeight: 1.8 }}>
         預覽：這是一段對話文字 The quick brown fox 0123
       </div>
     </div>
@@ -236,12 +286,13 @@ function ChatFontSizeField() {
 function AppearanceSection({ draft, setDraft }) {
   const set = (key) => (val) => setDraft((prev) => ({ ...prev, [key]: val }));
   return (
-    <div className="divide-y divide-[oklch(0.25_0.02_264)] [&>*]:py-6 [&>:first-child]:pt-0 [&>:last-child]:pb-0">
+    <div className="divide-y divide-ra-line-soft [&>*]:py-6 [&>:first-child]:pt-0 [&>:last-child]:pb-0">
+      <ThemeField />
       <ChatFontSizeField />
 
       <div>
-        <div className="text-sm font-semibold text-[oklch(0.92_0.01_264)] mb-1">Markdown 顏色</div>
-        <div className="text-[11px] text-[oklch(0.55_0.01_264)] mb-3">
+        <div className="text-sm font-semibold text-ra-t1 mb-1">Markdown 顏色</div>
+        <div className="text-[11px] text-ra-t5 mb-3">
           點色塊開調色盤，或直接貼 <code className="ra-mono">oklch(...)</code>、<code className="ra-mono">#hex</code>。
         </div>
         <div className="flex flex-col gap-3">
@@ -252,9 +303,11 @@ function AppearanceSection({ draft, setDraft }) {
       </div>
 
       <div>
-        <div className="text-sm font-semibold text-[oklch(0.92_0.01_264)] mb-1">自訂 CSS</div>
-        <div className="text-[11px] text-[oklch(0.55_0.01_264)] mb-2">
+        <div className="text-sm font-semibold text-ra-t1 mb-1">自訂 CSS</div>
+        <div className="text-[11px] text-ra-t5 mb-2">
           即時套用到整個頁面；留空即不生效。範例：<code className="ra-mono">.prose blockquote {'{'} color: hotpink; {'}'}</code>
+          {' '}僅在特定主題生效時可用 <code className="ra-mono">html[data-theme=&quot;light&quot;]</code> 或 <code className="ra-mono">html[data-theme=&quot;dark&quot;]</code> 限定，例如{' '}
+          <code className="ra-mono">html[data-theme=&quot;light&quot;] .prose {'{'} color: #333; {'}'}</code>
         </div>
         <textarea
           value={draft.customCss}
@@ -262,7 +315,7 @@ function AppearanceSection({ draft, setDraft }) {
           placeholder=".prose h1 { text-decoration: underline; }"
           rows={8}
           spellCheck={false}
-          className="w-full bg-[oklch(0.16_0.02_264)] border border-[oklch(0.28_0.02_264)] rounded-lg px-3 py-2 text-xs font-mono leading-relaxed text-[oklch(0.9_0.01_264)] placeholder-[oklch(0.45_0.01_264)] focus:outline-none focus:border-violet-600 resize-y"
+          className="w-full bg-ra-card border border-ra-line rounded-lg px-3 py-2 text-xs font-mono leading-relaxed text-ra-t1 placeholder-ra-t5 focus:outline-none focus:border-violet-600 resize-y"
         />
       </div>
     </div>
@@ -339,15 +392,15 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
       role="presentation"
     >
       <div
-        className={`w-full max-w-5xl h-[min(85vh,44rem)] flex overflow-hidden rounded-2xl border border-[oklch(0.28_0.02_264)] bg-[oklch(0.15_0.02_264)] shadow-2xl shadow-black/50`}
+        className={`w-full max-w-5xl h-[min(85vh,44rem)] flex overflow-hidden rounded-2xl border border-ra-line bg-ra-bg shadow-2xl shadow-black/50`}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-modal-title"
       >
         {/* 左側選單 */}
-        <div className="w-40 shrink-0 border-r border-[oklch(0.26_0.02_264)] bg-[oklch(0.13_0.02_264)] flex flex-col">
-          <div id="settings-modal-title" className="px-4 pt-4 pb-3 text-sm font-semibold text-[oklch(0.92_0.01_264)]">
+        <div className="w-40 shrink-0 border-r border-ra-line-soft bg-ra-sunken flex flex-col">
+          <div id="settings-modal-title" className="px-4 pt-4 pb-3 text-sm font-semibold text-ra-t1">
             設定
           </div>
           <div className="flex-1 px-2 space-y-0.5">
@@ -359,14 +412,14 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
                 className={`w-full text-left rounded-lg px-2.5 py-2 text-sm transition-colors ${
                   section === s.id
                     ? 'bg-violet-500/15 text-violet-200'
-                    : 'text-[oklch(0.65_0.01_264)] hover:bg-[oklch(0.19_0.02_264)] hover:text-[oklch(0.85_0.01_264)]'
+                    : 'text-ra-t4 hover:bg-ra-card hover:text-ra-t2'
                 }`}
               >
                 {s.label}
               </button>
             ))}
           </div>
-          <div className="shrink-0 px-4 py-3 text-xs leading-5 font-mono text-[oklch(0.65_0.01_264)] select-text">
+          <div className="shrink-0 px-4 py-3 text-xs leading-5 font-mono text-ra-t4 select-text">
             <div>v{buildInfo?.version || '—'}</div>
             <div title={buildInfo?.sha || 'unknown'}>SHA {buildInfo?.sha?.slice(0, 7) || '—'}</div>
             {updateBridge ? (
@@ -399,13 +452,13 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
               />
             )}
           </div>
-          <div className="shrink-0 flex items-center justify-between gap-2 px-5 py-3 border-t border-[oklch(0.26_0.02_264)]">
+          <div className="shrink-0 flex items-center justify-between gap-2 px-5 py-3 border-t border-ra-line-soft">
             {/* 還原預設／儲存只對外觀有效，日誌頁不顯示 */}
             {section !== 'logs' && section !== 'shares' && section !== 'update' && (
               <button
                 type="button"
                 onClick={handleReset}
-                className="text-xs text-[oklch(0.55_0.01_264)] hover:text-[oklch(0.8_0.01_264)] transition-colors"
+                className="text-xs text-ra-t5 hover:text-ra-t2 transition-colors"
               >
                 還原預設
               </button>
@@ -416,7 +469,7 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
               <button
                 type="button"
                 onClick={onClose}
-                className="px-3 py-1.5 bg-[oklch(0.22_0.02_264)] hover:bg-[oklch(0.26_0.02_264)] text-[oklch(0.85_0.01_264)] rounded-lg text-xs font-medium transition-colors"
+                className="px-3 py-1.5 bg-ra-raised hover:bg-ra-raised text-ra-t2 rounded-lg text-xs font-medium transition-colors"
               >
                 關閉
               </button>

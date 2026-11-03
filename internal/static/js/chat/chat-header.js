@@ -13,7 +13,7 @@ function SlashCommandMenu({ items, activeIndex, onSelect }) {
       ref={listRef}
       role="listbox"
       aria-label="Slash 命令"
-      className="absolute bottom-full left-0 right-0 z-20 mb-1 max-h-48 overflow-y-auto app-scroll rounded-lg border border-gray-700 bg-gray-800/98 py-1 shadow-lg backdrop-blur-sm"
+      className="absolute bottom-full left-0 right-0 z-20 mb-1 max-h-48 overflow-y-auto app-scroll rounded-lg border border-gray-700 bg-ra-card/95 py-1 shadow-lg backdrop-blur-sm"
     >
       {items.map((c, i) => (
         <button
@@ -68,7 +68,7 @@ function OpenInHostButton({ sessionId, kind }) {
       disabled={busy}
       title={title}
       aria-label={title}
-      className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-md text-[oklch(0.65_0.01_264)] hover:text-violet-300 hover:bg-[oklch(0.2_0.02_264)] disabled:opacity-40"
+      className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-md text-ra-t4 hover:text-violet-300 hover:bg-ra-card disabled:opacity-40"
     >
       {isVscode ? (
         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden>
@@ -91,7 +91,7 @@ function ShareButton({ onClick }) {
       onClick={onClick}
       title="分享這個聊天室"
       aria-label="分享這個聊天室"
-      className="shrink-0 inline-flex items-center gap-1 h-8 px-2 rounded-md text-xs text-[oklch(0.7_0.01_264)] hover:text-violet-300 hover:bg-[oklch(0.2_0.02_264)]"
+      className="shrink-0 inline-flex items-center gap-1 h-8 px-2 rounded-md text-xs text-ra-t3 hover:text-violet-300 hover:bg-ra-card"
     >
       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
         <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
@@ -151,7 +151,7 @@ function ChatSessionHeader({
 
   return (
     <div
-      className="shrink-0 border-b border-[oklch(0.26_0.02_264)] bg-[oklch(0.15_0.02_264)]"
+      className="shrink-0 border-b border-ra-line-soft bg-ra-bg"
       style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top) + var(--tg-content-safe-top))' }}
     >
       {/* 手機：標題列 + badge 列（設計 2b） */}
@@ -159,11 +159,11 @@ function ChatSessionHeader({
         <div className="flex items-center gap-2.5 min-w-0">
           {showBack && !isGuest && (
             <button type="button" onClick={onBack}
-              className="shrink-0 text-[oklch(0.7_0.01_264)] hover:text-[oklch(0.94_0.01_264)] text-lg leading-none px-0.5">
+              className="shrink-0 text-ra-t3 hover:text-ra-t1 text-lg leading-none px-0.5">
               ←
             </button>
           )}
-          <div className="min-w-0 flex-1 font-bold text-base text-[oklch(0.94_0.01_264)] truncate" title={session.name}>
+          <div className="min-w-0 flex-1 font-bold text-base text-ra-t1 truncate" title={session.name}>
             {session.name || '未命名'}
           </div>
           <SessionStateChip state={state} activityHint={activityHint} className="shrink-0" />
@@ -184,7 +184,7 @@ function ChatSessionHeader({
       <div className="hidden sm:block px-7 py-4">
         <div className="flex items-center justify-between gap-x-4 gap-y-2 flex-wrap">
           <div className="flex items-center gap-2 min-w-0">
-            <div className="text-base font-bold text-[oklch(0.94_0.01_264)] truncate" title={session.name}>
+            <div className="text-base font-bold text-ra-t1 truncate" title={session.name}>
               {session.name || '未命名'}
             </div>
             <SessionStateChip state={state} activityHint={activityHint} className="shrink-0" />
@@ -204,7 +204,7 @@ function ChatSessionHeader({
                 onClick={onClosePane}
                 title="關閉副欄"
                 aria-label="關閉副欄"
-                className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-md text-[oklch(0.7_0.01_264)] hover:text-red-400 hover:bg-red-500/15 transition-colors"
+                className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-md text-ra-t3 hover:text-red-400 hover:bg-red-500/15 transition-colors"
               >
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <line x1="18" y1="6" x2="6" y2="18" />
@@ -214,7 +214,7 @@ function ChatSessionHeader({
             )}
             {!isGuest && onShare && <ShareButton onClick={onShare} />}
             {showOpenButtons ? (
-              <div className="flex items-center gap-0.5 pr-1 border-r border-[oklch(0.26_0.02_264)]">
+              <div className="flex items-center gap-0.5 pr-1 border-r border-ra-line-soft">
                 <OpenInHostButton sessionId={session.id} kind="vscode" />
                 <OpenInHostButton sessionId={session.id} kind="folder" />
               </div>
@@ -223,7 +223,7 @@ function ChatSessionHeader({
         </div>
         <div className="flex items-center gap-2 mt-1.5 min-w-0 flex-wrap">
           {subLine ? (
-            <span className="text-xs text-[oklch(0.55_0.01_264)] ra-mono truncate">{subLine}</span>
+            <span className="text-xs text-ra-t5 ra-mono truncate">{subLine}</span>
           ) : null}
           {quotaBars ? (
             <span className="text-xs ra-mono shrink-0">
@@ -241,7 +241,7 @@ function ChatSessionHeader({
               type="button"
               onClick={onQuotaRefresh}
               disabled={quotaRefreshing}
-              className={'text-xs ra-mono ' + (quotaRefreshing ? 'text-violet-400 animate-spin' : 'text-[oklch(0.55_0.01_264)] hover:text-violet-300')}
+              className={'text-xs ra-mono ' + (quotaRefreshing ? 'text-violet-400 animate-spin' : 'text-ra-t5 hover:text-violet-300')}
               title="刷新帳戶用量"
               aria-label="刷新帳戶用量"
             >

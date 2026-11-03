@@ -192,7 +192,7 @@ function MessageContextMenu({ payload, onClose, onCopy, onForward }) {
 
   if (!payload) return null;
 
-  const itemCls = 'w-full flex items-center justify-between gap-8 px-4 py-3 text-[16px] text-left text-[oklch(0.93_0.01_264)] active:bg-[oklch(0.31_0.02_264)] disabled:opacity-35';
+  const itemCls = 'w-full flex items-center justify-between gap-8 px-4 py-3 text-[16px] text-left text-ra-t1 active:bg-ra-active disabled:opacity-35';
   const timeText = formatMenuTime(payload.createdAt);
 
   return (
@@ -213,7 +213,7 @@ function MessageContextMenu({ payload, onClose, onCopy, onForward }) {
       ) : null}
       <div
         ref={menuRef}
-        className="msg-pop fixed min-w-[210px] rounded-[22px] border border-[oklch(0.34_0.02_264)] bg-[oklch(0.24_0.02_264)] shadow-[0_12px_40px_rgba(0,0,0,0.5)] overflow-hidden"
+        className="msg-pop fixed min-w-[210px] rounded-[22px] border border-ra-line-strong bg-ra-raised shadow-[0_12px_40px_rgba(0,0,0,0.5)] overflow-hidden"
         style={{
           left: pos ? pos.left : 0,
           top: pos ? pos.top : 0,
@@ -223,7 +223,7 @@ function MessageContextMenu({ payload, onClose, onCopy, onForward }) {
         onClick={(e) => e.stopPropagation()}
       >
         {timeText ? (
-          <div className="px-4 pt-3 pb-1.5 text-[12px] text-[oklch(0.62_0.01_264)] tabular-nums">{timeText}</div>
+          <div className="px-4 pt-3 pb-1.5 text-[12px] text-ra-t4 tabular-nums">{timeText}</div>
         ) : null}
         <div className="pb-1.5">
           <button type="button" className={itemCls} onClick={() => onCopy(payload)}>

@@ -67,16 +67,16 @@ function NewSessionComposer({ prefill, onCreated, onCancel }) {
   };
 
   return (
-    <div className="h-full overflow-y-auto app-scroll flex flex-col items-center justify-center px-4 py-10 bg-[oklch(0.15_0.02_264)]">
+    <div className="h-full overflow-y-auto app-scroll flex flex-col items-center justify-center px-4 py-10 bg-ra-bg">
       <div className="w-full max-w-xl space-y-4">
         <div className="flex items-center justify-between">
-          <div className="ra-display text-lg text-[oklch(0.94_0.01_264)]">新建 Session</div>
+          <div className="ra-display text-lg text-ra-t1">新建 Session</div>
           <button
             type="button"
             onClick={onCancel}
             aria-label="取消"
             title="取消"
-            className="text-[oklch(0.5_0.01_264)] hover:text-gray-300 text-xl leading-none px-1"
+            className="text-ra-t5 hover:text-gray-300 text-xl leading-none px-1"
           >
             ×
           </button>
@@ -94,7 +94,7 @@ function NewSessionComposer({ prefill, onCreated, onCancel }) {
                 className={`inline-flex items-center gap-1.5 rounded-[9px] border px-3 py-1.5 text-xs font-semibold transition-colors ${
                   active
                     ? 'border-violet-500/60 bg-violet-500/15 text-violet-200'
-                    : 'border-[oklch(0.28_0.02_264)] bg-[oklch(0.19_0.02_264)] text-[oklch(0.6_0.01_264)] hover:text-[oklch(0.85_0.01_264)]'
+                    : 'border-ra-line bg-ra-card text-ra-t4 hover:text-ra-t2'
                 }`}
               >
                 <span className={`inline-flex items-center justify-center w-[18px] h-[18px] rounded-[5px] ${getAgentBadgeClass(opt.value)}`}>
@@ -123,7 +123,7 @@ function NewSessionComposer({ prefill, onCreated, onCancel }) {
         />
 
         {/* 中央輸入：第一則訊息（chat-input 風格，選填） */}
-        <div className="rounded-2xl border border-[oklch(0.28_0.02_264)] bg-[oklch(0.19_0.02_264)] px-4 py-3 focus-within:border-violet-600 transition-colors">
+        <div className="rounded-2xl border border-ra-line bg-ra-card px-4 py-3 focus-within:border-violet-600 transition-colors">
           <textarea
             ref={messageInputRef}
             value={message}
@@ -131,14 +131,14 @@ function NewSessionComposer({ prefill, onCreated, onCancel }) {
             onKeyDown={handleMessageKeyDown}
             placeholder="跟這個新 Session 說些什麼…（選填，留空只建立空白對話）"
             rows={3}
-            className="w-full resize-none bg-transparent border-0 p-0 text-[15px] leading-relaxed text-[oklch(0.94_0.01_264)] placeholder-[oklch(0.5_0.01_264)] focus:outline-none"
+            className="w-full resize-none bg-transparent border-0 p-0 text-[15px] leading-relaxed text-ra-t1 placeholder-ra-t5 focus:outline-none"
           />
         </div>
 
         <WorkDirPicker value={newForm.workDir} onChange={newForm.setWorkDir} />
 
         {/* 進階設定（預設收合） */}
-        <div className="rounded-lg border border-[oklch(0.26_0.02_264)]">
+        <div className="rounded-lg border border-ra-line-soft">
           <button
             type="button"
             onClick={() => setAdvancedOpen((v) => !v)}
@@ -148,7 +148,7 @@ function NewSessionComposer({ prefill, onCreated, onCancel }) {
             <span className={`transition-transform ${advancedOpen ? 'rotate-180' : ''}`} aria-hidden>▾</span>
           </button>
           {advancedOpen && (
-            <div className="px-3 pb-3 space-y-2.5 border-t border-[oklch(0.26_0.02_264)] pt-2.5">
+            <div className="px-3 pb-3 space-y-2.5 border-t border-ra-line-soft pt-2.5">
               <div>
                   <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">Model（選填，寫入 --model）</div>
                   <input

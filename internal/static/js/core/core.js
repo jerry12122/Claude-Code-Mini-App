@@ -114,6 +114,79 @@ function saveStoredAppearance(appearance) {
   } catch (_) {}
 }
 
+/** 主題偏好（每裝置 localStorage；不進伺服器）。 */
+const THEME_KEY = 'cc_theme_v1';
+const THEME_PREFS = new Set(['system', 'dark', 'light']);
+
+function resolveTheme(pref, prefersDark) {
+  if (pref === 'light') return 'light';
+  if (pref === 'system' && prefersDark === false) return 'light';
+  return 'dark';
+}
+
+function readThemePref() {
+  try {
+    const raw = localStorage.getItem(THEME_KEY);
+    return THEME_PREFS.has(raw) ? raw : 'dark';
+  } catch (_) {
+    return 'dark';
+  }
+}
+
+function getPrefersDark() {
+  try {
+    if (typeof window.matchMedia !== 'function') return null;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  } catch (_) {
+    return null;
+  }
+}
+
+let lastEffectiveTheme = null;
+
+function syncHighlightThemeStyles(theme) {
+  const darkLink = document.getElementById('hljs-theme-dark');
+  const lightLink = document.getElementById('hljs-theme-light');
+  if (darkLink) darkLink.disabled = theme === 'light';
+  if (lightLink) lightLink.disabled = theme === 'dark';
+}
+
+function applyTheme() {
+  const root = typeof document !== 'undefined' ? document.documentElement : null;
+  if (!root || !root.dataset) return;
+  const pref = readThemePref();
+  const theme = resolveTheme(pref, getPrefersDark());
+  root.dataset.theme = theme;
+  syncHighlightThemeStyles(theme);
+
+  if (theme !== lastEffectiveTheme) {
+    lastEffectiveTheme = theme;
+    try {
+      window.dispatchEvent(new CustomEvent('ra-theme-change', { detail: { theme } }));
+    } catch (_) {}
+  }
+}
+
+function setThemePref(pref) {
+  const next = THEME_PREFS.has(pref) ? pref : 'dark';
+  try {
+    localStorage.setItem(THEME_KEY, next);
+  } catch (_) {}
+  applyTheme();
+}
+
+// head inline 已同步 data-theme；此處補 hljs、ra-theme-change 與 OS 跟隨（system）監聽。
+try {
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (readThemePref() === 'system') applyTheme();
+    });
+  }
+} catch (_) {}
+if (typeof document !== 'undefined' && document.documentElement) {
+  applyTheme();
+}
+
 /** 對話文字大小（px）：每個裝置各自的偏好，只存 localStorage、不進伺服器。 */
 const CHAT_FS_KEY = 'cc_chat_fs_v1';
 const CHAT_FS_DEFAULT = 14;
@@ -146,7 +219,14 @@ function applyAppearance(appearance) {
   const a = { ...APPEARANCE_DEFAULTS, ...(appearance || {}) };
   const root = document.documentElement.style;
   for (const key of Object.keys(APPEARANCE_CSS_VAR)) {
-    root.setProperty(APPEARANCE_CSS_VAR[key], a[key] || APPEARANCE_DEFAULTS[key]);
+    const cssVar = APPEARANCE_CSS_VAR[key];
+    const val = a[key];
+    const def = APPEARANCE_DEFAULTS[key];
+    if (val != null && val !== '' && val !== def) {
+      root.setProperty(cssVar, val);
+    } else {
+      root.removeProperty(cssVar);
+    }
   }
   const styleEl = document.getElementById('ra-custom-css');
   if (styleEl) styleEl.textContent = a.customCss || '';
@@ -584,7 +664,7 @@ function permModeIsDanger(value) {
 
 function sessionStateChipClass(state) {
   // 與 session 列表下方方塊 badge 同構：無邊框、軟底色
-  if (state === 'IDLE' || state === 'SHELL_IDLE') return 'bg-[oklch(0.7_0.15_155_/16%)] text-[oklch(0.7_0.15_155)]';
+  if (state === 'IDLE' || state === 'SHELL_IDLE') return 'bg-[oklch(0.7_0.15_155_/16%)] text-ra-ok';
   if (state === 'THINKING') return 'bg-violet-500/20 text-violet-300';
   if (state === 'STREAMING') return 'bg-sky-500/20 text-sky-300';
   if (state === 'SHELL_EXEC' || state === 'SHELL_RUNNING') return 'bg-amber-500/20 text-amber-200';

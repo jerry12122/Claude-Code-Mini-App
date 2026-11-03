@@ -64,7 +64,7 @@ async function readApiError(res, fallback) {
   return fallback;
 }
 
-const shareBtnCls = 'px-2 py-1 rounded-md text-xs bg-[oklch(0.22_0.02_264)] hover:bg-[oklch(0.27_0.02_264)] text-[oklch(0.85_0.01_264)] border border-[oklch(0.3_0.02_264)] disabled:opacity-40';
+const shareBtnCls = 'px-2 py-1 rounded-md text-xs bg-ra-raised hover:bg-ra-raised text-ra-t2 border border-ra-line disabled:opacity-40';
 
 /**
  * 單一分享的資訊卡：連結／PIN（可複製）、剩餘時間、線上名單、結束分享。
@@ -87,21 +87,21 @@ function ShareRow({ share, onRevoke, showSession = false, onJump = null, pinReve
   const dot = info.key === 'active' ? 'bg-emerald-400' : info.key === 'locked' ? 'bg-amber-400' : 'bg-gray-600';
 
   return (
-    <div className={`rounded-xl border border-[oklch(0.28_0.02_264)] bg-[oklch(0.17_0.02_264)] p-3 text-sm space-y-2 ${ended ? 'opacity-55' : ''}`} data-share-id={share.id}>
+    <div className={`rounded-xl border border-ra-line bg-ra-card p-3 text-sm space-y-2 ${ended ? 'opacity-55' : ''}`} data-share-id={share.id}>
       <div className="flex items-center gap-2 min-w-0">
         <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} aria-hidden />
-        <span className="text-xs font-semibold text-[oklch(0.9_0.01_264)]">{shareRoleLabel(share)}</span>
-        <span className="text-[11px] text-[oklch(0.6_0.01_264)]">{info.label}</span>
+        <span className="text-xs font-semibold text-ra-t1">{shareRoleLabel(share)}</span>
+        <span className="text-[11px] text-ra-t4">{info.label}</span>
         {showSession && (
           onJump ? (
             <button type="button" onClick={() => onJump(share.session_id)} className="min-w-0 truncate text-xs text-violet-300 hover:underline" title="跳到這個聊天室">
               {share.session_name || share.session_id}
             </button>
           ) : (
-            <span className="min-w-0 truncate text-xs text-[oklch(0.7_0.01_264)]">{share.session_name || share.session_id}</span>
+            <span className="min-w-0 truncate text-xs text-ra-t3">{share.session_name || share.session_id}</span>
           )
         )}
-        <span className="ml-auto shrink-0 text-[11px] text-[oklch(0.6_0.01_264)] tabular-nums">
+        <span className="ml-auto shrink-0 text-[11px] text-ra-t4 tabular-nums">
           {ended ? '' : `剩 ${formatRemaining(remaining)}`}
         </span>
       </div>
@@ -111,7 +111,7 @@ function ShareRow({ share, onRevoke, showSession = false, onJump = null, pinReve
           readOnly
           value={link}
           onFocus={(e) => e.target.select()}
-          className="flex-1 min-w-0 rounded-md bg-[oklch(0.13_0.02_264)] border border-[oklch(0.28_0.02_264)] px-2 py-1 text-xs ra-mono text-[oklch(0.8_0.01_264)]"
+          className="flex-1 min-w-0 rounded-md bg-ra-sunken border border-ra-line px-2 py-1 text-xs ra-mono text-ra-t2"
         />
         <button type="button" className={shareBtnCls} onClick={() => copy(link, '連結')}>複製連結</button>
         <button type="button" className={shareBtnCls} onClick={() => copy(shareLinkWithPin(share), '連結（含 PIN）')}
@@ -119,14 +119,14 @@ function ShareRow({ share, onRevoke, showSession = false, onJump = null, pinReve
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs text-[oklch(0.6_0.01_264)]">PIN</span>
-        <span className="ra-mono text-base tracking-[0.25em] text-[oklch(0.94_0.01_264)] select-all">{showPin ? share.pin : '••••••'}</span>
+        <span className="text-xs text-ra-t4">PIN</span>
+        <span className="ra-mono text-base tracking-[0.25em] text-ra-t1 select-all">{showPin ? share.pin : '••••••'}</span>
         <button type="button" className={shareBtnCls} onClick={() => setShowPin(!showPin)}>{showPin ? '隱藏' : '顯示'}</button>
         <button type="button" className={shareBtnCls} onClick={() => copy(share.pin, ' PIN')}>複製 PIN</button>
         <button type="button" className={shareBtnCls} onClick={() => copy(`${link}\nPIN：${share.pin}`, '連結與 PIN')}>複製全部</button>
       </div>
 
-      <div className="flex items-center gap-2 text-xs text-[oklch(0.6_0.01_264)]">
+      <div className="flex items-center gap-2 text-xs text-ra-t4">
         <span className="min-w-0 truncate">
           {ended ? '' : online.length > 0 ? `線上：${online.join('、')}` : '目前沒有訪客在線'}
           {share.locked && info.key !== 'ended' ? ' · PIN 錯誤次數過多，已鎖定' : ''}
@@ -220,12 +220,12 @@ function ShareModal({ session, onClose }) {
   const active = shares.filter((s) => s.status === 'active');
   const optBtn = (on) => `flex-1 rounded-lg border px-3 py-2 text-left text-xs transition-colors ${on
     ? 'border-violet-500/70 bg-violet-500/15 text-violet-100'
-    : 'border-[oklch(0.3_0.02_264)] bg-[oklch(0.18_0.02_264)] text-[oklch(0.75_0.01_264)] hover:border-[oklch(0.4_0.02_264)]'}`;
+    : 'border-ra-line bg-ra-card text-ra-t3 hover:border-ra-line-strong'}`;
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-[2px]" onClick={onClose} role="presentation">
       <div
-        className="w-full max-w-lg max-h-[88vh] flex flex-col overflow-hidden rounded-2xl border border-[oklch(0.28_0.02_264)] bg-[oklch(0.15_0.02_264)] shadow-2xl shadow-black/50"
+        className="w-full max-w-lg max-h-[88vh] flex flex-col overflow-hidden rounded-2xl border border-ra-line bg-ra-bg shadow-2xl shadow-black/50"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -233,16 +233,16 @@ function ShareModal({ session, onClose }) {
       >
         <div className="shrink-0 flex items-center justify-between px-5 pt-4 pb-3">
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-[oklch(0.94_0.01_264)]">分享聊天室</div>
-            <div className="text-xs text-[oklch(0.6_0.01_264)] truncate">{session.name || '未命名'}</div>
+            <div className="text-sm font-semibold text-ra-t1">分享聊天室</div>
+            <div className="text-xs text-ra-t4 truncate">{session.name || '未命名'}</div>
           </div>
-          <button type="button" onClick={onClose} className="text-[oklch(0.6_0.01_264)] hover:text-[oklch(0.9_0.01_264)] text-lg leading-none px-1" aria-label="關閉">×</button>
+          <button type="button" onClick={onClose} className="text-ra-t4 hover:text-ra-t1 text-lg leading-none px-1" aria-label="關閉">×</button>
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto app-scroll px-5 pb-5 space-y-4">
-          <div className="space-y-3 rounded-xl border border-[oklch(0.26_0.02_264)] p-3">
+          <div className="space-y-3 rounded-xl border border-ra-line-soft p-3">
             <div>
-              <div className="mb-1.5 text-xs text-[oklch(0.65_0.01_264)]">對方的權限</div>
+              <div className="mb-1.5 text-xs text-ra-t4">對方的權限</div>
               <div className="flex gap-2">
                 <button type="button" className={optBtn(role === 'viewer')} onClick={() => pickRole('viewer')}>
                   <div className="font-semibold">僅檢視</div>
@@ -255,7 +255,7 @@ function ShareModal({ session, onClose }) {
               </div>
             </div>
             <div>
-              <div className="mb-1.5 text-xs text-[oklch(0.65_0.01_264)]">內容</div>
+              <div className="mb-1.5 text-xs text-ra-t4">內容</div>
               <div className="flex gap-2">
                 <button type="button" className={optBtn(mode === 'live')} onClick={() => setMode('live')}>
                   <div className="font-semibold">即時</div>
@@ -270,11 +270,11 @@ function ShareModal({ session, onClose }) {
               </div>
             </div>
             <div>
-              <div className="mb-1.5 text-xs text-[oklch(0.65_0.01_264)]">有效時間</div>
+              <div className="mb-1.5 text-xs text-ra-t4">有效時間</div>
               <div className="flex flex-wrap gap-1.5">
                 {SHARE_TTL_OPTIONS.map((o) => (
                   <button key={o.sec} type="button"
-                    className={`rounded-md border px-2.5 py-1 text-xs ${ttl === o.sec ? 'border-violet-500/70 bg-violet-500/15 text-violet-100' : 'border-[oklch(0.3_0.02_264)] text-[oklch(0.75_0.01_264)] hover:border-[oklch(0.4_0.02_264)]'}`}
+                    className={`rounded-md border px-2.5 py-1 text-xs ${ttl === o.sec ? 'border-violet-500/70 bg-violet-500/15 text-violet-100' : 'border-ra-line text-ra-t3 hover:border-ra-line-strong'}`}
                     onClick={() => setTtl(o.sec)}>
                     {o.label}
                   </button>
@@ -293,11 +293,11 @@ function ShareModal({ session, onClose }) {
           </div>
 
           <div>
-            <div className="mb-2 text-xs text-[oklch(0.65_0.01_264)]">目前有效的分享{active.length ? `（${active.length}）` : ''}</div>
+            <div className="mb-2 text-xs text-ra-t4">目前有效的分享{active.length ? `（${active.length}）` : ''}</div>
             {!loaded ? (
-              <div className="text-xs text-[oklch(0.5_0.01_264)]">載入中…</div>
+              <div className="text-xs text-ra-t5">載入中…</div>
             ) : active.length === 0 ? (
-              <div className="text-xs text-[oklch(0.5_0.01_264)]">還沒有分享。建立後把連結與 PIN 傳給對方。</div>
+              <div className="text-xs text-ra-t5">還沒有分享。建立後把連結與 PIN 傳給對方。</div>
             ) : (
               <div className="space-y-2.5">
                 {active.map((s) => <ShareRow key={s.id} share={s} onRevoke={revoke} />)}

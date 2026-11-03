@@ -98,7 +98,7 @@ function SelectionQuotePopover({ targetRect, onQuote, onClose }) {
         }}
         title="引用所選文字並於輸入框回覆"
         aria-label="引用所選文字回覆"
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[oklch(0.36_0.02_264)] bg-[oklch(0.22_0.02_264)] hover:bg-[oklch(0.32_0.04_264)] text-[oklch(0.94_0.01_264)] text-xs font-medium shadow-[0_6px_20px_rgba(0,0,0,0.45)] backdrop-blur-md active:scale-95 transition-all"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-ra-line-strong bg-ra-raised hover:bg-ra-active text-ra-t1 text-xs font-medium shadow-[0_6px_20px_rgba(0,0,0,0.45)] backdrop-blur-md active:scale-95 transition-all"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"

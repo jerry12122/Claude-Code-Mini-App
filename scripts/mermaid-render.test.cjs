@@ -241,3 +241,20 @@ console.log('✓ Task 2.1 tests passed');
   console.error(err);
   process.exit(1);
 });
+
+context.document.documentElement = { dataset: { theme: 'light' } };
+const lightMermaidConfig = getMermaidConfig();
+assert.equal(lightMermaidConfig.theme, 'default', 'light effective theme must use mermaid default theme');
+assert.equal(lightMermaidConfig.themeVariables.darkMode, false, 'light themeVariables.darkMode must be false');
+
+context.document.documentElement.dataset.theme = 'dark';
+const darkMermaidConfig = getMermaidConfig();
+assert.equal(darkMermaidConfig.theme, 'dark', 'dark effective theme must use mermaid dark theme');
+assert.equal(darkMermaidConfig.themeVariables.darkMode, true, 'dark themeVariables.darkMode must be true');
+
+delete context.document.documentElement;
+const noRootMermaidConfig = getMermaidConfig();
+assert.equal(noRootMermaidConfig.theme, 'dark', 'missing documentElement must fall back to dark theme');
+assert.equal(noRootMermaidConfig.themeVariables.darkMode, true, 'missing documentElement must keep darkMode true');
+
+console.log('✓ Task 4.1 theme config tests passed');

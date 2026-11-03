@@ -44,11 +44,11 @@ function ShareStatusBar({ guest, online = [], remainingMs = null, ended = false,
   const showOnline = online.length > 0 && (isGuest || online.length > 1) && !(isGuest && ended);
   if (showOnline) {
     bars.push(
-      <div key="online" className="border-b border-[oklch(0.26_0.02_264)] bg-[oklch(0.14_0.02_264)] px-4 py-1.5 text-xs text-[oklch(0.65_0.01_264)] flex items-center gap-1.5 flex-wrap" data-share-online>
+      <div key="online" className="border-b border-ra-line-soft bg-ra-sunken px-4 py-1.5 text-xs text-ra-t4 flex items-center gap-1.5 flex-wrap" data-share-online>
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" aria-hidden />
         線上：
         {online.map((n) => (
-          <span key={n} className={`px-1.5 py-0.5 rounded bg-[oklch(0.2_0.02_264)] ${isGuest && n === guest.nickname ? 'text-violet-200' : 'text-[oklch(0.8_0.01_264)]'}`}>{n}</span>
+          <span key={n} className={`px-1.5 py-0.5 rounded bg-ra-card ${isGuest && n === guest.nickname ? 'text-violet-200' : 'text-ra-t2'}`}>{n}</span>
         ))}
       </div>
     );
@@ -61,7 +61,7 @@ function ShareStatusBar({ guest, online = [], remainingMs = null, ended = false,
 function GuestReadOnlyBar({ snapshot, ended }) {
   const text = ended ? '分享已結束，無法再傳送訊息' : snapshot ? '這是唯讀快照，不會更新' : '你是唯讀訪客，無法傳送訊息';
   return (
-    <div className="shrink-0 px-4 py-3 border-t border-[oklch(0.26_0.02_264)] bg-[oklch(0.15_0.02_264)] text-center text-xs text-[oklch(0.6_0.01_264)]"
+    <div className="shrink-0 px-4 py-3 border-t border-ra-line-soft bg-ra-bg text-center text-xs text-ra-t4"
       style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
       {text}
     </div>
@@ -75,8 +75,8 @@ function ShareEndedView({ message }) {
         <div className="mx-auto w-10 h-10 rounded-[10px] bg-gradient-to-br from-gray-600 to-gray-700 flex items-center justify-center" aria-hidden>
           <div className="w-3.5 h-3.5 rounded-[3px] bg-white/80" />
         </div>
-        <div className="ra-display text-xl text-[oklch(0.94_0.01_264)]">分享已結束</div>
-        <div className="text-sm text-[oklch(0.6_0.01_264)]">{message || '這個分享連結已被結束或已到期。如需繼續，請向擁有者索取新的連結。'}</div>
+        <div className="ra-display text-xl text-ra-t1">分享已結束</div>
+        <div className="text-sm text-ra-t4">{message || '這個分享連結已被結束或已到期。如需繼續，請向擁有者索取新的連結。'}</div>
       </div>
     </div>
   );
@@ -161,7 +161,7 @@ function JoinView({ token, onJoined }) {
             <div className="w-10 h-10 rounded-[10px] bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center" aria-hidden>
               <div className="w-3.5 h-3.5 rounded-[3px] bg-white" />
             </div>
-            <div className="ra-display text-2xl" style={{ color: 'oklch(0.94 0.01 264)' }}>加入共享聊天室</div>
+            <div className="ra-display text-2xl" style={{ color: 'oklch(var(--ra-t1))' }}>加入共享聊天室</div>
           </div>
           <div className="text-gray-600 text-xs">請輸入擁有者給你的 6 位數 PIN，並取一個暱稱</div>
         </div>

@@ -13,7 +13,7 @@ function TelegramOlderControl({ paging, onLoad }) {
     return () => clearTimeout(timer);
   }, [paging.retryAt]);
   if (!paging.needsInit && paging.hasMore === false) {
-    return <div role="status" data-older-state="done" className="shrink-0 text-center text-xs text-[oklch(0.5_0.01_264)]">已載入最早的訊息</div>;
+    return <div role="status" data-older-state="done" className="shrink-0 text-center text-xs text-ra-t5">已載入最早的訊息</div>;
   }
   const blocked = wait > 0;
   const label = paging.loading ? '載入中…' : blocked ? '請稍候再試' : paging.error ? '重試' : paging.needsInit ? '重新載入' : '載入較早訊息';
@@ -26,7 +26,7 @@ function TelegramOlderControl({ paging, onLoad }) {
         disabled={paging.loading || blocked}
         aria-busy={paging.loading}
         data-older-state={paging.loading ? 'loading' : paging.error ? 'error' : 'idle'}
-        className="rounded-full border border-[oklch(0.34_0.03_264)] bg-[oklch(0.22_0.02_264)] px-3 py-1 text-xs text-[oklch(0.85_0.01_264)] hover:bg-[oklch(0.27_0.03_264)] disabled:opacity-60 disabled:cursor-default focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+        className="rounded-full border border-ra-line-strong bg-ra-raised px-3 py-1 text-xs text-ra-t2 hover:bg-ra-raised disabled:opacity-60 disabled:cursor-default focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
       >
         {label}
       </button>
@@ -1062,7 +1062,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         className="flex-1 min-h-0 overflow-y-auto app-scroll px-4 py-[18px] sm:px-8 sm:py-7 flex flex-col gap-5"
       >
         {!histLoaded && (
-          <div className="mt-16 text-center text-sm text-[oklch(0.55_0.01_264)]">載入對話中…</div>
+          <div className="mt-16 text-center text-sm text-ra-t5">載入對話中…</div>
         )}
         {isTGChat && histLoaded && tgPaging && tgPaging.syncState === 'offline' && (
           <div role="status" data-sync-state="offline" className="shrink-0 text-center text-xs text-amber-300/80">
@@ -1072,9 +1072,9 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         {isTGChat && histLoaded && tgPaging && <TelegramOlderControl paging={tgPaging} onLoad={handleLoadOlder} />}
         {histLoaded && messages.length === 0 && !(isTGChat && tgPaging && tgPaging.needsInit && tgPaging.error) && (
           <div className="mt-16 flex flex-col items-center gap-4 text-center">
-            <div className="text-sm text-[oklch(0.65_0.01_264)]">{guestReadOnly ? '目前還沒有訊息' : '輸入指令開始對話'}</div>
+            <div className="text-sm text-ra-t4">{guestReadOnly ? '目前還沒有訊息' : '輸入指令開始對話'}</div>
             {session.work_dir ? (
-              <div className="max-w-full truncate ra-mono text-xs text-[oklch(0.5_0.01_264)]" title={session.work_dir}>
+              <div className="max-w-full truncate ra-mono text-xs text-ra-t5" title={session.work_dir}>
                 {workDirGroupShortLabel(session.work_dir)}{session.git_branch ? ` · ${session.git_branch}` : ''}
               </div>
             ) : null}
@@ -1082,7 +1082,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               <div className="flex flex-wrap justify-center gap-2">
                 {EMPTY_SUGGESTIONS.map((t) => (
                   <button key={t} type="button" onClick={() => applySuggestion(t)}
-                    className="rounded-full border border-[oklch(0.3_0.02_264)] bg-[oklch(0.19_0.02_264)] px-3 py-1.5 text-xs text-[oklch(0.8_0.01_264)] hover:border-violet-500/50 hover:text-violet-300 transition-colors">
+                    className="rounded-full border border-ra-line bg-ra-card px-3 py-1.5 text-xs text-ra-t2 hover:border-violet-500/50 hover:text-violet-300 transition-colors">
                     {t}
                   </button>
                 ))}
@@ -1161,20 +1161,20 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                     <span className={`inline-flex items-center justify-center w-[22px] h-[22px] rounded-md shrink-0 ${getAgentBadgeClass(displayAgent, session)}`} aria-hidden>
                       <AgentBadgeIcon agentType={displayAgent} session={session} />
                     </span>
-                    <span className="text-[13px] font-bold text-[oklch(0.85_0.01_264)]">{agentType === 'telegram' && m.author ? m.author : (AGENT_LABEL[displayAgent] || displayAgent || 'Claude')}</span>
+                    <span className="text-[13px] font-bold text-ra-t2">{agentType === 'telegram' && m.author ? m.author : (AGENT_LABEL[displayAgent] || displayAgent || 'Claude')}</span>
                   </div>
                 </div>
                 {claudeAtts.length > 0 && <MessageAttachments items={claudeAtts} onPreview={setLightboxSrc} />}
                 {m.thinking ? (
                   <div className="flex flex-row items-start gap-1.5">
                     <span className="text-violet-400/60 text-xs mt-0.5 shrink-0 select-none">💭</span>
-                    <span className="text-[oklch(0.55_0.01_264)] text-sm italic leading-relaxed line-clamp-3 min-w-0">{m.content}</span>
+                    <span className="text-ra-t5 text-sm italic leading-relaxed line-clamp-3 min-w-0">{m.content}</span>
                   </div>
                 ) : (m.html || showStreamingTail) ? (
                   <div className="flex flex-row items-start gap-1">
                     {m.html && (
                       <div
-                        className="prose text-[oklch(0.85_0.01_264)] text-sm leading-[1.8] flex-1 min-w-0"
+                        className="prose text-ra-t2 text-sm leading-[1.8] flex-1 min-w-0"
                         dangerouslySetInnerHTML={{ __html: m.html }}
                         onClick={handleProseClick}
                       />
@@ -1187,7 +1187,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                   <div className="flex gap-1 py-1"><span className="dot"/><span className="dot"/><span className="dot"/></div>
                 )}
                 {forwardHints[msgKey] ? (
-                  <div className="pt-1 text-[11px] text-[oklch(0.5_0.01_264)]">
+                  <div className="pt-1 text-[11px] text-ra-t5">
                     已轉發到「{forwardHints[msgKey].label}」
                     <button type="button" className="ml-1 text-violet-400 hover:text-violet-300 font-medium" onClick={() => jumpToSession(forwardHints[msgKey].session)}>前往查看 →</button>
                   </div>
@@ -1197,7 +1197,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             {(timeLabel || m.role === 'claude' || m.role === 'shell') ? (
               <div className="mt-0.5 -mb-1 flex items-center gap-1 px-0.5">
                 {timeLabel ? (
-                  <span className="ra-msg-time text-[10px] leading-none text-[oklch(0.48_0.01_264)] tabular-nums select-none" title={String(m.createdAt || '')}>
+                  <span className="ra-msg-time text-[10px] leading-none text-ra-t5 tabular-nums select-none" title={String(m.createdAt || '')}>
                     {timeLabel}
                   </span>
                 ) : null}
@@ -1274,7 +1274,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 </button>
               )}
               <button onClick={handleDenyOnce}
-                className="px-3 py-1.5 bg-red-900 hover:bg-red-800 text-white rounded-lg text-xs">
+                className="px-3 py-1.5 bg-red-900 hover:bg-red-800 text-red-100 rounded-lg text-xs">
                 拒絕
               </button>
             </div>
@@ -1337,7 +1337,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
           onClick={jumpToLatest}
           aria-label="跳到最新訊息"
           title="跳到最新訊息"
-          className="absolute bottom-3 right-4 flex h-9 w-9 items-center justify-center rounded-full border border-[oklch(0.34_0.03_264)] bg-[oklch(0.22_0.02_264)] text-[oklch(0.85_0.01_264)] shadow-lg hover:bg-[oklch(0.27_0.03_264)] transition-colors"
+          className="absolute bottom-3 right-4 flex h-9 w-9 items-center justify-center rounded-full border border-ra-line-strong bg-ra-raised text-ra-t2 shadow-lg hover:bg-ra-raised transition-colors"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true">
             <path d="M12 5v14" />
@@ -1352,7 +1352,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         <GuestReadOnlyBar snapshot={isSnapshot} ended={shareOver} />
       ) : (
       <div
-        className={`shrink-0 px-4 sm:px-7 py-4 border-t transition-colors duration-200 ${inputMode === 'shell' ? 'bg-[oklch(0.15_0.02_264)] border-amber-900/40' : 'bg-[oklch(0.15_0.02_264)] border-[oklch(0.26_0.02_264)]'}`}
+        className={`shrink-0 px-4 sm:px-7 py-4 border-t transition-colors duration-200 ${inputMode === 'shell' ? 'bg-ra-bg border-amber-900/40' : 'bg-ra-bg border-ra-line-soft'}`}
         style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
       >
         {taskRunning && !canQueue ? (
@@ -1402,7 +1402,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                     disabled={sending || isDisabled}
                     aria-label="附加圖片或檔案"
                     title="附加圖片或檔案"
-                    className="shrink-0 flex items-center justify-center w-8 h-8 rounded-[8px] text-[oklch(0.75_0.01_264)] hover:bg-[oklch(0.22_0.02_264)] hover:text-violet-300 disabled:opacity-40 transition-colors">
+                    className="shrink-0 flex items-center justify-center w-8 h-8 rounded-[8px] text-ra-t3 hover:bg-ra-raised hover:text-violet-300 disabled:opacity-40 transition-colors">
                     {uploading ? (
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="w-4 h-4 animate-spin" aria-hidden="true">
                         <path d="M21 12a9 9 0 1 1-6.22-8.56" />
@@ -1493,8 +1493,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                   placeholder={inputMode === 'shell' ? `輸入 ${shellType || 'Shell'} 指令…` : canQueue ? '執行中…送出會排入佇列' : attachments.length ? '想請我如何處理這些附件？（可直接送出）' : '輸入指令… @ 標記 session'}
                   rows={1}
                   className={[
-                    'w-full min-w-0 resize-none border-0 bg-transparent px-1 py-1.5 text-[13.5px] leading-relaxed placeholder-[oklch(0.5_0.01_264)] focus:outline-none disabled:opacity-40 min-h-[2rem] max-h-[240px] box-border app-scroll',
-                    inputMode === 'shell' ? 'text-amber-50 font-mono placeholder-amber-900/60' : 'text-[oklch(0.9_0.01_264)]',
+                    'w-full min-w-0 resize-none border-0 bg-transparent px-1 py-1.5 text-[13.5px] leading-relaxed placeholder-ra-t5 focus:outline-none disabled:opacity-40 min-h-[2rem] max-h-[240px] box-border app-scroll',
+                    inputMode === 'shell' ? 'text-amber-50 font-mono placeholder-amber-900/60' : 'text-ra-t1',
                   ].join(' ')}
                 />
               </div>
@@ -1599,8 +1599,8 @@ function PermToolDetail({ tool }) {
 function QueuedMessages({ items, paused, canResume, onRemove, onResume, sessionId }) {
   if (!Array.isArray(items) || items.length === 0) return null;
   return (
-    <div className="mb-2 rounded-lg border border-[oklch(0.3_0.02_264)] bg-[oklch(0.18_0.02_264)] px-2 py-1.5 text-xs" aria-label="排隊中的訊息">
-      <div className="flex items-center justify-between mb-1 text-[oklch(0.65_0.01_264)]">
+    <div className="mb-2 rounded-lg border border-ra-line bg-ra-card px-2 py-1.5 text-xs" aria-label="排隊中的訊息">
+      <div className="flex items-center justify-between mb-1 text-ra-t4">
         <span>{paused ? `⏸ 佇列已暫停（${items.length}）` : `佇列（${items.length}）· 完成後依序執行`}</span>
         {canResume && (
           <button type="button" onClick={onResume}
@@ -1611,12 +1611,12 @@ function QueuedMessages({ items, paused, canResume, onRemove, onResume, sessionI
       </div>
       <ol className="space-y-0.5">
         {items.map((q, i) => (
-          <li key={q.id} className="flex items-center gap-1.5 text-[oklch(0.85_0.01_264)]">
-            <span className="shrink-0 font-mono text-[10px] text-[oklch(0.55_0.01_264)]">{i + 1}.</span>
+          <li key={q.id} className="flex items-center gap-1.5 text-ra-t2">
+            <span className="shrink-0 font-mono text-[10px] text-ra-t5">{i + 1}.</span>
             <span className="min-w-0 flex-1 truncate" title={attachmentQueueSummary(q, sessionId)}>{attachmentQueueSummary(q, sessionId)}</span>
             <button type="button" onClick={() => onRemove(q.id)}
               aria-label="移除這則排隊訊息"
-              className="shrink-0 px-1 text-[oklch(0.6_0.01_264)] hover:text-red-300">
+              className="shrink-0 px-1 text-ra-t4 hover:text-red-300">
               ×
             </button>
           </li>

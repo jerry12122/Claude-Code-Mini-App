@@ -1,23 +1,41 @@
 // MermaidBlock.js: 負責 Mermaid 函式庫載入、主題配置與 <ra-mermaid> 自定義 Web Component
 (function() {
+  const MERMAID_FONT = 'Manrope, JetBrains Mono, sans-serif';
+
+  const MERMAID_DARK_THEME_VARIABLES = {
+    darkMode: true,
+    background: 'oklch(0.16 0.02 264)',
+    primaryColor: 'oklch(0.62 0.19 275)',
+    primaryTextColor: 'oklch(0.94 0.01 264)',
+    primaryBorderColor: 'oklch(0.35 0.02 264)',
+    lineColor: 'oklch(0.62 0.19 275)',
+    secondaryColor: 'oklch(0.24 0.02 264)',
+    tertiaryColor: 'oklch(0.19 0.02 264)',
+    fontFamily: MERMAID_FONT,
+    fontSize: '13px',
+  };
+
+  const MERMAID_LIGHT_THEME_VARIABLES = {
+    darkMode: false,
+    background: 'oklch(0.97 0.006 264)',
+    primaryColor: 'oklch(0.62 0.19 275)',
+    primaryTextColor: 'oklch(0.20 0.01 264)',
+    primaryBorderColor: 'oklch(0.88 0.01 264)',
+    lineColor: 'oklch(0.62 0.19 275)',
+    secondaryColor: 'oklch(0.93 0.006 264)',
+    tertiaryColor: 'oklch(0.90 0.01 264)',
+    fontFamily: MERMAID_FONT,
+    fontSize: '13px',
+  };
+
   function getMermaidConfig() {
+    const isLight = typeof document !== 'undefined' && document.documentElement?.dataset?.theme === 'light';
     return {
       startOnLoad: false,
       securityLevel: 'strict',
-      theme: 'dark',
+      theme: isLight ? 'default' : 'dark',
       suppressErrorRendering: true,
-      themeVariables: {
-        darkMode: true,
-        background: 'oklch(0.16 0.02 264)',
-        primaryColor: 'oklch(0.62 0.19 275)',
-        primaryTextColor: 'oklch(0.94 0.01 264)',
-        primaryBorderColor: 'oklch(0.35 0.02 264)',
-        lineColor: 'oklch(0.62 0.19 275)',
-        secondaryColor: 'oklch(0.24 0.02 264)',
-        tertiaryColor: 'oklch(0.19 0.02 264)',
-        fontFamily: 'Manrope, JetBrains Mono, sans-serif',
-        fontSize: '13px',
-      },
+      themeVariables: isLight ? { ...MERMAID_LIGHT_THEME_VARIABLES } : { ...MERMAID_DARK_THEME_VARIABLES },
     };
   }
 
@@ -79,6 +97,13 @@
       }
     }
 
+    redrawForTheme() {
+      if (this._rendered && this.getAttribute('data-streaming') !== 'true') {
+        this._rendered = false;
+        this.renderDiagram();
+      }
+    }
+
     attributeChangedCallback(name, oldValue, newValue) {
       if (oldValue === newValue) return;
       if (name === 'data-code-b64') {
@@ -109,19 +134,19 @@
       if (this._hasRenderedDOM) return;
       this._hasRenderedDOM = true;
 
-      this.className = 'ra-mermaid-container block my-3 rounded-lg border border-[oklch(0.28_0.02_264)] bg-[oklch(0.16_0.02_264)] overflow-hidden text-left';
+      this.className = 'ra-mermaid-container block my-3 rounded-lg border border-ra-line bg-ra-card overflow-hidden text-left';
       this.innerHTML = `
-        <div class="ra-mermaid-toolbar flex items-center justify-between px-3 py-1.5 bg-[oklch(0.19_0.02_264)] border-b border-[oklch(0.28_0.02_264)] text-xs text-[oklch(0.7_0.02_264)] select-none">
-          <div class="flex items-center gap-1.5 font-semibold text-[oklch(0.85_0.01_264)]">
+        <div class="ra-mermaid-toolbar flex items-center justify-between px-3 py-1.5 bg-ra-card border-b border-ra-line text-xs text-ra-t3 select-none">
+          <div class="flex items-center gap-1.5 font-semibold text-ra-t2">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg>
             <span>Mermaid</span>
           </div>
           <div class="flex items-center gap-1">
-            <button type="button" class="btn-toggle-view px-2 py-0.5 rounded hover:bg-[oklch(0.25_0.02_264)] text-[oklch(0.8_0.01_264)] transition-colors">原始碼</button>
-            <button type="button" class="btn-zoom-view p-1 rounded hover:bg-[oklch(0.25_0.02_264)] text-[oklch(0.8_0.01_264)] transition-colors" title="放大檢視" aria-label="放大檢視">
+            <button type="button" class="btn-toggle-view px-2 py-0.5 rounded hover:bg-ra-raised text-ra-t2 transition-colors">原始碼</button>
+            <button type="button" class="btn-zoom-view p-1 rounded hover:bg-ra-raised text-ra-t2 transition-colors" title="放大檢視" aria-label="放大檢視">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
             </button>
-            <button type="button" class="btn-copy-code p-1 rounded hover:bg-[oklch(0.25_0.02_264)] text-[oklch(0.8_0.01_264)] transition-colors" title="複製原始碼" aria-label="複製">
+            <button type="button" class="btn-copy-code p-1 rounded hover:bg-ra-raised text-ra-t2 transition-colors" title="複製原始碼" aria-label="複製">
               <svg class="icon-copy" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
               <svg class="icon-check" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" style="display:none;color:oklch(0.75 0.15 145)"><path d="M20 6 9 17l-5-5"/></svg>
             </button>
@@ -131,9 +156,9 @@
           <span>⚠️ Mermaid 語法解析失敗，已切換回原始碼</span>
         </div>
         <div class="ra-mermaid-diagram p-4 overflow-x-auto flex items-center justify-center min-h-[80px] cursor-zoom-in">
-          <span class="text-xs text-[oklch(0.55_0.01_264)] italic">繪製圖表中...</span>
+          <span class="text-xs text-ra-t5 italic">繪製圖表中...</span>
         </div>
-        <div class="ra-mermaid-code hidden p-3 overflow-x-auto text-xs ra-mono bg-[oklch(0.14_0.02_264)]">
+        <div class="ra-mermaid-code hidden p-3 overflow-x-auto text-xs ra-mono bg-ra-sunken">
           <pre class="m-0 p-0 bg-transparent border-0"><code class="language-mermaid hljs"></code></pre>
         </div>
       `;
@@ -242,5 +267,17 @@
     window.getMermaidConfig = getMermaidConfig;
     window.ensureMermaid = ensureMermaid;
     window.RaMermaidElement = RaMermaidElement;
+    if (typeof window.addEventListener === 'function') {
+      window.addEventListener('ra-theme-change', () => {
+        try {
+          if (window.mermaid) window.mermaid.initialize(getMermaidConfig());
+        } catch (_) {}
+        if (typeof document !== 'undefined' && document.querySelectorAll) {
+          document.querySelectorAll('ra-mermaid').forEach((el) => {
+            if (typeof el.redrawForTheme === 'function') el.redrawForTheme();
+          });
+        }
+      });
+    }
   }
 })();

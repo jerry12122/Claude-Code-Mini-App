@@ -45,7 +45,7 @@ function PasswordView({ onSuccess }) {
             <div className="w-10 h-10 rounded-[10px] bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center" aria-hidden>
               <div className="w-3.5 h-3.5 rounded-[3px] bg-white" />
             </div>
-            <div className="ra-display text-2xl" style={{color:'oklch(0.94 0.01 264)'}}>Agent Console</div>
+            <div className="ra-display text-2xl" style={{color:'oklch(var(--ra-t1))'}}>Agent Console</div>
           </div>
           <div className="text-gray-500 text-sm">Claude Code · Remote Agent</div>
           <div className="text-gray-600 text-xs">請輸入存取密碼</div>
@@ -544,10 +544,10 @@ function App() {
     }
 
     return (
-      <div className="h-app flex bg-[oklch(0.15_0.02_264)] min-w-0 relative">
+      <div className="h-app flex bg-ra-bg min-w-0 relative">
         <aside
           style={{ width: sidebarCollapsed ? SIDEBAR_RAIL_WIDTH : sidebarWidthPx, flexShrink: 0 }}
-          className="min-w-0 bg-[oklch(0.13_0.02_264)] border-r border-[oklch(0.26_0.02_264)] flex flex-col"
+          className="min-w-0 bg-ra-sunken border-r border-ra-line-soft flex flex-col"
         >
           <SessionView
             onEnter={selectSession}
@@ -675,7 +675,7 @@ function App() {
                       isFocused={activePane === 'secondary'}
                     />
                   ) : (
-                    <div className="h-full flex flex-col items-center justify-center gap-3 bg-[oklch(0.15_0.02_264)] p-6 text-center">
+                    <div className="h-full flex flex-col items-center justify-center gap-3 bg-ra-bg p-6 text-center">
                       <div className="text-sm text-gray-400">副聊天室尚未選取會話</div>
                       <div className="text-xs text-gray-500 mb-2">點擊下方任一會話直接在副欄開啟：</div>
                       <div className="flex flex-wrap gap-2 justify-center max-w-md">
@@ -684,7 +684,7 @@ function App() {
                             key={s.id}
                             type="button"
                             onClick={() => selectSession(s, 'secondary')}
-                            className="px-3 py-1.5 rounded-lg bg-[oklch(0.2_0.02_264)] hover:bg-violet-600/30 text-xs text-gray-200 border border-[oklch(0.28_0.02_264)] truncate max-w-[180px]"
+                            className="px-3 py-1.5 rounded-lg bg-ra-card hover:bg-violet-600/30 text-xs text-gray-200 border border-ra-line truncate max-w-[180px]"
                           >
                             {s.name || '未命名'}
                           </button>
@@ -704,7 +704,7 @@ function App() {
             />
           ) : (
             <div
-              className="session-group-frame h-full w-full flex flex-col items-center justify-center gap-3 bg-[oklch(0.15_0.02_264)] relative"
+              className="session-group-frame h-full w-full flex flex-col items-center justify-center gap-3 bg-ra-bg relative"
               onDragOver={(e) => {
                 e.preventDefault();
                 e.dataTransfer.dropEffect = 'move';
@@ -721,7 +721,7 @@ function App() {
               <div className="w-10 h-10 rounded-[10px] bg-gradient-to-br from-[oklch(0.62_0.19_275)] to-[oklch(0.6_0.17_300)] flex items-center justify-center opacity-80" aria-hidden>
                 <div className="w-3.5 h-3.5 rounded-[3px] bg-white" />
               </div>
-              <div className="text-[oklch(0.55_0.01_264)] text-sm">從左側選擇 Session，或按 + 建立新對話</div>
+              <div className="text-ra-t5 text-sm">從左側選擇 Session，或按 + 建立新對話</div>
             </div>
           )}
         </main>
