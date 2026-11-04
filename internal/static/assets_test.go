@@ -64,6 +64,8 @@ func TestStaticAssetModes(t *testing.T) {
 				t.Fatal(err)
 			}
 			got := get(t, app, "/")
+			// 首頁會被改寫（本地腳本合併為 bundle），因此與嵌入版 index.html 的改寫結果比對。
+			want = rewriteIndex(want, true)
 			if got.body != string(want) {
 				t.Fatalf("production 首頁應為嵌入版本，卻被磁碟副本取代（body 長度 %d，嵌入版 %d）", len(got.body), len(want))
 			}

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io/fs"
+	"log"
 	"os"
 	"path"
 	"strings"
@@ -31,6 +32,7 @@ func IsPublic(name string) bool {
 // Handler 只服務 assets 內存在的公開資源；其他請求（含未知 API）交給後續路由，不做 SPA fallback。
 // 路徑先經 path.Clean 正規化，再比對白名單，因此 ".." 無法跳出資源根。
 func Handler(assets fs.FS) fiber.Handler {
+	bundle := newBundler(assets, Production)
 	return func(c *fiber.Ctx) error {
 		if m := c.Method(); m != fiber.MethodGet && m != fiber.MethodHead {
 			return c.Next()
@@ -39,12 +41,30 @@ func Handler(assets fs.FS) fiber.Handler {
 		if name == "" {
 			return c.Next()
 		}
+		if name == "index.html" || name == bundleName {
+			if res := bundle.result(); len(res.files) > 0 {
+				return serveBundled(c, res, name)
+			}
+		}
 		found, err := serveFile(c, assets, name, contentType)
 		if !found {
 			return c.Next()
 		}
 		return err
 	}
+}
+
+// serveBundled 服務改寫後的 index.html 與虛擬 bundle；編譯失敗時 bundle 請求回 500 並帶錯誤訊息。
+func serveBundled(c *fiber.Ctx, res *bundleResult, name string) error {
+	if name == "index.html" {
+		return sendBody(c, res.index, name, contentType)
+	}
+	if res.err != nil {
+		log.Printf("前端 bundle 編譯失敗：%v", res.err)
+		c.Set(fiber.HeaderContentType, "text/plain; charset=utf-8")
+		return c.Status(fiber.StatusInternalServerError).SendString("前端 bundle 編譯失敗：" + res.err.Error())
+	}
+	return sendBody(c, res.bundle, name, contentType)
 }
 
 // Uploads 是聊天截圖的磁碟目錄（media.SaveBase64Image 寫入處），相對於執行時的工作目錄。
@@ -78,16 +98,21 @@ func serveFile(c *fiber.Ctx, fsys fs.FS, name string, ctype func(string) string)
 	if err != nil {
 		return false, nil
 	}
+	return true, sendBody(c, body, name, ctype)
+}
+
+// sendBody 以內容雜湊產生強 ETag 並送出 body。
+func sendBody(c *fiber.Ctx, body []byte, name string, ctype func(string) string) error {
 	sum := sha256.Sum256(body)
 	etag := `"` + hex.EncodeToString(sum[:16]) + `"`
 	c.Set(fiber.HeaderCacheControl, "no-cache")
 	c.Set(fiber.HeaderETag, etag)
 	c.Set("X-Content-Type-Options", "nosniff")
 	if etagMatches(c.Get(fiber.HeaderIfNoneMatch), etag) {
-		return true, c.SendStatus(fiber.StatusNotModified)
+		return c.SendStatus(fiber.StatusNotModified)
 	}
 	c.Set(fiber.HeaderContentType, ctype(name))
-	return true, c.Send(body)
+	return c.Send(body)
 }
 
 // etagMatches 依 RFC 9110 做弱比較：支援 "*"、逗號分隔清單，忽略 W/ 前綴。

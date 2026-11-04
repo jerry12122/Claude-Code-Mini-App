@@ -4,7 +4,7 @@
 
 ## TL;DR
 
-1. **完全沒有 build**：瀏覽器用 `@babel/standalone` 即時轉譯 JSX，沒有 webpack/vite/npm。改完存檔、重新整理瀏覽器即可看到結果。
+1. **沒有建置步驟**：伺服器（`bundle.go`，esbuild Go API）依 `index.html` 的本地 `<script src="./js/...">` 順序逐檔轉譯 JSX 並串接成記憶體中的 `js/app.bundle.js`，回給瀏覽器的 `index.html` 已把這些標籤合併成一個、並移除 Babel。沒有 webpack/vite/npm。改完存檔、重新整理即可（開發建置會偵測檔案變動重編；production 啟動時編譯一次）。檔案仍是全域 script，不可使用 `import`／`export`。
 2. **`<script>` 的順序即依賴順序**：各檔 top-level 的 `function`/`const`/`let` 共用同一個全域作用域，前面的檔案定義、後面的檔案才能用。順序錯了會直接 `ReferenceError`。資料夾只是分類，**不影響**共用作用域——載入順序完全由 `index.html` 裡 `<script>` 標籤的排列決定，跟檔案實際放在哪個資料夾無關。
 3. `js/app.js` **必須排最後**——它含 `ReactDOM.createRoot(...).render(<App/>)`，且依賴前面所有檔案定義好的元件。
 4. 任何 `<script>` **都不能加 `async`**，否則載入順序不保證，會打破上面的共用作用域假設。
