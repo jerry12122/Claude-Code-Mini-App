@@ -4,11 +4,14 @@
 
 發版流程：更新 `VERSION`、`internal/version/version.go`、README 版本徽章與本檔 → commit → 打 `vX.Y.Z` tag 並 push，GitHub Actions 會自動建置並發佈 Release（說明文字取自本檔對應段落）。
 
-## [Unreleased]
+## [0.17.1] - 2026-11-05
 
 ### 變更
-- 前端 JS 改由伺服器在記憶體編譯成單一 `js/app.bundle.js`（esbuild），瀏覽器不再載入 Babel 與約 30 個獨立 script，經 proxy 存取時不再因併發請求過多而 504
-- 開發建置改檔後重整即重新編譯（附 sourcemap）；production 建置啟動時編譯一次並壓縮，同時改用 React 壓縮版
+- 主介面前端 JS 改由伺服器在記憶體編譯成單一 `js/app.bundle.js`（esbuild），減少瀏覽器載入 Babel 與約 30 個獨立 script 的請求，改善經 proxy 存取時的併發請求與 504 問題
+- 開發建置改檔後重整即重新編譯（附 sourcemap）；production 建置首次請求時編譯一次並壓縮，同時改用 React 壓縮版
+
+### 注意
+- 分享頁 `/share/:token` 仍使用原本的 Babel 與個別 script 載入方式，尚未套用上述改善
 
 ## [0.17.0] - 2026-11-04
 
