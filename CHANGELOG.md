@@ -4,6 +4,18 @@
 
 發版流程：更新 `VERSION`、`internal/version/version.go`、README 版本徽章與本檔 → commit → 打 `vX.Y.Z` tag 並 push，GitHub Actions 會自動建置並發佈 Release（說明文字取自本檔對應段落）。
 
+## [0.17.0] - 2026-11-04
+
+### 新增
+- 支援深色、淺色與跟隨系統主題，記住使用者選擇，並同步調整聊天室、Mermaid 圖表與桌面介面的外觀
+- MCP 新增 `get_queue` 與 `delete_queue_message`，可讀取待執行訊息與暫停狀態、刪除指定佇列項目
+- 持久化每個 session 最近一次執行失敗的原始錯誤與時間，重啟後仍保留；下一次成功執行時清除，使用者取消不改動既有紀錄
+- MCP `list_sessions` 回報 `last_error`、`last_error_at`、`queue_paused`、`queue_length`，並支援以 `failed_after` 篩選較新的失敗
+- MCP 新增 `resume_queue`，可解除失敗後的佇列暫停並依序續跑，沿用 UI 的恢復流程與維護期間保護
+
+### 驗證
+- 新增 MCP、WebSocket 與 SQLite 端到端回歸測試，涵蓋額度失敗、重啟保留紀錄、恢復佇列順序與成功後清除錯誤
+
 ## [0.16.0] - 2026-10-27
 
 ### 新增

@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -32,6 +33,9 @@ func (e2eRunner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventC
 		case <-ctx.Done():
 			return ctx.Err()
 		}
+	}
+	if strings.Contains(opts.Prompt, "Q:quota") {
+		return errors.New("You've hit your usage limit, try again at 4:42 PM")
 	}
 	cb(agent.Event{Type: agent.EventDelta, Text: "reply-to:" + question(opts.Prompt)})
 	cb(agent.Event{Type: agent.EventDone})

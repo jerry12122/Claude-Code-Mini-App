@@ -34,6 +34,15 @@ func parseQueryTime(s string) (string, error) {
 	return "", fmt.Errorf("無法解析時間 %q，請用 ISO8601（例如 2026-09-09T00:00:00+08:00）", s)
 }
 
+// sqliteToISO 把 UTC SQLite 時間字串轉成 ISO8601（RFC3339，Z 結尾）；空字串或無法解析時原樣回傳。
+func sqliteToISO(s string) string {
+	t, err := time.Parse(sqliteUTC, s)
+	if err != nil {
+		return s
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
 func truncateRunes(s string, n int) (string, bool) {
 	if n <= 0 || utf8.RuneCountInString(s) <= n {
 		return s, false

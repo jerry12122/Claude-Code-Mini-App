@@ -137,3 +137,10 @@ func (db *DB) QueuePaused(sessionID string) (bool, error) {
 	err := db.QueryRow(`SELECT queue_paused FROM sessions WHERE id = ?`, sessionID).Scan(&v)
 	return v != 0, err
 }
+
+// CountQueuedMessages 回傳 session 佇列中待執行的訊息數。
+func (db *DB) CountQueuedMessages(sessionID string) (int, error) {
+	var n int
+	err := db.QueryRow(`SELECT COUNT(*) FROM queued_messages WHERE session_id = ?`, sessionID).Scan(&n)
+	return n, err
+}

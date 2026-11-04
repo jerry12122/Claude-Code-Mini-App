@@ -57,7 +57,7 @@ func TestQueueTools(t *testing.T) {
 	for _, tool := range listed.Tools {
 		found[tool.Name] = true
 	}
-	if !found["get_queue"] || !found["delete_queue_message"] {
+	if !found["get_queue"] || !found["delete_queue_message"] || !found["resume_queue"] {
 		t.Fatal("queue tools must be discoverable")
 	}
 	call := func(name string, args map[string]any, out any, wantError bool) {

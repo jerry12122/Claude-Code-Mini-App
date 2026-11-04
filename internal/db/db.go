@@ -168,6 +168,9 @@ func (db *DB) migrate() error {
 	tryAlter(`ALTER TABLE sessions ADD COLUMN last_read_at TEXT NOT NULL DEFAULT ''`)
 	// queue_paused：上一個任務失敗／中斷時佇列暫停，需使用者手動繼續。
 	tryAlter(`ALTER TABLE sessions ADD COLUMN queue_paused INTEGER NOT NULL DEFAULT 0`)
+	// last_error_text／last_error_at：最近一次 run 失敗的原始錯誤文字與時間，供外部 agent（MCP list_sessions）查詢；成功後清空。
+	tryAlter(`ALTER TABLE sessions ADD COLUMN last_error_text TEXT NOT NULL DEFAULT ''`)
+	tryAlter(`ALTER TABLE sessions ADD COLUMN last_error_at TEXT NOT NULL DEFAULT ''`)
 	// disguise_agent：Telegram 秘密會話的偽裝 agent（例如 claude、cursor、antigravity；空字串＝無偽裝）。
 	tryAlter(`ALTER TABLE sessions ADD COLUMN disguise_agent TEXT NOT NULL DEFAULT ''`)
 	// author：訊息說話者。空字串＝擁有者（含舊資料），訪客為其暱稱。

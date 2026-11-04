@@ -618,6 +618,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				taskEnd(sessionID, msgID)
 				broadcast(serverMsg{Type: "error", Content: err.Error()})
 				broadcast(serverMsg{Type: "status", Value: idleUIStatus(database, sessionID)})
+				recordSessionFailure(database, sessionID, err.Error())
 				pauseQueue()
 				notifyTaskAsync(botToken, tgUserID, notifyCfg, tg.TaskAlert{
 					SessionName: sess.Name,
@@ -719,6 +720,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 					switch {
 					case permDenied:
 					case succeeded && !runFailed && !cancelled:
+						clearSessionFailure(database, sessionID)
 						taskEnd(sessionID, msgID)
 						drainIfIdle()
 					default:
@@ -963,6 +965,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 					return
 				}
 				if runFailed && !cancelled {
+					recordSessionFailure(database, sessionID, errText)
 					notifyTaskAsync(botToken, tgUserID, notifyCfg, tg.TaskAlert{
 						SessionName: sess.Name,
 						AgentType:   agentType,

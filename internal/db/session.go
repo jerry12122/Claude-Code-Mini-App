@@ -50,6 +50,9 @@ type Session struct {
 	LastReadAt string `json:"last_read_at"`
 	// UnreadCount 為在 last_read_at 之後接收到的非 user 訊息數量。
 	UnreadCount int `json:"unread_count"`
+	// LastErrorText／LastErrorAt：最近一次 run 失敗的原始錯誤文字與時間（UTC，SQLite 格式）；下一輪成功時清空。
+	LastErrorText string `json:"last_error,omitempty"`
+	LastErrorAt   string `json:"last_error_at,omitempty"`
 }
 
 func (db *DB) CreateSession(name, description, workDir, permissionMode, agentType string, cliExtraArgs []string, inputMode string, disguiseAgent ...string) (*Session, error) {
@@ -94,7 +97,7 @@ func (db *DB) CreateSession(name, description, workDir, permissionMode, agentTyp
 
 func (db *DB) GetSession(id string) (*Session, error) {
 	row := db.QueryRow(
-		`SELECT s.id, s.agent_type, s.agent_session_id, s.name, s.description, s.work_dir, s.permission_mode, s.allowed_tools, s.pending_denials, s.last_active, s.status, s.cli_extra_args, s.input_mode, s.shell_pending, s.active_model, s.active_model_source, s.active_model_at, s.model, s.effort, s.last_read_at, s.disguise_agent,
+		`SELECT s.id, s.agent_type, s.agent_session_id, s.name, s.description, s.work_dir, s.permission_mode, s.allowed_tools, s.pending_denials, s.last_active, s.status, s.cli_extra_args, s.input_mode, s.shell_pending, s.active_model, s.active_model_source, s.active_model_at, s.model, s.effort, s.last_read_at, s.disguise_agent, s.last_error_text, s.last_error_at,
 		       (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.created_at > s.last_read_at AND m.role != 'user' AND s.agent_type != 'telegram') AS unread_count
 		 FROM sessions s WHERE s.id = ?`, id,
 	)
@@ -103,7 +106,7 @@ func (db *DB) GetSession(id string) (*Session, error) {
 
 func (db *DB) ListSessions() ([]*Session, error) {
 	rows, err := db.Query(
-		`SELECT s.id, s.agent_type, s.agent_session_id, s.name, s.description, s.work_dir, s.permission_mode, s.allowed_tools, s.pending_denials, s.last_active, s.status, s.cli_extra_args, s.input_mode, s.shell_pending, s.active_model, s.active_model_source, s.active_model_at, s.model, s.effort, s.last_read_at, s.disguise_agent,
+		`SELECT s.id, s.agent_type, s.agent_session_id, s.name, s.description, s.work_dir, s.permission_mode, s.allowed_tools, s.pending_denials, s.last_active, s.status, s.cli_extra_args, s.input_mode, s.shell_pending, s.active_model, s.active_model_source, s.active_model_at, s.model, s.effort, s.last_read_at, s.disguise_agent, s.last_error_text, s.last_error_at,
 		       (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.created_at > s.last_read_at AND m.role != 'user' AND s.agent_type != 'telegram') AS unread_count
 		 FROM sessions s ORDER BY s.last_active DESC`,
 	)
@@ -311,7 +314,7 @@ func scanSession(s scanner) (*Session, error) {
 	err := s.Scan(
 		&sess.ID, &sess.AgentType, &sess.AgentSessionID, &sess.Name, &sess.Description,
 		&sess.WorkDir, &sess.PermissionMode, &allowedTools, &sess.PendingDenials, &sess.LastActive, &sess.Status, &extraJSON, &sess.InputMode, &sess.ShellPending,
-		&sess.ActiveModel, &sess.ActiveModelSource, &sess.ActiveModelAt, &sess.Model, &sess.Effort, &sess.LastReadAt, &sess.DisguiseAgent,
+		&sess.ActiveModel, &sess.ActiveModelSource, &sess.ActiveModelAt, &sess.Model, &sess.Effort, &sess.LastReadAt, &sess.DisguiseAgent, &sess.LastErrorText, &sess.LastErrorAt,
 		&sess.UnreadCount,
 	)
 	if err != nil {
@@ -343,5 +346,23 @@ func scanSession(s scanner) (*Session, error) {
 // TouchSessionLastActive 更新 session 的 last_active 時間為當前時間。
 func (db *DB) TouchSessionLastActive(id string) error {
 	_, err := db.Exec(`UPDATE sessions SET last_active = datetime('now') WHERE id = ?`, id)
+	return err
+}
+
+// maxLastErrorRunes 為 last_error_text 的字元上限；額度類錯誤通常只有數百字元，4000 留足餘裕又避免巨量輸出塞滿資料庫。
+const maxLastErrorRunes = 4000
+
+// SetSessionLastError 記錄 session 最近一次 run 失敗的錯誤全文與時間，覆寫舊值。
+func (db *DB) SetSessionLastError(id, text string) error {
+	if r := []rune(text); len(r) > maxLastErrorRunes {
+		text = string(r[:maxLastErrorRunes])
+	}
+	_, err := db.Exec(`UPDATE sessions SET last_error_text = ?, last_error_at = datetime('now') WHERE id = ?`, text, id)
+	return err
+}
+
+// ClearSessionLastError 在 session 成功跑完一輪後清掉失敗紀錄。
+func (db *DB) ClearSessionLastError(id string) error {
+	_, err := db.Exec(`UPDATE sessions SET last_error_text = '', last_error_at = '' WHERE id = ?`, id)
 	return err
 }

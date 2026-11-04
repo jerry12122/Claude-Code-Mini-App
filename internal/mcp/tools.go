@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,11 +38,21 @@ const (
 // --- list_sessions ---
 
 type listSessionsIn struct {
-	Since string `json:"since,omitempty" jsonschema:"只列出 last_active >= 此時間的 session；ISO8601（建議帶時區，如 2026-09-09T00:00:00+08:00）"`
+	Since       string `json:"since,omitempty" jsonschema:"只列出 last_active >= 此時間的 session；ISO8601（建議帶時區，如 2026-09-09T00:00:00+08:00）"`
+	FailedAfter string `json:"failed_after,omitempty" jsonschema:"只列出最近一次 run 失敗時間（last_error_at）晚於此時間的 session，沒有失敗紀錄的不列；ISO8601（建議帶時區）。與 since 並用時取交集"`
+}
+
+// sessionOut 在 db.Session 之上補 MCP 專用欄位。last_error_at 以 ISO8601 UTC 輸出（外層欄位覆蓋內層同名 tag），
+// 其餘 session 時間欄位維持 SQLite 格式不變。
+type sessionOut struct {
+	*db.Session
+	LastErrorAt string `json:"last_error_at,omitempty"`
+	QueuePaused bool   `json:"queue_paused"`
+	QueueLength int    `json:"queue_length"`
 }
 
 type listSessionsOut struct {
-	Sessions []*db.Session `json:"sessions"`
+	Sessions []sessionOut `json:"sessions"`
 }
 
 func (d *deps) listSessions(_ context.Context, _ *gomcp.CallToolRequest, in listSessionsIn) (*gomcp.CallToolResult, listSessionsOut, error) {
@@ -49,19 +60,33 @@ func (d *deps) listSessions(_ context.Context, _ *gomcp.CallToolRequest, in list
 	if err != nil {
 		return nil, listSessionsOut{}, err
 	}
+	failedAfter, err := parseQueryTime(in.FailedAfter)
+	if err != nil {
+		return nil, listSessionsOut{}, err
+	}
 	sessions, err := d.db.ListSessions()
 	if err != nil {
 		return nil, listSessionsOut{}, err
 	}
-	out := make([]*db.Session, 0, len(sessions))
+	out := make([]sessionOut, 0, len(sessions))
 	for _, s := range sessions {
 		if since != "" && s.LastActive < since {
+			continue
+		}
+		if failedAfter != "" && (s.LastErrorAt == "" || s.LastErrorAt <= failedAfter) {
 			continue
 		}
 		if b, ok := gitinfo.Branch(s.WorkDir); ok {
 			s.GitBranch = b
 		}
-		out = append(out, s)
+		so := sessionOut{Session: s, LastErrorAt: sqliteToISO(s.LastErrorAt)}
+		if so.QueuePaused, err = d.db.QueuePaused(s.ID); err != nil {
+			return nil, listSessionsOut{}, err
+		}
+		if so.QueueLength, err = d.db.CountQueuedMessages(s.ID); err != nil {
+			return nil, listSessionsOut{}, err
+		}
+		out = append(out, so)
 	}
 	return nil, listSessionsOut{Sessions: out}, nil
 }
@@ -523,6 +548,27 @@ func (d *deps) interrupt(_ context.Context, _ *gomcp.CallToolRequest, in session
 	return nil, okOut{OK: true}, nil
 }
 
+// --- resume_queue ---
+
+// resumeQueue 解除 session 佇列的暫停並續跑，行為與 UI 的 queue_resume 相同。
+// 失敗的 run 會暫停佇列；暫停期間 send_message 的訊息只會排在佇列尾端而不執行，只有這個工具能解除。
+func (d *deps) resumeQueue(_ context.Context, _ *gomcp.CallToolRequest, in sessionIDIn) (*gomcp.CallToolResult, okOut, error) {
+	sessionID := strings.TrimSpace(in.SessionID)
+	if sessionID == "" {
+		return nil, okOut{}, fmt.Errorf("session_id 不可為空")
+	}
+	if _, err := d.db.GetSession(sessionID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, okOut{}, fmt.Errorf("找不到 session %s", sessionID)
+		}
+		return nil, okOut{}, err
+	}
+	if err := d.reg.ResumeQueue(sessionID); err != nil {
+		return nil, okOut{}, err
+	}
+	return nil, okOut{OK: true}, nil
+}
+
 // --- shell_exec（非阻塞：立刻回，輸出靠 get_status 輪詢） ---
 
 type shellExecIn struct {
@@ -648,6 +694,7 @@ func registerTools(s *gomcp.Server, d *deps) {
 	gomcp.AddTool(s, &gomcp.Tool{Name: "set_model", Description: "切換 session 的 model"}, d.setModel)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "set_effort", Description: "切換 session 的 effort（推理強度）"}, d.setEffort)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "interrupt", Description: "中斷目前執行中的任務"}, d.interrupt)
+	gomcp.AddTool(s, &gomcp.Tool{Name: "resume_queue", Description: "解除 session 佇列的暫停並續跑（等同 UI 的繼續）。任務失敗（如額度用盡）會暫停佇列，暫停期間 send_message 只會排在尾端而不執行；get_queue 的 queue_paused 為 true 時用此工具。佇列為空或未暫停時無副作用"}, d.resumeQueue)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "shell_exec", Description: "非阻塞執行 shell 指令；立刻回傳，用 get_status 輪詢輸出"}, d.shellExec)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "get_quota", Description: "查詢 provider 用量配額"}, d.getQuota)
 }

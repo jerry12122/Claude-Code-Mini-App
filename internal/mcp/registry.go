@@ -318,6 +318,16 @@ func (r *Registry) SetEffort(sessionID, effort string) error {
 	return r.send(sessionID, map[string]string{"type": "set_effort", "effort": effort})
 }
 
+// ResumeQueue 對應 UI 的 queue_resume：只送 WS 訊息，不走 begin()。
+// begin() 會清掉 latestText／lastErr 並把狀態設成 running；佇列為空時 resume 不會啟動 run，狀態會卡在 running。
+func (r *Registry) ResumeQueue(sessionID string) error {
+	st, err := r.ensure(sessionID)
+	if err != nil {
+		return err
+	}
+	return st.writeJSON(map[string]string{"type": "queue_resume"})
+}
+
 func (r *Registry) Interrupt(sessionID string) error {
 	st, err := r.ensure(sessionID)
 	if err != nil {
