@@ -178,3 +178,24 @@ func TestPostMessageInvalidSession(t *testing.T) {
 		t.Fatalf("expected error for non-existent session, got nil")
 	}
 }
+
+// 沒有 loopback 連線時 get_status 要反映 DB 的實際狀態，不能一律回 idle。
+func TestGetStatusFallsBackToDB(t *testing.T) {
+	database := setupTestDB(t)
+	sess, err := database.CreateSession("s", "", t.TempDir(), "default", "claude", nil, "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := &deps{db: database, reg: NewRegistry(func(string) string { return "" }, nil)}
+
+	_ = database.UpdateSessionStatus(sess.ID, db.SessionStatusRunning)
+	_, out, _ := d.getStatus(context.Background(), nil, sessionIDIn{SessionID: sess.ID})
+	if out.State != StateRunning || out.Connected {
+		t.Fatalf("want running/unconnected, got %+v", out)
+	}
+	_ = database.UpdateSessionStatus(sess.ID, db.SessionStatusIdle)
+	_, out, _ = d.getStatus(context.Background(), nil, sessionIDIn{SessionID: sess.ID})
+	if out.State != StateIdle {
+		t.Fatalf("want idle, got %+v", out)
+	}
+}

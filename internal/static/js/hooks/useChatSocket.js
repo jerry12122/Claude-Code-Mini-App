@@ -91,6 +91,12 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
     setQueue([]);
     setQueuePaused(false);
     setLingering(false);
+    setShellPendingCmd(null);
+  }, [session.id]);
+
+  // 設定同步獨立成一支：側欄刷新換了 session 物件（model/effort/permission_mode 變動）時只更新設定，
+  // 不能碰 connected／messages——WS effect 只看 session.id，重置了就不會重連，banner 會卡到重新掛載。
+  useEffect(() => {
     const im =
       session.input_mode === 'shell' || session.input_mode === 'agent'
         ? session.input_mode
@@ -104,7 +110,6 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
     setMode(pm);
     setModelSel(session.model || '');
     setEffortSel(session.effort || '');
-    setShellPendingCmd(null);
   }, [session.id, session.permission_mode, session.model, session.effort, agentType, session.input_mode]);
 
   // 載入歷史 + 建立 WS
@@ -123,8 +128,14 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
       }
     };
 
+    // 自癒：重試間隔隨失敗次數放大（0.4s→3s）；連上即歸零。
+    let attempt = 0;
+    let wsStarted = false;
+    // 非 Telegram：WS 的 sync 已帶完整歷史，與 HTTP 歷史並行載入；sync 先到就不讓較舊的 HTTP 結果覆蓋。
+    let synced = false;
     const initCtl = isTG ? new AbortController() : null;
     const init = async () => {
+      if (!isTG && !guestSnapshot) connectWS();
       // 載入歷史紀錄
       let hist = [];
       let tgPage = null;
@@ -155,7 +166,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
         if (isTG) tgPage = tgInitFailed(tgPageError(0, null, null, Date.now()));
         if (isCurrent()) showToast('載入對話失敗', { error: true, duration: 3000 });
       }
-      if (isCurrent()) {
+      if (isCurrent() && !(synced && !isTG)) {
         if (isTG) {
           // 依穩定識別併入：WS sync／live 可能已先寫入，不能整份覆蓋。
           // HTTP 先於 WS 完成；舊帳號資料由之後 sync 的 scope 改綁偵測丟棄（見 tgApplySync）。
@@ -168,16 +179,17 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
           const lastClaude = [...hist].reverse().find((m) => m.role === 'claude' && m.status === 'pending');
           streamBuf.current = lastClaude ? (lastClaude.content || '') : '';
         }
-        setHistLoaded(true);
       }
+      if (isCurrent()) setHistLoaded(true);
 
-      // 建立 WebSocket（snapshot 分享沒有即時連線，只讀上面載入的歷史）
-      if (!guestSnapshot) connectWS();
+      // 建立 WebSocket（snapshot 分享沒有即時連線，只讀上面載入的歷史）；非 TG 已在 init 開頭先連。
+      if (!guestSnapshot && isTG) connectWS();
     };
 
     const connectWS = () => {
       if (!isCurrent()) return;
       clearReconnectTimer();
+      wsStarted = true;
       const ws = new WebSocket(wsURL(session.id));
       ws._sessionId = session.id;
       ws._gen = effectGen;
@@ -194,7 +206,14 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
         }).catch(() => {});
       };
 
+      // 握手卡住（代理／休眠喚醒後）瀏覽器可能很久才 onclose；5 秒沒連上就主動關掉走重試。
+      const openTimer = setTimeout(() => {
+        if (ws.readyState === WebSocket.CONNECTING) ws.close();
+      }, 5000);
+
       ws.onopen = () => {
+        clearTimeout(openTimer);
+        attempt = 0;
         everConnected = true;
         if (isCurrent() && wsRef.current === ws) setConnected(true);
         markRead();
@@ -256,6 +275,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
         }
 
         if (msg.type === 'sync') {
+          synced = true;
           if (msg.value !== 'AWAITING_INPUT') setQuestion(null);
           setQuestionError('');
           setState(msg.value);
@@ -575,6 +595,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
       };
 
       ws.onclose = (evt) => {
+        clearTimeout(openTimer);
         console.warn('[ws] 連線關閉', evt.code, evt.reason);
         for (const [id, request] of inputRequestsRef.current) {
           if (request.ws !== ws) continue;
@@ -585,10 +606,12 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
         if (!isCurrent() || wsRef.current !== ws) return;
         setConnected(false);
         const scheduleReconnect = () => {
+          const delay = Math.min(400 * 2 ** attempt, 3000);
+          attempt += 1;
           reconnectTimerRef.current = setTimeout(() => {
             reconnectTimerRef.current = null;
             connectWS();
-          }, 2000);
+          }, delay);
         };
         if (isGuest) {
           // 訪客：分享已結束就不重連；否則先探測 token 是否仍有效（apiFetch 遇 401 會通知 GuestApp 切換畫面）。
@@ -623,7 +646,21 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
 
     init();
 
+    // 回到前景／網路恢復時，若沒有活著的連線就立即重連，不等重試計時器。
+    const wake = () => {
+      if (document.hidden || !wsStarted || !isCurrent() || guestSnapshot || shareEndedRef.current) return;
+      const w = wsRef.current;
+      if (!w || w.readyState === WebSocket.CLOSED || w.readyState === WebSocket.CLOSING) {
+        attempt = 0;
+        connectWS();
+      }
+    };
+    document.addEventListener('visibilitychange', wake);
+    window.addEventListener('online', wake);
+
     return () => {
+      document.removeEventListener('visibilitychange', wake);
+      window.removeEventListener('online', wake);
       cancelled = true;
       if (initCtl) initCtl.abort();
       tgAbortRequest();

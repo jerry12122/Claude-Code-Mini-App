@@ -43,6 +43,8 @@ function loadContext() {
     isTelegram: false,
     localStorage: { getItem: () => null, setItem: () => {} },
     requestAnimationFrame: (fn) => fn(),
+    document: Object.assign(new EventTarget(), { hidden: false }),
+    window: new EventTarget(),
     AbortController,
     setTimeout, clearTimeout,
   });
@@ -200,6 +202,9 @@ function createHarness() {
   const sockets = [];
   const fetches = [];
   class FakeWS {
+    static CONNECTING = 0;
+    static CLOSED = 3;
+    static CLOSING = 2;
     constructor(url) { this.url = url; this.readyState = 0; sockets.push(this); }
     send() {}
     close() { this.closed = true; this.readyState = 3; }
@@ -662,4 +667,22 @@ test('非 Telegram：sync 仍整份取代、既有 HTTP 路徑不變', async () 
   h.sockets[0].open();
   h.sockets[0].emit({ type: 'sync', value: 'IDLE', messages: [{ id: 2, role: 'user', content: 'b', status: 'done', created_at: at(2) }] });
   assert.deepStrictEqual(arr(rt.get().messages).map((m) => m.id), [2]);
+});
+
+test('非 Telegram：先連 WS、sync 不被遲到歷史覆蓋，設定刷新不重置連線', async () => {
+  const h = createHarness();
+  const props = { ...tgProps('fast'), agentType: 'claude' };
+  const rt = h.mount(props);
+  rt.render();
+  assert.strictEqual(h.sockets.length, 1);
+  h.sockets[0].open();
+  h.sockets[0].emit({ type: 'sync', value: 'IDLE', messages: [{ id: 2, role: 'user', content: 'new', status: 'done', created_at: at(2) }] });
+  h.fetches[0].respond([{ id: 1, role: 'user', content: 'old', status: 'done', created_at: at(1) }]);
+  await tick();
+  rt.setProps({ ...props, session: { ...props.session, model: 'updated' } });
+  assert.strictEqual(rt.get().connected, true);
+  assert.strictEqual(rt.get().modelSel, 'updated');
+  assert.deepStrictEqual(arr(rt.get().messages).map((m) => m.id), [2]);
+  assert.strictEqual(h.sockets.length, 1);
+  rt.unmount();
 });

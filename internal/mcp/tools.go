@@ -476,8 +476,28 @@ func rawToAny(raw json.RawMessage) any {
 	return v
 }
 
+func stateFromDB(status string) string {
+	switch status {
+	case db.SessionStatusRunning:
+		return StateRunning
+	case db.SessionStatusAwaitingConfirm:
+		return StateAwaitingPermission
+	case db.SessionStatusAwaitingInput:
+		return StateAwaitingInput
+	case db.SessionStatusAwaitingShellConfirm:
+		return StateShellPending
+	}
+	return StateIdle
+}
+
 func (d *deps) getStatus(_ context.Context, _ *gomcp.CallToolRequest, in sessionIDIn) (*gomcp.CallToolResult, getStatusOut, error) {
 	state, text, perm, shell, lastErr, connected, question := d.reg.Status(in.SessionID)
+	// 沒有 loopback 連線時快取一律是 idle，但 session 可能正由網頁／Telegram 觸發的任務在跑；以 DB 為準，避免 running 被誤報成 idle。
+	if !connected {
+		if s, err := d.db.GetSession(in.SessionID); err == nil {
+			state = stateFromDB(s.Status)
+		}
+	}
 	return nil, getStatusOut{
 		State: state, LatestText: text, PendingPermission: rawToAny(perm),
 		PendingQuestion: rawToAny(question), PendingShell: shell, Error: lastErr, Connected: connected,

@@ -47,11 +47,12 @@ function NewSessionComposer({ prefill, onCreated, onCancel }) {
         throw new Error(j.error || `建立失敗 (${res.status})`);
       }
       const created = await res.json();
+      // 立刻讓側欄／分頁拿到新 session 的名稱與 runner，不等 sessions_changed 或輪詢。
+      window.dispatchEvent(new Event('miniapp:sessions-refresh'));
       const trimmedMsg = message.trim();
-      if (trimmedMsg) {
-        await sendFirstPromptOrDraft(created.id, trimmedMsg);
-      }
+      // 先開分頁再背景送首則訊息，不讓臨時 WS 的握手時間擋在開啟聊天室前；失敗會自行放進草稿並通知聊天室。
       onCreated(created);
+      if (trimmedMsg) sendFirstPromptOrDraft(created.id, trimmedMsg);
     } catch (e) {
       setErrText(e.message || String(e));
     } finally {

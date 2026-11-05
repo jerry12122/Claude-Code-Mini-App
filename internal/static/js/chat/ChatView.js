@@ -430,6 +430,19 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     return () => window.removeEventListener('beforeunload', handler);
   }, [state]);
 
+  // 新建 session 的首則訊息背景送出失敗時，草稿在聊天室已掛載後才寫入，這裡補還原。
+  useEffect(() => {
+    const onRestored = (e) => {
+      if (!e.detail || e.detail.sessionId !== session.id) return;
+      try {
+        const d = localStorage.getItem(draftInputStorageKey(session.id)) || '';
+        if (d) setInput((cur) => cur || d);
+      } catch (_) {}
+    };
+    window.addEventListener('miniapp:draft-restored', onRestored);
+    return () => window.removeEventListener('miniapp:draft-restored', onRestored);
+  }, [session.id]);
+
   // session 切換時重置輸入框草稿與 composer 選單（訊息／連線狀態由 useChatSocket 自行重置）
   useEffect(() => {
     let draft = '';

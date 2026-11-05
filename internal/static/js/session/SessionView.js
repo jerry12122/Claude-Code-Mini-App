@@ -60,6 +60,8 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
     let closed = false;
     const connect = () => {
       ws = new WebSocket(eventsWsURL());
+      // 斷線期間可能漏掉 sessions_changed，連上就補抓一次。
+      ws.onopen = () => load();
       ws.onmessage = (e) => {
         try {
           if (JSON.parse(e.data).type !== 'sessions_changed') return;
@@ -67,11 +69,12 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
         clearTimeout(debounce);
         debounce = setTimeout(load, 150);
       };
-      ws.onclose = () => { if (!closed) retry = setTimeout(connect, 3000); };
+      ws.onclose = () => { if (!closed) retry = setTimeout(connect, 1000); };
     };
     connect();
     const onVisible = () => { if (!document.hidden) load(); };
     document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('miniapp:sessions-refresh', load);
     const poll = setInterval(load, 30000);
     return () => {
       closed = true;
@@ -79,6 +82,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
       clearTimeout(debounce);
       clearInterval(poll);
       document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('miniapp:sessions-refresh', load);
       if (ws) ws.close();
     };
   }, []);

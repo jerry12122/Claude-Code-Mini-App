@@ -170,4 +170,21 @@ func TestCreateSessionTelegramDisguise(t *testing.T) {
 	}
 }
 
-
+// 建立 session 要通知 /events 訂閱者，否則側欄與分頁標題得等輪詢／切分頁才更新。
+func TestCreateSessionNotifiesChange(t *testing.T) {
+	database := testDB(t)
+	n := 0
+	database.OnSessionChange = func() { n++ }
+	app := fiber.New()
+	app.Post("/sessions", NewSessionHandler(database).Create)
+	req := httptest.NewRequest("POST", "/sessions", strings.NewReader(`{"name":"n","agent_type":"claude"}`))
+	req.Header.Set("Content-Type", "application/json")
+	res, err := app.Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 201 || n != 1 {
+		t.Fatalf("HTTP=%d, OnSessionChange 次數=%d（應為 1）", res.StatusCode, n)
+	}
+}

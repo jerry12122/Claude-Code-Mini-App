@@ -235,6 +235,9 @@ func (h *SessionHandler) Create(c *fiber.Ctx) error {
 		}
 		s.Effort = body.Effort
 	}
+	if h.db.OnSessionChange != nil {
+		h.db.OnSessionChange() // 通知其他裝置／側欄有新 session
+	}
 	enrichGitBranch(s)
 	return c.Status(201).JSON(s)
 }

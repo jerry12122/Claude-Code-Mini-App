@@ -224,6 +224,8 @@ async function sendFirstPromptOrDraft(sessionId, text) {
     return true;
   } catch (_) {
     try { localStorage.setItem(draftInputStorageKey(sessionId), text); } catch (__) {}
+    // 聊天室可能已先開啟（草稿只在掛載時讀），通知它還原輸入框。
+    window.dispatchEvent(new CustomEvent('miniapp:draft-restored', { detail: { sessionId } }));
     showToast('Session 已建立，但首則訊息未送出，已放入輸入框', { error: true, duration: 4000 });
     return false;
   }

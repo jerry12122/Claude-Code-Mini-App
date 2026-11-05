@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/agent"
@@ -23,6 +25,9 @@ func init() {
 		return &Runner{}
 	})
 }
+
+// resultExitGrace：收到 result 後等進程／stdout 收尾的上限，超過就強制結束（var：測試縮短用）。
+var resultExitGrace = 5 * time.Second
 
 // Runner 是 cursor-agent CLI 的 agent.Runner 實作。
 //
@@ -120,39 +125,62 @@ func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventC
 	// MCP 截圖 base64 單行可達數 MB；1MB 會讓 Scan 失敗並整行丟棄，圖片永遠進不來。
 	scanner.Buffer(make([]byte, 1024*1024), 16*1024*1024)
 
-	sawResult := false
-	lineCount := 0
+	var sawResult, abandoned atomic.Bool
+	var lineCount atomic.Int64
 	sessionID := opts.SessionID
 	var st dispatchState
+	resultSeen := make(chan struct{})
+	var resultOnce sync.Once
+	scanDone := make(chan struct{})
 
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
+	// 掃描放 goroutine：不能依賴 stdout EOF 判斷結束。cursor-agent 自我更新會留下繼承 stdout 的
+	// 孤兒 cmd.exe，agent 本體退出後 pipe 仍被占著，Scan 永遠不返回，任務就卡在「執行中」。
+	go func() {
+		defer close(scanDone)
+		for scanner.Scan() {
+			line := scanner.Bytes()
+			if len(line) == 0 {
+				continue
+			}
+			lineCount.Add(1)
+			slog.Debug(fmt.Sprintf("[cursor] 收到第 %d 行 (len=%d): %s", lineCount.Load(), len(line), truncate(string(line), 200)))
+
+			e, parseErr := ParseEvent(line)
+			if parseErr != nil {
+				slog.Warn(fmt.Sprintf("[cursor] 解析失敗: %v | 原始內容: %s", parseErr, truncate(string(line), 200)))
+				continue
+			}
+			slog.Debug(fmt.Sprintf("[cursor] 事件 type=%s subtype=%s", e.Type, e.Subtype))
+			if e.SessionID != "" {
+				sessionID = e.SessionID
+				slog.Debug(fmt.Sprintf("[cursor]   └─ session_id=%s", e.SessionID))
+			}
+			if abandoned.Load() {
+				return
+			}
+
+			if e.Type == "result" {
+				sawResult.Store(true)
+				resultOnce.Do(func() { close(resultSeen) })
+			}
+
+			r.dispatch(e, cb, &st)
 		}
-		lineCount++
-		slog.Debug(fmt.Sprintf("[cursor] 收到第 %d 行 (len=%d): %s", lineCount, len(line), truncate(string(line), 200)))
-
-		e, parseErr := ParseEvent(line)
-		if parseErr != nil {
-			slog.Warn(fmt.Sprintf("[cursor] 解析失敗: %v | 原始內容: %s", parseErr, truncate(string(line), 200)))
-			continue
+		if err := scanner.Err(); err != nil {
+			slog.Error(fmt.Sprintf("[cursor] scanner 錯誤: %v", err))
 		}
-		slog.Debug(fmt.Sprintf("[cursor] 事件 type=%s subtype=%s", e.Type, e.Subtype))
-		if e.SessionID != "" {
-			sessionID = e.SessionID
-			slog.Debug(fmt.Sprintf("[cursor]   └─ session_id=%s", e.SessionID))
+	}()
+
+	select {
+	case <-scanDone:
+	case <-resultSeen:
+		select {
+		case <-scanDone:
+		case <-time.After(resultExitGrace):
+			abandoned.Store(true)
+			slog.Warn(fmt.Sprintf("[cursor] result 後 %s 內 stdout 仍未關閉，強制結束進程樹並放棄等待 (PID=%d)", resultExitGrace, cmd.Process.Pid))
+			_ = proc.KillTree(cmd.Process.Pid)
 		}
-
-		if e.Type == "result" {
-			sawResult = true
-		}
-
-		r.dispatch(e, cb, &st)
-	}
-
-	if err := scanner.Err(); err != nil {
-		slog.Error(fmt.Sprintf("[cursor] scanner 錯誤: %v", err))
 	}
 
 	waitErr := cmd.Wait()
@@ -164,13 +192,17 @@ func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventC
 	// Cursor 失敗時可能沒有 terminal result event，exit code 才是真實判準。
 	// 若被 context 取消，直接回報 waitErr 由上層處理（視為 aborted）。
 	duration := time.Since(start)
+	if abandoned.Load() {
+		// 已收到 result 才強殺，exit code 不代表任務失敗。
+		waitErr = nil
+	}
 	if waitErr != nil {
-		if ctx.Err() == nil && !sawResult {
+		if ctx.Err() == nil && !sawResult.Load() {
 			cb(agent.Event{Type: agent.EventError, Err: classifyRunnerError(stderr, waitErr)})
 		}
-		slog.Error("[cursor] run 結束", "session_id", sessionID, "duration", duration, "lines", lineCount, "ok", false, "err", waitErr)
+		slog.Error("[cursor] run 結束", "session_id", sessionID, "duration", duration, "lines", lineCount.Load(), "ok", false, "err", waitErr)
 	} else {
-		slog.Info("[cursor] run 結束", "session_id", sessionID, "duration", duration, "lines", lineCount, "ok", true)
+		slog.Info("[cursor] run 結束", "session_id", sessionID, "duration", duration, "lines", lineCount.Load(), "ok", true)
 	}
 	return waitErr
 }

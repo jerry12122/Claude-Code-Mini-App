@@ -1,8 +1,13 @@
 package cursor
 
 import (
+	"context"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/agent"
 )
@@ -115,7 +120,6 @@ func filterEvents(events []agent.Event, typ agent.EventType) []agent.Event {
 	return out
 }
 
-
 func TestToolLabel(t *testing.T) {
 	cases := []struct {
 		name string
@@ -185,5 +189,40 @@ func TestDispatch_mcpToolCallCompletedImageStandardMCPFallback(t *testing.T) {
 
 	if len(deltas) != 1 || !strings.Contains(deltas[0], "![screenshot](/uploads/") {
 		t.Fatalf("預期標準 MCP fallback 也能吐 markdown image delta，got deltas=%v", deltas)
+	}
+}
+
+// result 後若有孤兒子進程（cursor-agent 自我更新）占著 stdout，Run 仍須返回且不算失敗。
+func TestRunReturnsWhenOrphanHoldsStdoutAfterResult(t *testing.T) {
+	dir := t.TempDir()
+	const result = `{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"s1"}`
+	if runtime.GOOS == "windows" {
+		script := "@echo " + result + "\r\n@start /b ping -n 8 127.0.0.1\r\n"
+		if err := os.WriteFile(filepath.Join(dir, "cursor-agent.cmd"), []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		script := "#!/bin/sh\necho '" + result + "'\nsleep 8 &\n"
+		if err := os.WriteFile(filepath.Join(dir, "cursor-agent"), []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	old := resultExitGrace
+	resultExitGrace = 300 * time.Millisecond
+	defer func() { resultExitGrace = old }()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- (&Runner{}).Run(context.Background(), agent.RunOptions{Prompt: "x"}, func(agent.Event) {})
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run err = %v, want nil", err)
+		}
+	case <-time.After(7 * time.Second):
+		t.Fatal("Run 卡在孤兒進程占住的 stdout")
 	}
 }
