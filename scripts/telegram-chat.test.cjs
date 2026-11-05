@@ -2,7 +2,9 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { test } = require('node:test');
+const { test, afterEach } = require('node:test');
+const mounted = new Set();
+afterEach(() => { for (const rt of mounted) rt.unmount(); mounted.clear(); });
 
 // Telegram 時間線：純函式合併 + 以假 React／WebSocket／fetch 驅動真正的 useChatSocket。
 // 不使用任何測試框架或新依賴；不連任何真實 Telegram。
@@ -207,7 +209,11 @@ function createHarness() {
     static CLOSING = 2;
     constructor(url) { this.url = url; this.readyState = 0; sockets.push(this); }
     send() {}
-    close() { this.closed = true; this.readyState = 3; }
+    close() {
+      if (this.readyState === 3) return;
+      this.closed = true; this.readyState = 3;
+      this.onclose?.({ code: 1000, reason: 'test cleanup' });
+    }
     open() { this.readyState = 1; if (this.onopen) this.onopen(); }
     emit(o) { this.onmessage({ data: JSON.stringify(o) }); }
   }
@@ -271,6 +277,7 @@ function createHarness() {
     rt.get = () => out;
     rt.setProps = (p) => { rt.props = p; render(); };
     rt.unmount = () => hooks.forEach((h) => h && h.cleanup && h.cleanup());
+    mounted.add(rt);
     return rt;
   }  return { ctx, sockets, fetches, mount, advance: (ms) => { nowMs += ms; } };
 }
@@ -656,20 +663,31 @@ test('telegram_scope 事件：不必重連就套用新 scope（中止請求、�
   assert.strictEqual(rt.get().tgPaging.syncState, 'ready');
   assert.deepStrictEqual(view(rt).map((x) => x[2]), ['B8', 'B9']);
 });
-test('非 Telegram：sync 仍整份取代、既有 HTTP 路徑不變', async () => {
+test('非 Telegram：只用 WS 初載，較早頁與 live／重連合併且不重複', async () => {
   const h = createHarness();
   const rt = h.mount({ ...tgProps('s9'), agentType: 'claude' });
   rt.render();
-  await tick();
-  assert.strictEqual(h.fetches[0].path, '/sessions/s9/messages');
-  h.fetches[0].respond([{ id: 1, role: 'user', content: 'a', status: 'done', created_at: at(1) }]);
-  await tick();
+  assert.strictEqual(h.fetches.length, 0);
   h.sockets[0].open();
-  h.sockets[0].emit({ type: 'sync', value: 'IDLE', messages: [{ id: 2, role: 'user', content: 'b', status: 'done', created_at: at(2) }] });
-  assert.deepStrictEqual(arr(rt.get().messages).map((m) => m.id), [2]);
+  const row = id => ({ id, role: 'user', content: `m${id}`, status: 'done', created_at: at(1) });
+  h.sockets[0].emit({ type: 'sync', value: 'IDLE', history_has_more: true, messages: [row(3), row(4)] });
+  assert.strictEqual(rt.get().histLoaded, true);
+  const pending = rt.get().loadOlder();
+  rt.get().loadOlder();
+  assert.strictEqual(h.fetches.length, 2); // mark-read PATCH + 一個補頁請求
+  assert.strictEqual(h.fetches[1].path, '/sessions/s9/messages?limit=100&before=3');
+  h.sockets[0].emit({ type: 'user_message', ...row(5) });
+  h.fetches[1].respond([row(1), row(2)]);
+  await pending;
+  h.sockets[0].emit({ type: 'sync', value: 'IDLE', history_has_more: true, messages: [row(4), row(5), row(6)] });
+  assert.deepStrictEqual(arr(rt.get().messages).map(m => m.id), [1, 2, 3, 4, 5, 6]);
+  h.sockets[0].emit({ type: 'sync', value: 'IDLE', history_has_more: true, messages: [row(100), row(101)] });
+  assert.deepStrictEqual(arr(rt.get().messages).map(m => m.id), [100, 101]);
+  assert.strictEqual(rt.get().historyPaging.nextCursor, 100);
+  rt.unmount();
 });
 
-test('非 Telegram：先連 WS、sync 不被遲到歷史覆蓋，設定刷新不重置連線', async () => {
+test('非 Telegram：設定刷新不重置訊息與連線', async () => {
   const h = createHarness();
   const props = { ...tgProps('fast'), agentType: 'claude' };
   const rt = h.mount(props);
@@ -677,12 +695,46 @@ test('非 Telegram：先連 WS、sync 不被遲到歷史覆蓋，設定刷新不
   assert.strictEqual(h.sockets.length, 1);
   h.sockets[0].open();
   h.sockets[0].emit({ type: 'sync', value: 'IDLE', messages: [{ id: 2, role: 'user', content: 'new', status: 'done', created_at: at(2) }] });
-  h.fetches[0].respond([{ id: 1, role: 'user', content: 'old', status: 'done', created_at: at(1) }]);
   await tick();
   rt.setProps({ ...props, session: { ...props.session, model: 'updated' } });
   assert.strictEqual(rt.get().connected, true);
   assert.strictEqual(rt.get().modelSel, 'updated');
   assert.deepStrictEqual(arr(rt.get().messages).map((m) => m.id), [2]);
   assert.strictEqual(h.sockets.length, 1);
+  rt.unmount();
+});
+
+test('初連失敗且 HTTP 探測也斷線，仍安排重連', async () => {
+  const h = createHarness();
+  const timers = new Map();
+  let next = 0;
+  h.ctx.setTimeout = (fn, ms) => { const id = ++next; timers.set(id, { fn, ms }); return id; };
+  h.ctx.clearTimeout = id => timers.delete(id);
+  h.ctx.localStorage.getItem = () => 'token';
+  const rt = h.mount({ ...tgProps('offline'), agentType: 'claude' });
+  rt.render();
+  h.sockets[0].onclose({ code: 1006 });
+  h.fetches[0].fail(new Error('offline'));
+  await tick();
+  const retry = [...timers.values()].find(t => t.ms === 400);
+  assert.ok(retry);
+  retry.fn();
+  assert.strictEqual(h.sockets.length, 2);
+  rt.unmount();
+});
+
+test('串流合併更新，結束事件先排出尚未繪製的最後文字', () => {
+  const h = createHarness();
+  const rt = h.mount({ ...tgProps('stream'), agentType: 'claude' });
+  rt.render();
+  const ws = h.sockets[0];
+  ws.open();
+  ws.emit({ type: 'sync', value: 'IDLE', messages: [] });
+  ws.emit({ type: 'status', value: 'THINKING' });
+  ws.emit({ type: 'delta', content: 'hello ' });
+  ws.emit({ type: 'delta', content: 'world' });
+  ws.emit({ type: 'status', value: 'IDLE' });
+  assert.strictEqual(rt.get().messages[0].content, 'hello world');
+  assert.strictEqual(rt.get().messages[0].streaming, false);
   rt.unmount();
 });

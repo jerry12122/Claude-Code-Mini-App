@@ -102,7 +102,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     modelSel, setModelSel,
     effortSel, setEffortSel,
     histLoaded,
-    tgPaging, loadOlder,
+    tgPaging, historyPaging, loadOlder,
     connected,
     inputMode, setInputMode,
     shellType,
@@ -139,7 +139,11 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     return () => clearTimeout(t);
   }, [wantOfflineBar]);
 
-  const [input, setInput]         = useState('');
+  const {
+    input, setInput, mentionChips, setMentionChips,
+    attachments, updateAttachments, attachmentItemsRef, uploadControllersRef,
+    composerSessionRef, pendingSendRef, pendingInput, sending, sendComposerInput,
+  } = useChatComposer(session.id, submitInput);
   const [quoteSelection, setQuoteSelection] = useState(null);
   const [lightboxSrc, setLightboxSrc] = useState(null);
   const [forwardModal, setForwardModal] = useState(null);
@@ -155,24 +159,10 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionItems, setMentionItems] = useState([]);
   const [mentionActiveIdx, setMentionActiveIdx] = useState(0);
-  const [mentionChips, setMentionChips] = useState([]);
-  // Local previews/files are retained until the server acknowledges the message.
-  const [attachments, setAttachments] = useState([]);
-  const attachmentItemsRef = useRef([]);
-  const uploadControllersRef = useRef(new Map());
-  const composerSessionRef = useRef(session.id);
-  composerSessionRef.current = session.id;
-  const pendingSendRef = useRef(null);
-  const [sending, setSending] = useState(false);
   // 已送出優雅停止：只驅動呼吸燈與「再按一次強制停止」文案，不鎖按鈕。任務停或切換 session 時重設。
   const [interrupting, setInterrupting] = useState(false);
   const interruptSentAtRef = useRef(0);
   const [shellConfirmPending, setShellConfirmPending] = useState(false);
-  const updateAttachments = useCallback((update) => {
-    const next = update(attachmentItemsRef.current);
-    attachmentItemsRef.current = next;
-    setAttachments(next);
-  }, []);
   const [dragOver, setDragOver] = useState(false);
   const chatRootRef = useRef(null);
   const dragDepthRef = useRef(0);
@@ -248,8 +238,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
 
   const handleChatScroll = useCallback(() => {
     syncChatNearBottom();
-    if (!isTGChat) return;
     if (!progScrollRef.current) captureAnchor();
+    if (!isTGChat) return;
     if (chatNearBottomRef.current) setHasNewBelow(false);
     const el = chatScrollRef.current;
     // 到頂且是使用者手勢才取一頁；補頁後需要新的手勢才取下一頁（不因 sentinel 一直可見而連抓）。
@@ -350,16 +340,16 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     const last = messages[messages.length - 1];
     // Telegram：只有尾端新增才跟隨／提示；向上補頁、送達狀態變化不得把視圖拉到底部。
     const lastKey = last ? (last.id != null ? `m-${last.id}` : `i-${messages.length}`) : null;
-    const appended = !isTGChat || lastKey !== lastKeyRef.current;
+    const appended = lastKey !== lastKeyRef.current;
     // Telegram 不分方向（入站、他裝置送出的 Out 都一樣）：只有已在底部才跟隨，否則給提示。
     // 例外只有本機使用者剛明確送出（待傳項目帶 client_message_id）才強制到底。
     const ownSend = isTGChat && appended && !!last?.clientMessageId && Date.now() < sendFollowUntilRef.current;
     if (ownSend) { sendFollowUntilRef.current = 0; chatNearBottomRef.current = true; }
     if (isTGChat) {
       if (appended && lastKeyRef.current != null && !chatNearBottomRef.current) setHasNewBelow(true);
-      lastKeyRef.current = lastKey;
     }
-    if (isTGChat ? (appended && chatNearBottomRef.current) : (chatNearBottomRef.current || last?.role === 'user')) {
+    lastKeyRef.current = lastKey;
+    if (isTGChat ? (appended && chatNearBottomRef.current) : (chatNearBottomRef.current || (appended && last?.role === 'user'))) {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
     let id2;
@@ -378,7 +368,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   // 訊息高度延後改變（圖片預覽載入、字型）由 ResizeObserver 處理：閱讀舊內容時維持錨點，在底部則維持貼底。
   const resizeObsRef = useRef(null);
   useEffect(() => {
-    if (!isTGChat || typeof ResizeObserver === 'undefined') return undefined;
+    if (typeof ResizeObserver === 'undefined') return undefined;
     const ro = new ResizeObserver(() => {
       const el = chatScrollRef.current;
       if (!el) return;
@@ -389,7 +379,6 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     return () => { ro.disconnect(); resizeObsRef.current = null; };
   }, [isTGChat, session.id]);
   useLayoutEffect(() => {
-    if (!isTGChat) return;
     if (!chatNearBottomRef.current) restoreAnchor();
     const ro = resizeObsRef.current;
     const el = chatScrollRef.current;
@@ -430,26 +419,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     return () => window.removeEventListener('beforeunload', handler);
   }, [state]);
 
-  // 新建 session 的首則訊息背景送出失敗時，草稿在聊天室已掛載後才寫入，這裡補還原。
-  useEffect(() => {
-    const onRestored = (e) => {
-      if (!e.detail || e.detail.sessionId !== session.id) return;
-      try {
-        const d = localStorage.getItem(draftInputStorageKey(session.id)) || '';
-        if (d) setInput((cur) => cur || d);
-      } catch (_) {}
-    };
-    window.addEventListener('miniapp:draft-restored', onRestored);
-    return () => window.removeEventListener('miniapp:draft-restored', onRestored);
-  }, [session.id]);
-
   // session 切換時重置輸入框草稿與 composer 選單（訊息／連線狀態由 useChatSocket 自行重置）
   useEffect(() => {
-    let draft = '';
-    try {
-      draft = localStorage.getItem(draftInputStorageKey(session.id)) || '';
-    } catch (_) {}
-    setInput(draft);
     chatNearBottomRef.current = true;
     setShowJumpLatest(false);
     setHasNewBelow(false);
@@ -461,10 +432,6 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     setMentionOpen(false);
     setMentionItems([]);
     setMentionActiveIdx(0);
-    setMentionChips([]);
-    clearAttachments();
-    pendingSendRef.current = null;
-    setSending(false);
     setInterrupting(false);
     interruptSentAtRef.current = 0;
     setShellConfirmPending(false);
@@ -472,12 +439,6 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     setDragOver(false);
     dragDepthRef.current = 0;
   }, [session.id]);
-
-  useEffect(() => () => {
-    composerSessionRef.current = null;
-    uploadControllersRef.current.forEach(controller => controller.abort());
-    attachmentItemsRef.current.forEach(a => a.previewUrl && URL.revokeObjectURL(a.previewUrl));
-  }, []);
 
   const prevChatStateRef = useRef(null);
   // 歷史載入完成＝畫面就緒，將 focus 預設在輸入框
@@ -643,7 +604,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     return false;
   };
   const handleSend = async (overrideText) => {
-    if (pendingSendRef.current || isDisabled) return;
+    if (pendingInput || pendingSendRef.current || isDisabled) return;
     const raw = overrideText !== undefined && overrideText !== null ? String(overrideText) : input;
     const trimmed = raw.trim();
     const selected = inputMode === 'shell' ? [] : attachmentItemsRef.current;
@@ -670,27 +631,23 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     if (!idle && !canQueue) return;
     // 排隊時不 flush 模式：set_mode 等會廣播 idle 狀態，執行中送會讓 UI 誤判完成。
     if (idle && !flushOrToast()) return;
-    const token = { sessionId: session.id };
-    pendingSendRef.current = token;
-    setSending(true);
-    if (isTGChat) sendFollowUntilRef.current = Date.now() + 15000;
+    let record;
     try {
-      await submitInput(expandMentionPrompt(trimmed, session, mentionChips), selected.map(a => a.attachmentId));
-      clearDraftInputForSession(token.sessionId);
-      if (composerSessionRef.current !== token.sessionId || pendingSendRef.current !== token) return;
-      setInput('');
-      clearAttachments();
-      setMentionChips([]);
-      closeComposerMenus();
+      record = beginPendingInput(session.id, {
+        data: expandMentionPrompt(trimmed, session, mentionChips), text: raw,
+        attachments: selected, mentions: mentionChips,
+      });
     } catch (err) {
-      sendFollowUntilRef.current = 0;
-      if (composerSessionRef.current === token.sessionId && pendingSendRef.current === token) showToast(err.message || '送出失敗，草稿已保留', { error: true, duration: 5000 });
-    } finally {
-      if (composerSessionRef.current === token.sessionId && pendingSendRef.current === token) {
-        pendingSendRef.current = null;
-        setSending(false);
-      }
+      showToast(err.message, { error: true });
+      return;
     }
+    setInput('');
+    clearDraftInputForSession(session.id);
+    updateAttachments(() => []);
+    setMentionChips([]);
+    closeComposerMenus();
+    if (isTGChat) sendFollowUntilRef.current = Date.now() + 15000;
+    await sendComposerInput(record);
   };
 
   const applySuggestion = (text) => {
@@ -699,12 +656,6 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     focusChatInput();
   };
 
-  const clearAttachments = () => {
-    uploadControllersRef.current.forEach(controller => controller.abort());
-    uploadControllersRef.current.clear();
-    attachmentItemsRef.current.forEach(a => a.previewUrl && URL.revokeObjectURL(a.previewUrl));
-    updateAttachments(() => []);
-  };
   const removeAttachment = (id) => {
     if (pendingSendRef.current) return;
     uploadControllersRef.current.get(id)?.abort();
@@ -831,10 +782,11 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     uploadControllersRef.current.set(item.id, controller);
     updateAttachments(prev => prev.map(a => a.id === item.id ? { ...a, status: 'uploading', error: '' } : a));
     try {
+      if (!item.file) throw new Error('請移除附件後重新選取原檔');
       if (!item.file.size) throw new Error('檔案是空的');
       const fd = new FormData();
       fd.append('file', item.file);
-      const res = await apiFetch(`/sessions/${sessionId}/uploads`, { method: 'POST', body: fd, signal: controller.signal });
+      const res = await apiFetch(`/sessions/${sessionId}/uploads`, { method: 'POST', body: fd, signal: controller.signal, timeoutMs: 120000 });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '上傳失敗');
       if (!data.attachment?.id) throw new Error('附件資訊無法讀取');
@@ -1083,6 +1035,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
           </div>
         )}
         {isTGChat && histLoaded && tgPaging && <TelegramOlderControl paging={tgPaging} onLoad={handleLoadOlder} />}
+        {!isTGChat && histLoaded && historyPaging && <TelegramOlderControl paging={historyPaging} onLoad={handleLoadOlder} />}
         {histLoaded && messages.length === 0 && !(isTGChat && tgPaging && tgPaging.needsInit && tgPaging.error) && (
           <div className="mt-16 flex flex-col items-center gap-4 text-center">
             <div className="text-sm text-ra-t4">{guestReadOnly ? '目前還沒有訊息' : '輸入指令開始對話'}</div>
@@ -1196,7 +1149,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                       <span className="streaming-tail shrink-0 select-none" aria-hidden="true">...</span>
                     )}
                   </div>
-                ) : claudeAtts.length > 0 ? null : (
+                ) : claudeAtts.length > 0 || m.status === 'interrupted' ? null : (
                   <div className="flex gap-1 py-1"><span className="dot"/><span className="dot"/><span className="dot"/></div>
                 )}
                 {forwardHints[msgKey] ? (
@@ -1207,6 +1160,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 ) : null}
               </div>
             )}
+            {m.status === 'interrupted' && <div role="status" className="mt-2 text-xs text-amber-500">服務重啟，這段回覆已中斷；請確認內容後再繼續。</div>}
             {(timeLabel || m.role === 'claude' || m.role === 'shell') ? (
               <div className="mt-0.5 -mb-1 flex items-center gap-1 px-0.5">
                 {timeLabel ? (
@@ -1375,6 +1329,12 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
           </button>
         ) : (
           <div className="w-full relative" ref={composerWrapRef}>
+            {pendingInput && <div role="status" className="mb-2 rounded-lg border border-amber-700/50 px-3 py-2 text-xs text-ra-t3">
+              <div>{sending ? '訊息確認中…可繼續輸入下一則' : '上一則訊息尚未確認，已保留原內容'}</div>
+              <div className="mt-1 line-clamp-2 whitespace-pre-wrap break-words">{pendingInput.text || '附件訊息'}</div>
+              {!sending && <button type="button" disabled={!connected} onClick={() => sendComposerInput(pendingInput)}
+                className="mt-2 rounded px-2 py-1 border border-ra-line-strong disabled:opacity-40">重試確認</button>}
+            </div>}
             <QueuedMessages
               sessionId={session.id}
               items={queue}
@@ -1502,7 +1462,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                   onSelect={(e) => syncComposerMenus(e.target.value, e.target.selectionStart, inputMode)}
                   onKeyDown={handleKeyDown}
                   onPaste={handlePaste}
-                  disabled={isDisabled || sending}
+                  disabled={isDisabled && !sending}
                   placeholder={inputMode === 'shell' ? `輸入 ${shellType || 'Shell'} 指令…` : canQueue ? '執行中…送出會排入佇列' : attachments.length ? '想請我如何處理這些附件？（可直接送出）' : '輸入指令… @ 標記 session'}
                   rows={1}
                   className={[
@@ -1521,7 +1481,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2" /></svg>
                 </button>
               )}
-              <button type="button" onClick={() => handleSend()} disabled={sending || isDisabled || (!input.trim() && (inputMode === 'shell' || attachments.length === 0)) || (inputMode !== 'shell' && attachments.some(a => a.status !== 'ready'))}
+              <button type="button" onClick={() => handleSend()} disabled={!!pendingInput || sending || isDisabled || (!input.trim() && (inputMode === 'shell' || attachments.length === 0)) || (inputMode !== 'shell' && attachments.some(a => a.status !== 'ready'))}
                 aria-label={canQueue ? '排入佇列' : '送出'}
                 title={sending ? '送出中…' : inputMode !== 'shell' && attachments.some(a => a.status !== 'ready') ? '請等待附件上傳完成，或移除失敗的附件' : (canQueue ? '排入佇列' : '送出') + (coarsePointer ? '' : '（Enter）')}
                 className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-[8px] ${inputMode === 'shell' ? 'bg-amber-700 hover:bg-amber-600' : 'bg-[oklch(0.62_0.19_275)] hover:brightness-110'} disabled:opacity-30 text-white transition-colors text-sm`}>

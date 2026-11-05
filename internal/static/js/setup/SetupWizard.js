@@ -4,7 +4,7 @@ function SetupGate({ guest }) {
   const [state, setState] = useState({ pending: true });
   const load = () => {
     setState({ pending: true });
-    fetch(resolveApiUrl('/setup/status'))
+    fetchWithTimeout(resolveApiUrl('/setup/status'))
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error('status ' + res.status))))
       .then((status) => setState({ pending: false, status }))
       .catch((error) => setState({ pending: false, error }));
@@ -47,7 +47,7 @@ function SetupWizard({ status }) {
   useEffect(() => {
     if (!token) return undefined;
     let cancel = false;
-    fetch(resolveApiUrl('/setup/cli-check'), { headers: { 'X-Setup-Token': token } })
+    fetchWithTimeout(resolveApiUrl('/setup/cli-check'), { headers: { 'X-Setup-Token': token } })
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error('cli'))))
       .then((data) => { if (!cancel) setTools(data.tools || []); })
       .catch(() => { if (!cancel) setCliNote('無法檢查本機的代理程式，仍可繼續設定。'); });
@@ -67,7 +67,7 @@ function SetupWizard({ status }) {
     if (!setupCanSave(form) || !token || saving || locked) return;
     setSaving(true);
     try {
-      const res = await fetch(resolveApiUrl('/setup/save'), {
+      const res = await fetchWithTimeout(resolveApiUrl('/setup/save'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Setup-Token': token },
         body: JSON.stringify(buildSetupPayload(form)),

@@ -116,7 +116,7 @@ function JoinView({ token, onJoined }) {
     setError('');
     try {
       // join 是公開端點，不帶任何憑證。
-      const res = await fetch(resolveApiUrl(`/share/${encodeURIComponent(token)}/join`), {
+      const res = await fetchWithTimeout(resolveApiUrl(`/share/${encodeURIComponent(token)}/join`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin, nickname: nick.trim() }),

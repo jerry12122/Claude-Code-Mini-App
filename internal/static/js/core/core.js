@@ -470,6 +470,28 @@ const handleUnauthorized = (res) => {
   return false;
 };
 
+// 逾時也涵蓋回應本文；不能在收到 headers 時就取消 timer。
+function fetchWithTimeout(url, { timeoutMs = 15000, ...opts } = {}) {
+  const controller = new AbortController();
+  const abort = () => {
+    clearTimeout(timer);
+    cleanup();
+    controller.abort(opts.signal.reason);
+  };
+  const cleanup = () => opts.signal?.removeEventListener('abort', abort);
+  const timer = setTimeout(() => {
+    controller.abort(new Error('連線逾時，請稍後再試'));
+    cleanup();
+  }, timeoutMs);
+  if (opts.signal?.aborted) abort();
+  else opts.signal?.addEventListener('abort', abort, { once: true });
+  return fetch(url, { ...opts, signal: controller.signal }).catch((err) => {
+    clearTimeout(timer);
+    cleanup();
+    throw err;
+  });
+}
+
 // 統一 fetch：TMA 帶 initData；Web 帶 Bearer（localStorage），舊版仍相容後端 Cookie
 const apiFetch = async (url, opts = {}) => {
   const headers = { ...(opts.headers || {}) };
@@ -485,7 +507,7 @@ const apiFetch = async (url, opts = {}) => {
       if (t) headers['Authorization'] = `Bearer ${t}`;
     } catch (_) {}
   }
-  const res = await fetch(resolveApiUrl(url), { ...opts, headers });
+  const res = await fetchWithTimeout(resolveApiUrl(url), { ...opts, headers });
   handleUnauthorized(res);
   return res;
 };
@@ -508,7 +530,7 @@ const wsBaseURL = (path) => {
   } catch (_) {}
   return url;
 };
-const wsURL = (sessionId) => wsBaseURL(`/sessions/${sessionId}/ws`);
+const wsURL = (sessionId, { historyLimit = 100 } = {}) => wsBaseURL(`/sessions/${sessionId}/ws?history_limit=${historyLimit}`);
 /** 全域事件頻道：session 列表有變動時伺服器會推 sessions_changed */
 const eventsWsURL = () => wsBaseURL('/events');
 
@@ -542,9 +564,9 @@ function parseMarkdown(text, options) {
         const b64 = btoa(unescape(encodeURIComponent(raw)));
         return `<ra-mermaid data-code-b64="${b64}" data-streaming="${isStreaming ? 'true' : 'false'}"></ra-mermaid>`;
       }
-      let out;
+      let out = inner;
       try {
-        out = hljs.getLanguage(lang) ? hljs.highlight(raw, { language: lang }).value : hljs.highlightAuto(raw).value;
+        if (!isStreaming) out = hljs.getLanguage(lang) ? hljs.highlight(raw, { language: lang }).value : hljs.highlightAuto(raw).value;
       } catch (_) {
         out = inner; // 高亮失敗時保留原輸出，不讓整段訊息渲染中斷。
       }

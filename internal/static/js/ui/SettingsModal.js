@@ -115,7 +115,7 @@ function GeneralSection() {
     const urls = [location.href, ...[...document.querySelectorAll('script[src],link[rel=stylesheet][href]')]
       .map((el) => el.src || el.href)]
       .filter((u) => new URL(u, location.href).origin === location.origin);
-    await Promise.all(urls.map((u) => fetch(u, { cache: 'reload' }).catch(() => {})));
+    await Promise.all(urls.map((u) => fetchWithTimeout(u, { cache: 'reload' }).catch(() => {})));
     location.reload();
   };
 
@@ -123,7 +123,7 @@ function GeneralSection() {
   const refreshModels = async () => {
     setRefreshingModels(true);
     try {
-      const res = await apiFetch('/model-options/refresh', { method: 'POST' });
+      const res = await apiFetch('/model-options/refresh', { method: 'POST', timeoutMs: 120000 });
       if (!res.ok) throw new Error(String(res.status));
       const { failed = [] } = await res.json();
       if (failed.length) {

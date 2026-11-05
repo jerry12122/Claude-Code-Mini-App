@@ -70,7 +70,7 @@ function readAttachmentBlob(url, signal) {
       attachmentReads.active += 1;
       try {
         if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-        const res = await apiFetch(url, { signal });
+        const res = await apiFetch(url, { signal, timeoutMs: 120000 });
         if (!res.ok) throw new Error('附件無法讀取');
         resolve(await res.blob());
       } catch (err) { reject(err); }

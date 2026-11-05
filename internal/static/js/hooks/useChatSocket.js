@@ -24,6 +24,9 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
   const [histLoaded, setHistLoaded] = useState(false);
   /** Telegram：{ nextCursor, hasMore, syncState }；null＝尚未載入（較舊頁的載入 UI 由後續任務處理） */
   const [tgPaging, setTgPaging] = useState(null);
+  const [historyPaging, setHistoryPaging] = useState(null);
+  const historyPagingRef = useRef(null);
+  historyPagingRef.current = historyPaging;
   /** Telegram：最近一次 sync 的已驗證 scope（改綁偵測） */
   const tgScopeRef = useRef('');
   const isTG = agentType === 'telegram';
@@ -75,6 +78,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
     shellRenderPending.current = false;
     setMessages([]);
     setTgPaging(null);
+    setHistoryPaging(null);
     tgScopeRef.current = '';
     setHistLoaded(false);
     setConnected(false);
@@ -131,11 +135,19 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
     // 自癒：重試間隔隨失敗次數放大（0.4s→3s）；連上即歸零。
     let attempt = 0;
     let wsStarted = false;
-    // 非 Telegram：WS 的 sync 已帶完整歷史，與 HTTP 歷史並行載入；sync 先到就不讓較舊的 HTTP 結果覆蓋。
-    let synced = false;
-    const initCtl = isTG ? new AbortController() : null;
+    const initCtl = new AbortController();
+    let deltaTimer = null;
+    const flushDelta = () => {
+      clearTimeout(deltaTimer);
+      deltaTimer = null;
+      if (!isCurrent()) return;
+      const content = streamBuf.current;
+      const html = parseMarkdown(content, { streaming: true });
+      setMessages(prev => prev.map((m, i) => i === prev.length - 1 && m.role === 'claude'
+        ? { ...m, content, html, thinking: false, streaming: true, status: 'pending' } : m));
+    };
     const init = async () => {
-      if (!isTG && !guestSnapshot) connectWS();
+      if (!isTG && !guestSnapshot) { connectWS(); return; }
       // 載入歷史紀錄
       let hist = [];
       let tgPage = null;
@@ -143,7 +155,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
         // Telegram：只取最新有界頁（pagination=telegram），其餘由 sync／live 與按需載入合併。
         const res = await apiFetch(isTG
           ? `/sessions/${session.id}/messages?pagination=telegram&limit=50`
-          : `/sessions/${session.id}/messages`, initCtl ? { signal: initCtl.signal } : undefined);
+          : `/sessions/${session.id}/messages?limit=100`, { signal: initCtl.signal });
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data)) hist = data;
@@ -166,7 +178,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
         if (isTG) tgPage = tgInitFailed(tgPageError(0, null, null, Date.now()));
         if (isCurrent()) showToast('載入對話失敗', { error: true, duration: 3000 });
       }
-      if (isCurrent() && !(synced && !isTG)) {
+      if (isCurrent()) {
         if (isTG) {
           // 依穩定識別併入：WS sync／live 可能已先寫入，不能整份覆蓋。
           // HTTP 先於 WS 完成；舊帳號資料由之後 sync 的 scope 改綁偵測丟棄（見 tgApplySync）。
@@ -178,6 +190,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
           setMessages(hist.map(mapMessageRow).map((r) => (guestSnapshot ? { ...r, streaming: false } : r)));
           const lastClaude = [...hist].reverse().find((m) => m.role === 'claude' && m.status === 'pending');
           streamBuf.current = lastClaude ? (lastClaude.content || '') : '';
+          setHistoryPaging({ nextCursor: hist[0]?.id || null, hasMore: hist.length === 100, loading: false });
         }
       }
       if (isCurrent()) setHistLoaded(true);
@@ -195,6 +208,10 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
       ws._gen = effectGen;
       wsRef.current = ws;
       let everConnected = false;
+      let receivedSync = false;
+      const syncTimer = setTimeout(() => {
+        if (!receivedSync) ws.close();
+      }, 15000);
 
       // 使用者正在看這個 session：標記已讀，讓列表未讀點消失。失敗不影響聊天功能，靜默忽略。
       const markRead = () => {
@@ -238,6 +255,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
       ws.onmessage = (evt) => {
         if (!isCurrent() || wsRef.current !== ws) return;
         const msg = JSON.parse(evt.data);
+        if (msg.type !== 'delta' && deltaTimer !== null) flushDelta();
 
         if (msg.type === 'presence') {
           setOnline(Array.isArray(msg.online) ? msg.online : []);
@@ -262,7 +280,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
             clearTimeout(request.timer);
             inputRequestsRef.current.delete(msg.request_id);
             if (msg.type === 'input_accepted') request.resolve();
-            else request.reject(new Error(msg.content || '送出失敗，草稿已保留'));
+            else request.reject(Object.assign(new Error(msg.content || '訊息未接受'), { rejected: !['update_in_progress', 'retry_input'].includes(msg.code) }));
           }
           return;
         }
@@ -275,7 +293,9 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
         }
 
         if (msg.type === 'sync') {
-          synced = true;
+          receivedSync = true;
+          clearTimeout(syncTimer);
+          if (!isTG) setHistLoaded(true);
           if (msg.value !== 'AWAITING_INPUT') setQuestion(null);
           setQuestionError('');
           setState(msg.value);
@@ -291,6 +311,11 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
             if (isTG) {
               applyTelegramScope(msg);
             } else {
+            const previous = messagesRef.current;
+            const firstID = rows[0]?.id;
+            const lastID = rows[rows.length - 1]?.id;
+            const overlaps = previous.some(m => m.id >= firstID);
+            setHistoryPaging(p => overlaps && p ? p : { nextCursor: firstID || null, hasMore: !!msg.history_has_more, loading: false });
             const lastClaude = [...rows].reverse().find((m) => m.role === 'claude' && (m.status || 'done') === 'pending');
             streamBuf.current = lastClaude ? (lastClaude.content || '') : '';
             setMessages((prev) => {
@@ -298,11 +323,13 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
               for (const m of prev) {
                 if (m.id != null && m.createdAt) byId.set(m.id, m.createdAt);
               }
-              return mapped.map((m) => (
+              const current = mapped.map((m) => (
                 m.createdAt || m.id == null || !byId.has(m.id)
                   ? m
                   : { ...m, createdAt: byId.get(m.id) }
               ));
+              // 重連保留已補載的較早頁；新舊視窗不相交時重新提供補頁入口，避免留下歷史缺口。
+              return overlaps ? [...prev.filter(m => m.id < firstID), ...current, ...prev.filter(m => m.id > lastID)] : current;
             });
             }
           }
@@ -407,7 +434,9 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
         }
 
         if (msg.type === 'reset') {
+          tgAbortRequest();
           setMessages([]);
+          setHistoryPaging({ nextCursor: null, hasMore: false, loading: false });
           streamBuf.current = '';
         }
 
@@ -451,10 +480,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
             streamBuf.current = '';
           }
           streamBuf.current += msg.content;
-          const html = parseMarkdown(streamBuf.current, { streaming: true });
-          setMessages((prev) => prev.map((m, i) =>
-            i === prev.length - 1 ? { ...m, content: streamBuf.current, html, thinking: false, streaming: true, status: 'pending' } : m
-          ));
+          if (deltaTimer === null) deltaTimer = setTimeout(flushDelta, 50);
         }
 
         if (msg.type === 'question_request') {
@@ -596,6 +622,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
 
       ws.onclose = (evt) => {
         clearTimeout(openTimer);
+        clearTimeout(syncTimer);
         console.warn('[ws] 連線關閉', evt.code, evt.reason);
         for (const [id, request] of inputRequestsRef.current) {
           if (request.ws !== ws) continue;
@@ -613,34 +640,15 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
             connectWS();
           }, delay);
         };
-        if (isGuest) {
-          // 訪客：分享已結束就不重連；否則先探測 token 是否仍有效（apiFetch 遇 401 會通知 GuestApp 切換畫面）。
-          if (shareEndedRef.current || evt.code === 4001) return;
-          apiFetch('/guest/me').then((res) => {
-            if (!isCurrent() || wsRef.current !== ws) return;
-            if (res.ok) scheduleReconnect();
-          }).catch(() => {
-            if (isCurrent() && wsRef.current === ws) scheduleReconnect();
-          });
-          return;
-        }
-        if (!everConnected && !isTelegram) {
-          apiFetch('/sessions').then((res) => {
-            if (!isCurrent() || wsRef.current !== ws) return;
-            if (!res.ok) return;
-            try {
-              if (!localStorage.getItem(WEB_SESSION_STORAGE_KEY)) return;
-            } catch (_) { return; }
-            scheduleReconnect();
-          }).catch(() => {});
-          return;
-        }
-        if (!isTelegram) {
-          try {
-            if (!localStorage.getItem(WEB_SESSION_STORAGE_KEY)) return;
-          } catch (_) { return; }
-        }
+        if (isGuest && (shareEndedRef.current || evt.code === 4001)) return;
+        // 驗證與重連並行；HTTP 探測故障不能擋住下一次 WS 嘗試。
         scheduleReconnect();
+        if (isGuest || (!everConnected && !isTelegram)) {
+          apiFetch(isGuest ? '/guest/me' : '/sessions').then(res => {
+            if (!isCurrent() || wsRef.current !== ws) return;
+            if (res.status === 401 || res.status === 403) clearReconnectTimer();
+          }).catch(() => {});
+        }
       };
     };
 
@@ -662,6 +670,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
       document.removeEventListener('visibilitychange', wake);
       window.removeEventListener('online', wake);
       cancelled = true;
+      clearTimeout(deltaTimer);
       if (initCtl) initCtl.abort();
       tgAbortRequest();
       clearReconnectTimer();
@@ -690,6 +699,34 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
    * 失敗只顯示可重試的錯誤，不會變成到頂；429 在 retryAt 前不發請求；needsInit（初載失敗／游標失效／scope 變更）改取最新頁。
    */
   const loadOlder = useCallback(async () => {
+    if (!isTG) {
+      const p = historyPagingRef.current;
+      if (!p || p.loading || !p.hasMore || !p.nextCursor || tgReqRef.current) return;
+      const sid = activeSessionRef.current;
+      const gen = tgGenRef.current;
+      const controller = new AbortController();
+      tgReqRef.current = { controller };
+      setHistoryPaging(prev => ({ ...prev, loading: true, error: null }));
+      const stale = () => tgGenRef.current !== gen || activeSessionRef.current !== sid;
+      try {
+        const res = await apiFetch(`/sessions/${sid}/messages?limit=100&before=${p.nextCursor}`, { signal: controller.signal });
+        if (!res.ok) throw new Error('較早訊息載入失敗，請重試');
+        const rows = await res.json();
+        if (stale()) return;
+        if (!Array.isArray(rows)) throw new Error('無法讀取較早訊息');
+        const mapped = rows.map(mapMessageRow);
+        setMessages(prev => {
+          const ids = new Set(prev.map(m => m.id));
+          return [...mapped.filter(m => !ids.has(m.id)), ...prev];
+        });
+        setHistoryPaging({ nextCursor: rows[0]?.id || null, hasMore: rows.length === 100, loading: false });
+      } catch (err) {
+        if (!stale() && !controller.signal.aborted) setHistoryPaging(prev => ({ ...prev, loading: false, error: { message: err.message } }));
+      } finally {
+        if (tgReqRef.current?.controller === controller) tgReqRef.current = null;
+      }
+      return;
+    }
     const p = tgPagingRef.current;
     if (!p || tgReqRef.current) return;
     if (p.retryAt && Date.now() < p.retryAt) return;
@@ -729,7 +766,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
     } finally {
       if (tgReqRef.current && tgReqRef.current.controller === controller) tgReqRef.current = null;
     }
-  }, []);
+  }, [isTG]);
 
   const send = useCallback((obj) => {
     const ws = wsRef.current;
@@ -738,18 +775,17 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
     try { ws.send(JSON.stringify(obj)); return true; } catch (_) { return false; }
   }, [session.id]);
 
-  const submitInput = useCallback((data, attachmentIds) => new Promise((resolve, reject) => {
+  const submitInput = useCallback((data, attachmentIds, requestId = newInputRequestID()) => new Promise((resolve, reject) => {
     const ws = wsRef.current;
-    const requestId = `input-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const timer = setTimeout(() => {
       inputRequestsRef.current.delete(requestId);
-      reject(new Error('尚未收到送出確認，草稿已保留；請確認歷史或佇列後再重試'));
+      reject(new Error('尚未收到送出確認，可使用原訊息重試確認'));
     }, 15000);
     inputRequestsRef.current.set(requestId, { ws, resolve, reject, timer });
     if (!send({ type: 'input', data, attachment_ids: attachmentIds, request_id: requestId })) {
       clearTimeout(timer);
       inputRequestsRef.current.delete(requestId);
-      reject(new Error('尚未連線，草稿已保留'));
+      reject(new Error('尚未連線，訊息已保留'));
     }
   }), [send]);
 
@@ -811,7 +847,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
     modelSel, setModelSel,
     effortSel, setEffortSel,
     histLoaded,
-    tgPaging, loadOlder,
+    tgPaging, historyPaging, loadOlder,
     connected,
     inputMode, setInputMode,
     shellType,

@@ -9,7 +9,7 @@ function PasswordView({ onSuccess }) {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(resolveApiUrl('/auth/login'), {
+      const res = await fetchWithTimeout(resolveApiUrl('/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: pwd }),

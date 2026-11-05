@@ -60,9 +60,104 @@ function inputModeStorageKey(sessionId) {
 }
 
 const DRAFT_INPUT_STORAGE_PREFIX = 'cc_draft_input:';
+// ponytail: 附件 File 草稿留在本頁記憶體；需要跨重整恢復檔案時才加 IndexedDB。
+const composerDrafts = new Map();
+
+function restoreComposerDraft(sessionId, text, attachments = [], mentions = []) {
+  const current = composerDrafts.get(sessionId) || {};
+  let existing = current.text || '';
+  try {
+    existing = localStorage.getItem(draftInputStorageKey(sessionId)) ?? existing;
+  } catch (_) {}
+  const restored = existing === text ? text : [text, existing].filter(Boolean).join('\n\n');
+  try { localStorage.setItem(draftInputStorageKey(sessionId), restored); } catch (_) {}
+  composerDrafts.set(sessionId, {
+    ...current,
+    text: restored,
+    attachments: [...new Map([...attachments, ...(current.attachments || [])].map(a => [a.id, a])).values()],
+    mentions: [...new Map([...mentions, ...(current.mentions || [])].map(s => [s.id, s])).values()],
+  });
+  window.dispatchEvent(new CustomEvent('miniapp:draft-restored', { detail: { sessionId, composer: true, text: restored } }));
+}
 
 function draftInputStorageKey(sessionId) {
-  return DRAFT_INPUT_STORAGE_PREFIX + String(sessionId || '');
+  const scope = isGuestMode ? `share:${SHARE_TOKEN_FROM_URL}:${readGuestAuth()?.nickname || ''}:` : '';
+  return DRAFT_INPUT_STORAGE_PREFIX + scope + String(sessionId || '');
+}
+
+function pendingInputStorageKey(sessionId) {
+  return draftInputStorageKey(sessionId) + ':pending';
+}
+
+function recoverPendingInput(sessionId) {
+  if (composerDrafts.get(sessionId)?.pending) return false;
+  try {
+    const stored = localStorage.getItem(pendingInputStorageKey(sessionId));
+    if (!stored) return false;
+    let record;
+    try { record = JSON.parse(stored); } catch (_) {}
+    if (record?.requestId && typeof record.data === 'string' && Array.isArray(record.attachmentIds)) {
+      composerDrafts.set(sessionId, { ...composerDrafts.get(sessionId), pending: record });
+    } else {
+      // Legacy drafts have no stable ID, so only their text can be recovered.
+      localStorage.removeItem(pendingInputStorageKey(sessionId));
+      restoreComposerDraft(sessionId, stored);
+    }
+    return true;
+  } catch (_) { return false; }
+}
+
+function newInputRequestID() {
+  return `input-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function notifyPendingInput(sessionId) {
+  window.dispatchEvent(new CustomEvent('miniapp:pending-input', { detail: { sessionId } }));
+}
+
+function beginPendingInput(sessionId, { data, text = data, attachments = [], mentions = [] }) {
+  recoverPendingInput(sessionId);
+  const previous = composerDrafts.get(sessionId)?.pending;
+  const attachmentIds = attachments.map(a => a.attachmentId);
+  if (previous) {
+    if (previous.data === data && JSON.stringify(previous.attachmentIds) === JSON.stringify(attachmentIds)) return previous;
+    throw new Error('此會話尚有訊息未確認，請先在聊天室重試確認');
+  }
+  const record = { requestId: newInputRequestID(), data, text, attachmentIds, attachments, mentions };
+  // File/Blob previews stay in memory. Uploaded IDs and the exact payload survive reload.
+  const stored = { ...record, attachments: attachments.map(({ file, previewUrl, ...a }) => a) };
+  composerDrafts.set(sessionId, { ...composerDrafts.get(sessionId), pending: record });
+  try { localStorage.setItem(pendingInputStorageKey(sessionId), JSON.stringify(stored)); } catch (_) {}
+  notifyPendingInput(sessionId);
+  return record;
+}
+
+async function sendPendingInput(sessionId, record, submit) {
+  if (record.inFlight) throw new Error('訊息正在確認中');
+  record.inFlight = true;
+  notifyPendingInput(sessionId);
+  const clear = () => {
+    if (composerDrafts.get(sessionId)?.pending?.requestId !== record.requestId) return;
+    delete composerDrafts.get(sessionId).pending;
+    try {
+      const key = pendingInputStorageKey(sessionId);
+      if (JSON.parse(localStorage.getItem(key))?.requestId === record.requestId) localStorage.removeItem(key);
+    } catch (_) {}
+  };
+  try {
+    await submit(record.data, record.attachmentIds, record.requestId);
+    clear();
+    record.attachments?.forEach(a => a.previewUrl && URL.revokeObjectURL(a.previewUrl));
+  } catch (err) {
+    if (err.rejected) {
+      clear();
+      restoreComposerDraft(sessionId, record.text, record.attachments, record.mentions);
+    }
+    throw err;
+  } finally {
+    record.inFlight = false;
+    notifyPendingInput(sessionId);
+  }
 }
 
 function clearDraftInputForSession(sessionId) {
@@ -173,26 +268,23 @@ function buildForwardUserPrompt(note, originalBody) {
 }
 
 function sendPromptViaEphemeralWS(sessionId, text) {
-  return new Promise((resolve, reject) => {
+  const record = beginPendingInput(sessionId, { data: text });
+  return sendPendingInput(sessionId, record, (data, attachmentIds, requestId) => new Promise((resolve, reject) => {
     let settled = false;
     const settle = (fn) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       fn();
+      try { ws.close(); } catch (_) {}
     };
-    let opened = false;
-    const ws = new WebSocket(wsURL(sessionId));
+    const ws = new WebSocket(wsURL(sessionId, { historyLimit: 1 }));
     const timer = setTimeout(() => {
-      try {
-        ws.close();
-      } catch (_) {}
-      settle(() => reject(new Error('連線逾時')));
+      settle(() => reject(new Error('尚未收到送出確認，請確認目標會話後再重試')));
     }, 20000);
     ws.onopen = () => {
-      opened = true;
       try {
-        ws.send(JSON.stringify({ type: 'input', data: text }));
+        ws.send(JSON.stringify({ type: 'input', data, attachment_ids: attachmentIds, request_id: requestId }));
       } catch (e) {
         settle(() => reject(e));
         try {
@@ -200,33 +292,32 @@ function sendPromptViaEphemeralWS(sessionId, text) {
         } catch (_) {}
         return;
       }
-      setTimeout(() => {
-        try {
-          ws.close();
-        } catch (_) {}
-      }, 80);
+    };
+    ws.onmessage = (event) => {
+      let msg;
+      try { msg = JSON.parse(event.data); } catch (_) { return; }
+      if (msg.request_id === requestId && msg.type === 'input_accepted') settle(resolve);
+      else if (msg.type === 'error' || (msg.request_id === requestId && msg.type === 'input_rejected')) {
+        settle(() => reject(Object.assign(new Error(msg.content || '訊息未送出'), { rejected: msg.type === 'input_rejected' && !['update_in_progress', 'retry_input'].includes(msg.code) })));
+      }
     };
     ws.onerror = () => settle(() => reject(new Error('WebSocket 錯誤')));
     ws.onclose = () => {
-      if (opened) settle(() => resolve());
-      else settle(() => reject(new Error('無法連線')));
+      settle(() => reject(new Error('連線中斷，尚未確認訊息送出')));
     };
-  });
+  }));
 }
 
 /**
  * 新建 session 後送第一則訊息。失敗時 session 已存在，不能讓使用者重按（會重複建立）也不能丟訊息，
- * 所以改放進新 session 的草稿，進聊天室後自己重送。回傳是否送成功。
+ * 保留原訊息與 ID，進聊天室後可安全重試確認。回傳是否送成功。
  */
 async function sendFirstPromptOrDraft(sessionId, text) {
   try {
     await sendPromptViaEphemeralWS(sessionId, text);
     return true;
-  } catch (_) {
-    try { localStorage.setItem(draftInputStorageKey(sessionId), text); } catch (__) {}
-    // 聊天室可能已先開啟（草稿只在掛載時讀），通知它還原輸入框。
-    window.dispatchEvent(new CustomEvent('miniapp:draft-restored', { detail: { sessionId } }));
-    showToast('Session 已建立，但首則訊息未送出，已放入輸入框', { error: true, duration: 4000 });
+  } catch (err) {
+    showToast(`${err.message || '送出未確認'}；內容已保留，請進聊天室重試確認`, { error: true, duration: 5000 });
     return false;
   }
 }

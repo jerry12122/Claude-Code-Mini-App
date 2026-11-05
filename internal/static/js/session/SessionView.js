@@ -8,6 +8,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
   const [renamingId, setRenamingId] = useState(null);
   const [renameVal, setRenameVal]   = useState('');
   const renameInputRef = useRef(null);
+  const renameSavingRef = useRef(false);
   // 刪除有 5 秒復原窗口：這段期間先從列表隱藏，時間到才真的打 DELETE
   const pendingDelRef = useRef(new Set());
   const activeIdRef = useRef(activeSessionId);
@@ -97,11 +98,18 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
     pendingDelRef.current.add(id);
     setSessions((prev) => prev.filter((x) => x.id !== id));
     const timer = setTimeout(async () => {
-      await apiFetch(`/sessions/${id}`, { method: 'DELETE' });
-      pendingDelRef.current.delete(id);
-      load();
+      try {
+        const res = await apiFetch(`/sessions/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('刪除失敗');
+      } catch (_) {
+        setSessions(prev => prev.some(s => s.id === id) || !target ? prev : [...prev, target]);
+        showToast('無法確認刪除結果，請確認列表後再試', { error: true, duration: 5000 });
+      } finally {
+        pendingDelRef.current.delete(id);
+        load();
+      }
     }, 5000);
-    showToast(`已刪除「${(target && target.name) || '未命名'}」`, {
+    showToast(`將刪除「${(target && target.name) || '未命名'}」，5 秒內可復原`, {
       duration: 5000,
       action: {
         label: '復原',
@@ -117,17 +125,29 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
   };
 
   const commitRename = async (id) => {
+    if (renameSavingRef.current) return;
     const trimmed = renameVal.trim();
-    if (trimmed) {
-      await apiFetch(`/sessions/${id}`, {
+    if (!trimmed) return;
+    renameSavingRef.current = true;
+    try {
+      const res = await apiFetch(`/sessions/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: trimmed }),
       });
-      await load();
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || '重新命名失敗');
+      }
+      setRenamingId(null);
+      setRenameVal('');
+      load();
+    } catch (err) {
+      showToast(err.message || '重新命名失敗，請稍後再試', { error: true, duration: 5000 });
+      renameInputRef.current?.focus();
+    } finally {
+      renameSavingRef.current = false;
     }
-    setRenamingId(null);
-    setRenameVal('');
   };
 
   const handleRenameKey = (e, id) => {
