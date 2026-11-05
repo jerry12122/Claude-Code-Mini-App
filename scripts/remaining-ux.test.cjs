@@ -44,6 +44,23 @@ async function main() {
   await unmounted;
   assert.equal(rows[0].id, 'new');
 
+  const virtual = read('chat/VirtualMessages.js');
+  const math = vm.createContext({});
+  vm.runInContext(virtual.slice(0, virtual.indexOf('function VirtualMessages(')), math);
+  const offsets = Array.from({ length: 10001 }, (_, index) => index * 180);
+  assert.equal(math.virtualMessageIndex([0], 0), 0);
+  assert.equal(math.virtualMessageIndex([0, 70, 150], 70), 1);
+  assert.equal(math.virtualMessageIndex([0, 70, 150], 10000), 1);
+  const window = math.virtualMessageWindow(offsets, 900000, 800, true);
+  assert.ok(window.start <= 5000 && window.end > 5000);
+  assert.ok(window.end - window.start < 25, '一萬則訊息只掛載視窗附近的列');
+  assert.equal(math.virtualMessageWindow(offsets, 1799200, 800, true).end, 10000);
+  assert.equal(math.virtualMessageWindow(offsets, 0, 800, false).end, 10000);
+  assert.equal(math.virtualMessageWindow([0], 0, 800, true).end, 0);
+  assert.equal(math.virtualMessageWindow(offsets, -80, 800, true).start, 0);
+  const pending = { role: 'claude', createdAt: '2026-11-05T00:00:00Z' };
+  assert.equal(math.virtualMessageKey(pending, 3), math.virtualMessageKey(pending, 103), '補頁不改變 pending key');
+
   // Minimal IndexedDB event model: writes become visible at transaction commit,
   // with a separate abort path. The application checks never call a real API.
   const disk = new Map();

@@ -21,9 +21,17 @@ Uploads, attachment downloads and manual model discovery use a 120-second limit.
 Timeouts never automatically retry writes.
 
 Attachment files and mention chips survive switching sessions within the current
-page. Unsent file drafts stay in memory; reloading retains draft text and the
-exact payload/IDs of unacknowledged messages, including already-uploaded attachment
-IDs. Pending messages are displayed separately from the next draft and are never
+page. Unsent attachment Files are backed up in the browser's IndexedDB, separately
+for each session/share/nickname, and restored with fresh preview URLs after reload.
+Interrupted uploads restore as retryable errors; completed uploads retain their
+attachment IDs. Saving/restoring errors and retry controls are visible in the
+composer. A failed restore does not overwrite the saved files. Storage depends
+on browser quota/availability: users should wait for saving to finish before
+closing the page, and clearing site data removes these local backups. Deleting a
+session also attempts to clear its local file backup. Mention chips remain held
+in memory; text and the exact payload/IDs of unacknowledged messages are retained
+in localStorage, including already-uploaded attachment IDs.
+Pending messages are displayed separately from the next draft and are never
 resent automatically. “重試確認” sends the original request ID; explicit rejection
 restores the original content to the draft. Guest drafts use a separate storage
 scope for each share/nickname.
@@ -57,9 +65,27 @@ write deadline. A full queue or failed write closes that connection; the browser
 reconnects and synchronizes persisted state. This isolates slow consumers without
 silently dropping individual stream events.
 
+## Long conversations and session list
+
+Above 200 loaded messages, only rows near the viewport (with 800 pixels of
+overscan per side) are mounted. Row heights are measured and cached; the visible
+message and its offset anchor prepends and subsequent image/font/layout changes.
+Scrolling to latest follows the end. Height arithmetic is O(n) in loaded messages;
+only mounted rows create message DOM. Browsers without ResizeObserver render the
+full loaded list. “顯示全部已載入訊息” also disables windowing for browser find and
+cross-message selection; it does not fetch unloaded history.
+
+The session list distinguishes loading/failure from a successful empty result,
+keeps the last successful list during failures, and offers retry. Every refresh
+cancels the previous request and checks a generation before applying results;
+unmount also invalidates requests, preventing stale responses from updating state.
+
 ## Verification scope
 
 CI was intentionally left unchanged. Runnable checks were added for durable
 acceptance/rollback/reopen, restart interruption, dispatcher retries, bounded
 socket queues and browser draft/acknowledgement behavior. Only compilation and
 static syntax checks were performed; no tests or application were executed.
+`scripts/remaining-ux.test.cjs` adds runnable checks for list-response races,
+virtual-window boundaries/stable keys and IndexedDB commit/abort/recovery paths.
+It has not been executed; actual scrolling, storage and latency remain unmeasured.

@@ -171,11 +171,10 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const chatScrollRef = useRef(null);
   const chatNearBottomRef = useRef(true);
   const [showJumpLatest, setShowJumpLatest] = useState(false);
+  const [showAllMessages, setShowAllMessages] = useState(false);
   // Telegram 時間線：閱讀舊內容時的可見訊息錨點、到頂手勢、新訊息提示。
   const isTGChat = agentType === 'telegram';
-  const anchorRef = useRef(null);
   const gestureRef = useRef(false);
-  const progScrollRef = useRef(false);
   const sendFollowUntilRef = useRef(0); // 本機使用者剛明確送出：待傳項目出現時才強制到底（與跨裝置 Out 區分）
   const lastKeyRef = useRef(null);
   const [hasNewBelow, setHasNewBelow] = useState(false);
@@ -195,51 +194,18 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const jumpToLatest = () => {
     chatNearBottomRef.current = true;
     setHasNewBelow(false);
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    bottomRef.current?.scrollIntoView({ behavior: messages.length > 200 && !showAllMessages ? 'auto' : 'smooth' });
   };
-
-  /** 記下目前第一則可見訊息與它相對容器頂端的位置（只在閱讀舊內容時；在底部則走跟隨）。 */
-  const captureAnchor = useCallback(() => {
-    const el = chatScrollRef.current;
-    if (!el) return;
-    if (chatNearBottomRef.current) { anchorRef.current = null; return; }
-    const top = el.getBoundingClientRect().top;
-    for (const node of el.querySelectorAll('[data-mkey]')) {
-      const r = node.getBoundingClientRect();
-      if (r.bottom > top + 1) { anchorRef.current = { key: node.getAttribute('data-mkey'), top: r.top - top }; return; }
-    }
-    anchorRef.current = null;
-  }, []);
-
-  /** 內容高度改變（向上補頁、圖片延後載入）後，把錨點訊息放回原本的位置，視圖不跳。 */
-  const restoreAnchor = useCallback(() => {
-    const el = chatScrollRef.current;
-    const a = anchorRef.current;
-    if (!el || !a) return;
-    const node = Array.from(el.querySelectorAll('[data-mkey]')).find((n) => n.getAttribute('data-mkey') === a.key);
-    if (!node) return;
-    const delta = (node.getBoundingClientRect().top - el.getBoundingClientRect().top) - a.top;
-    if (Math.abs(delta) >= 1) {
-      gestureRef.current = false; // 程式造成的捲動不算使用者手勢
-      // 這次調整產生的 scroll 事件不得重新記錄錨點：事件在下一幀、ResizeObserver 之前觸發，
-      // 此時內容可能又長高（圖片卡片等），會把偏移後的位置誤當成新錨點。
-      progScrollRef.current = true;
-      requestAnimationFrame(() => { progScrollRef.current = false; });
-      el.scrollTop += delta;
-    }
-  }, []);
 
   const handleLoadOlder = useCallback(() => {
     chatNearBottomRef.current = false; // 使用者要看舊內容：補頁後不要把視圖拉回底部
-    captureAnchor();
     Promise.resolve(loadOlder()).then(() => requestAnimationFrame(() => requestAnimationFrame(syncChatNearBottom)));
-  }, [captureAnchor, loadOlder, syncChatNearBottom]);
+  }, [loadOlder, syncChatNearBottom]);
 
   const markGesture = () => { gestureRef.current = true; };
 
   const handleChatScroll = useCallback(() => {
     syncChatNearBottom();
-    if (!progScrollRef.current) captureAnchor();
     if (!isTGChat) return;
     if (chatNearBottomRef.current) setHasNewBelow(false);
     const el = chatScrollRef.current;
@@ -248,7 +214,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       gestureRef.current = false;
       handleLoadOlder();
     }
-  }, [isTGChat, syncChatNearBottom, captureAnchor, handleLoadOlder]);
+  }, [isTGChat, syncChatNearBottom, handleLoadOlder]);
 
   /** 進入會話或執行結束後將游標放回輸入框（雙 rAF 以配合 React commit／行動裝置鍵盤） */
   const focusChatInput = useCallback(() => {
@@ -351,7 +317,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     }
     lastKeyRef.current = lastKey;
     if (isTGChat ? (appended && chatNearBottomRef.current) : (chatNearBottomRef.current || (appended && last?.role === 'user'))) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+      bottomRef.current?.scrollIntoView({ behavior: messages.length > 200 && !showAllMessages ? 'auto' : 'smooth' });
     }
     let id2;
     const id1 = requestAnimationFrame(() => {
@@ -365,30 +331,6 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     };
   }, [messages, syncChatNearBottom]);
 
-  // Telegram：補頁後（內容高度在繪製前改變）立即把錨點放回原位。
-  // 訊息高度延後改變（圖片預覽載入、字型）由 ResizeObserver 處理：閱讀舊內容時維持錨點，在底部則維持貼底。
-  const resizeObsRef = useRef(null);
-  useEffect(() => {
-    if (typeof ResizeObserver === 'undefined') return undefined;
-    const ro = new ResizeObserver(() => {
-      const el = chatScrollRef.current;
-      if (!el) return;
-      if (chatNearBottomRef.current) el.scrollTop = el.scrollHeight;
-      else restoreAnchor();
-    });
-    resizeObsRef.current = ro;
-    return () => { ro.disconnect(); resizeObsRef.current = null; };
-  }, [isTGChat, session.id]);
-  useLayoutEffect(() => {
-    if (!chatNearBottomRef.current) restoreAnchor();
-    const ro = resizeObsRef.current;
-    const el = chatScrollRef.current;
-    if (ro && el) {
-      ro.disconnect();
-      el.querySelectorAll('[data-mkey]').forEach((n) => ro.observe(n));
-    }
-  }, [messages]);
-
   // 待授權／Shell 確認區塊出現時捲到底（此狀態常不經 messages 更新而單獨出現）
   useEffect(() => {
     const showPermPanel =
@@ -399,7 +341,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     let id2;
     const id1 = requestAnimationFrame(() => {
       id2 = requestAnimationFrame(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+        bottomRef.current?.scrollIntoView({ behavior: messages.length > 200 && !showAllMessages ? 'auto' : 'smooth' });
       });
     });
     return () => {
@@ -424,8 +366,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   useEffect(() => {
     chatNearBottomRef.current = true;
     setShowJumpLatest(false);
+    setShowAllMessages(false);
     setHasNewBelow(false);
-    anchorRef.current = null;
     lastKeyRef.current = null;
     gestureRef.current = false;
     setSlashMenuItems([]);
@@ -1024,7 +966,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         onTouchMove={isTGChat ? markGesture : undefined}
         onPointerDown={isTGChat ? markGesture : undefined}
         onKeyDown={isTGChat ? markGesture : undefined}
-        style={isTGChat ? { overflowAnchor: 'none' } : undefined} /* Telegram：錨點由上面的 JS 負責，各瀏覽器行為一致（含無原生 scroll anchoring 的 iOS WebView） */
+        style={{ overflowAnchor: 'none' }} /* Telegram：錨點由上面的 JS 負責，各瀏覽器行為一致（含無原生 scroll anchoring 的 iOS WebView） */
         className="flex-1 min-h-0 overflow-y-auto app-scroll px-4 py-[18px] sm:px-8 sm:py-7 flex flex-col gap-5"
       >
         {!histLoaded && (
@@ -1057,7 +999,13 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             )}
           </div>
         )}
-        {messages.map((m, i) => {
+        {messages.length > 200 && <button type="button" onClick={() => setShowAllMessages(value => !value)}
+          className="shrink-0 self-center rounded-full border border-ra-line px-3 py-1 text-xs text-ra-t4">
+          {showAllMessages ? '恢復精簡顯示' : '顯示全部已載入訊息（搜尋／選取用）'}
+        </button>}
+        <VirtualMessages key={session.id} messages={messages} scrollRef={chatScrollRef} followRef={chatNearBottomRef}
+          gestureRef={gestureRef} showAll={showAllMessages}>
+        {(m, i) => {
           const userParts = m.role === 'user' ? attachmentMessageParts(m, session.id) : null;
           // 收到的訊息（Telegram 朋友傳的圖片／檔案）也要顯示附件卡片；純附件時內容為空，不能當成「思考中」。
           const claudeAtts = m.role === 'claude' && Array.isArray(m.attachments) && m.attachments.length ? attachmentMessageParts(m, session.id).attachments : [];
@@ -1189,7 +1137,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
             </div>
           </div>
           );
-        })}
+        }}
+        </VirtualMessages>
 
         {/* Shell 指令批准對話框 */}
         {state === 'SHELL_AWAITING_APPROVAL' && shellPendingCmd && canAct && (
@@ -1279,11 +1228,6 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         {handoffInfo && !isGuest && (
           <div className="rounded-xl border border-rose-700/70 bg-rose-950/30 px-4 py-3 text-sm mr-8">
             <div className="text-rose-300 font-semibold mb-1">⚠️ 這個會話無法繼續，自動接手未成功</div>
-            {draftRestoring && <div role="status" className="mb-2 text-xs text-ra-t4">還原附件草稿中…</div>}
-            {draftSaving && <div role="status" className="mb-2 text-xs text-ra-t4">保存附件草稿中…</div>}
-            {draftSaveError && <div role="alert" className="mb-2 text-xs text-amber-400">
-              {draftSaveError}<button type="button" onClick={draftRestoreFailed ? retryDraftFiles : saveFiles} disabled={draftSaving || draftRestoring} className="ml-2 underline disabled:opacity-40">{draftRestoreFailed ? '重試還原' : '重試保存'}</button>
-            </div>}
             <div className="text-gray-400 text-xs mb-3">原因：{handoffInfo.reason}</div>
             <button type="button" onClick={openHandoffComposer}
               className="px-3 py-1.5 bg-rose-800 hover:bg-rose-700 text-white rounded-lg text-xs font-medium">
@@ -1335,6 +1279,11 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
           </button>
         ) : (
           <div className="w-full relative" ref={composerWrapRef}>
+            {draftRestoring && <div role="status" className="mb-2 text-xs text-ra-t4">還原附件草稿中…</div>}
+            {draftSaving && <div role="status" className="mb-2 text-xs text-ra-t4">保存附件草稿中…</div>}
+            {draftSaveError && <div role="alert" className="mb-2 text-xs text-amber-400">
+              {draftSaveError}<button type="button" onClick={draftRestoreFailed ? retryDraftFiles : saveFiles} disabled={draftSaving || draftRestoring} className="ml-2 underline disabled:opacity-40">{draftRestoreFailed ? '重試還原' : '重試保存'}</button>
+            </div>}
             {pendingInput && <div role="status" className="mb-2 rounded-lg border border-amber-700/50 px-3 py-2 text-xs text-ra-t3">
               <div>{sending ? '訊息確認中…可繼續輸入下一則' : '上一則訊息尚未確認，已保留原內容'}</div>
               <div className="mt-1 line-clamp-2 whitespace-pre-wrap break-words">{pendingInput.text || '附件訊息'}</div>
