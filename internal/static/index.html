@@ -10,11 +10,9 @@
   <!-- <meta name="cc-api-base" content="" /> -->
   <title>Claude Code · Remote Agent</title>
   <link rel="icon" href="./favicon.ico" type="image/x-icon" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="./js/vendor/fonts.css" rel="stylesheet" />
+  <script src="./js/vendor/telegram-web-app.js"></script>
+  <script src="./js/vendor/tailwind.js"></script>
   <script>
     tailwind.config = {
       theme: {
@@ -51,14 +49,12 @@
       },
     };
   </script>
-  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script>Babel.registerPreset('react-classic', { presets: [[Babel.availablePresets['react'], { runtime: 'classic' }]] });</script>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-  <link id="hljs-theme-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
-  <link id="hljs-theme-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" disabled />
+  <script src="./js/vendor/react.production.min.js"></script>
+  <script src="./js/vendor/react-dom.production.min.js"></script>
+  <script src="./js/vendor/marked.min.js"></script>
+  <script src="./js/vendor/highlight.min.js"></script>
+  <link id="hljs-theme-dark" rel="stylesheet" href="./js/vendor/github-dark.min.css" />
+  <link id="hljs-theme-light" rel="stylesheet" href="./js/vendor/github.min.css" disabled />
   <style>
     :root {
       color-scheme: dark;

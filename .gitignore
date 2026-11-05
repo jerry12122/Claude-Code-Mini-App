@@ -38,6 +38,8 @@ desktop.ini
 
 # Go 工具
 vendor/
+!internal/static/js/vendor/
+!internal/static/js/vendor/**
 
 # POC 探測腳本與樣本：僅供本機調查/一次性驗證，不進版控
 poc/

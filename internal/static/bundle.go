@@ -49,6 +49,18 @@ func newBundler(fsys fs.FS, production bool) *bundler {
 	return &bundler{fsys: fsys, production: production}
 }
 
+// IndexHTML 讓分享頁與主頁使用相同的 bundle，避免重新引入瀏覽器 Babel。
+func IndexHTML(fsys fs.FS) ([]byte, error) {
+	html, err := fs.ReadFile(fsys, "index.html")
+	if err != nil {
+		return nil, err
+	}
+	if len(scriptFiles(html)) > 0 {
+		html = rewriteIndex(html, Production)
+	}
+	return html, nil
+}
+
 // result 回傳目前有效的編譯結果；沒有本地腳本時 files 為空。
 func (b *bundler) result() *bundleResult {
 	b.mu.Lock()

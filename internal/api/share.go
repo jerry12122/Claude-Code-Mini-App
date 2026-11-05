@@ -16,6 +16,7 @@ import (
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/agent"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/auth"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/static"
 )
 
 const (
@@ -236,7 +237,7 @@ func (h *ShareHandler) KickAll(ids []int64) {
 // Page GET /share/:token：回傳 SPA（index.html），由前端 app.js 依路徑進入訪客模式。
 // 頁面以相對路徑載入資源，故注入 <base>，讓 /share/<token> 下仍能正確取得 js／favicon。
 func (h *ShareHandler) Page(c *fiber.Ctx) error {
-	raw, err := fs.ReadFile(h.assets, "index.html")
+	raw, err := static.IndexHTML(h.assets)
 	if err != nil {
 		return jsonErr(c, 500, "無法載入頁面")
 	}

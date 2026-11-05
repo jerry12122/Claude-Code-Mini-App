@@ -39,6 +39,27 @@ func bundleTestFS() fstest.MapFS {
 	}
 }
 
+func TestStartupAssetsAreLocal(t *testing.T) {
+	html, err := IndexHTML(os.DirFS("."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, external := range []string{`src="https://`, `href="https://`, "Babel.registerPreset"} {
+		if strings.Contains(string(html), external) {
+			t.Fatalf("startup still depends on %s", external)
+		}
+	}
+	for _, name := range []string{"react.production.min.js", "react-dom.production.min.js", "tailwind.js", "telegram-web-app.js", "marked.min.js", "highlight.min.js", "fonts.css", "github.min.css", "github-dark.min.css", "manrope-latin-wght-normal.woff2", "jetbrains-mono-latin-wght-normal.woff2"} {
+		body, err := os.ReadFile(filepath.Join("js", "vendor", name))
+		if err != nil || len(body) == 0 {
+			t.Fatalf("missing local startup asset %s: %v", name, err)
+		}
+	}
+	if contentType("js/vendor/fonts.css") != "text/css; charset=utf-8" || contentType("js/vendor/font.woff2") != "font/woff2" {
+		t.Fatal("local font/style MIME types are incorrect")
+	}
+}
+
 func TestScriptFilesOrder(t *testing.T) {
 	got := strings.Join(scriptFiles([]byte(bundleTestIndex)), ",")
 	if want := "js/a.js,js/plain.js,js/b.js"; got != want {

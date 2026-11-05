@@ -163,6 +163,10 @@ func contentType(name string) string {
 		return "text/html; charset=utf-8"
 	case ".js":
 		return "text/javascript; charset=utf-8"
+	case ".css":
+		return "text/css; charset=utf-8"
+	case ".woff2":
+		return "font/woff2"
 	case ".ico":
 		return "image/x-icon"
 	}
