@@ -1,7 +1,6 @@
 package ws
 
 import (
-	"encoding/json"
 	"sync"
 
 	fiberws "github.com/gofiber/contrib/websocket"
@@ -82,13 +81,9 @@ func BroadcastSessionMessage(sessionID, msgType, content, role, author string, m
 // NewEventsHandler：只推不收的全域事件 WS；讀迴圈僅用來偵測斷線。
 func NewEventsHandler() func(*fiberws.Conn) {
 	return func(c *fiberws.Conn) {
-		var mu sync.Mutex
-		unsub := hub.Subscribe(eventsKey, func(msg serverMsg) bool {
-			b, _ := json.Marshal(msg)
-			mu.Lock()
-			defer mu.Unlock()
-			return c.WriteMessage(1, b) == nil
-		})
+		writer := newSocketWriter(c)
+		defer writer.Close()
+		unsub := hub.Subscribe(eventsKey, writer.Send)
 		defer unsub()
 		for {
 			if _, _, err := c.ReadMessage(); err != nil {

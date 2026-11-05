@@ -163,10 +163,12 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 
 	if err := database.ResetRunningSessions(); err != nil {
-		slog.Info(fmt.Sprintf("[startup] ResetRunningSessions 失敗: %v", err))
+		database.Close()
+		return nil, fmt.Errorf("重啟任務狀態恢復失敗: %w", err)
 	}
 	if err := database.ResetPendingMessages(); err != nil {
-		slog.Info(fmt.Sprintf("[startup] ResetPendingMessages 失敗: %v", err))
+		database.Close()
+		return nil, fmt.Errorf("重啟訊息狀態恢復失敗: %w", err)
 	}
 	// 背景執行：各 CLI 抓清單各要 1 秒上下，而且失敗本來就不擋啟動。
 	go syncModelOptions(database)

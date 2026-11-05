@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -9,6 +10,67 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
 )
+
+func TestMessagesPaginationAndSnapshotBoundary(t *testing.T) {
+	database := testDB(t)
+	s, err := database.CreateSession("pages", "", "", "default", "claude", nil, "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := make([]int64, 3)
+	for i := range ids {
+		m, err := database.AddUserMessageWithAttachments(s.ID, fmt.Sprint(i), "", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids[i] = m.ID
+	}
+	app := fiber.New()
+	h := NewSessionHandler(database)
+	app.Get("/sessions/:id/messages", func(c *fiber.Ctx) error {
+		if c.Query("snapshot") == "1" {
+			c.Locals("share_snapshot_msg_id", ids[1])
+		}
+		return h.Messages(c)
+	})
+	for _, tc := range []struct {
+		query  string
+		status int
+		want   []int64
+	}{
+		{"", 200, ids},
+		{"?limit=2", 200, ids[1:]},
+		{fmt.Sprintf("?limit=2&before=%d", ids[2]), 200, ids[:2]},
+		{"?limit=2&snapshot=1", 200, ids[:2]},
+		{fmt.Sprintf("?limit=2&before=%d&snapshot=1", ids[2]+1), 200, ids[:2]},
+		{"?limit=0", 400, nil},
+		{"?limit=201", 400, nil},
+		{"?before=-1", 400, nil},
+	} {
+		res, err := app.Test(httptest.NewRequest("GET", "/sessions/"+s.ID+"/messages"+tc.query, nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.StatusCode != tc.status {
+			t.Fatalf("%s: status=%d", tc.query, res.StatusCode)
+		}
+		if tc.status == 200 {
+			var rows []db.Message
+			if err := json.NewDecoder(res.Body).Decode(&rows); err != nil {
+				t.Fatal(err)
+			}
+			if len(rows) != len(tc.want) {
+				t.Fatalf("%s: got %d messages", tc.query, len(rows))
+			}
+			for i, row := range rows {
+				if row.ID != tc.want[i] {
+					t.Fatalf("%s: unexpected id %d", tc.query, row.ID)
+				}
+			}
+		}
+		res.Body.Close()
+	}
+}
 
 func TestCreateSessionEffort(t *testing.T) {
 	for _, fail := range []bool{false, true} {

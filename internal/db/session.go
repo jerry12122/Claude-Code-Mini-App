@@ -127,6 +127,9 @@ func (db *DB) ListSessions() ([]*Session, error) {
 }
 
 func (db *DB) DeleteSession(id string) error {
+	if _, err := db.Exec(`DELETE FROM input_receipts WHERE session_id = ?`, id); err != nil {
+		return err
+	}
 	if _, err := db.Exec(`DELETE FROM messages WHERE session_id = ?`, id); err != nil {
 		return err
 	}
@@ -237,7 +240,10 @@ func (db *DB) TouchSession(id string) error {
 // its approval channel lived in memory and is gone after a restart.
 func (db *DB) ResetRunningSessions() error {
 	_, err := db.Exec(
-		`UPDATE sessions SET status = ? WHERE status IN (?, ?) OR (status = ? AND pending_denials = '')`,
+		`UPDATE sessions SET status = ?, queue_paused = 1,
+		last_error_text = CASE WHEN last_error_text = '' THEN '程式重啟，上一個任務已中斷；請確認結果後再重試' ELSE last_error_text END,
+		last_error_at = CASE WHEN last_error_text = '' THEN datetime('now') ELSE last_error_at END
+		WHERE status IN (?, ?) OR (status = ? AND pending_denials = '')`,
 		SessionStatusIdle, SessionStatusRunning, SessionStatusAwaitingInput, SessionStatusAwaitingConfirm,
 	)
 	return err

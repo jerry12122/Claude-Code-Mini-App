@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	MessageStatusPending = "pending"
-	MessageStatusDone    = "done"
+	MessageStatusPending     = "pending"
+	MessageStatusDone        = "done"
+	MessageStatusInterrupted = "interrupted"
 	// RoleShell 為直連 shell 輸出訊息（非 agent）。
 	RoleShell = "shell"
 )
@@ -158,13 +159,23 @@ func (db *DB) FillMessageContentIfEmpty(msgID int64, content string) error {
 	return err
 }
 
-// ResetPendingMessages marks all pending rows done (server startup cleanup).
+// ResetPendingMessages retains partial output and pauses the affected queues.
 func (db *DB) ResetPendingMessages() error {
-	_, err := db.Exec(
-		`UPDATE messages SET status = ? WHERE status = ?`,
-		MessageStatusDone, MessageStatusPending,
-	)
-	return err
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE sessions SET queue_paused = 1,
+		last_error_text = CASE WHEN last_error_text = '' THEN '程式重啟，上一個任務已中斷；請確認結果後再重試' ELSE last_error_text END,
+		last_error_at = CASE WHEN last_error_text = '' THEN datetime('now') ELSE last_error_at END
+		WHERE id IN (SELECT session_id FROM messages WHERE status = ?)`, MessageStatusPending); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE messages SET status = ? WHERE status = ?`, MessageStatusInterrupted, MessageStatusPending); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // FinalizePendingMessagesForSession 將該 session 所有 pending 標為 done（新回合前或中斷時）。

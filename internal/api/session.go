@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -331,9 +332,29 @@ func (h *SessionHandler) Messages(c *fiber.Ctx) error {
 	}
 
 	q := db.MessageQuery{SessionID: id, IncludeResult: true}
+	if raw := c.Query("limit"); raw != "" {
+		limit, err := strconv.Atoi(raw)
+		if err != nil || limit < 1 || limit > 200 {
+			return c.Status(400).JSON(fiber.Map{"error": "limit 必須介於 1 到 200"})
+		}
+		q.Limit = limit
+	}
 	// 快照分享的訪客（authMiddleware 寫入）只能讀到 snapshot_msg_id 為止。
 	if maxID, ok := c.Locals("share_snapshot_msg_id").(int64); ok {
 		q.MaxID = &maxID
+	}
+	if raw := c.Query("before"); raw != "" {
+		before, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || before < 1 {
+			return c.Status(400).JSON(fiber.Map{"error": "before 必須是正整數訊息 ID"})
+		}
+		maxID := before - 1
+		if q.MaxID == nil || maxID < *q.MaxID {
+			q.MaxID = &maxID
+		}
+		if q.Limit == 0 {
+			q.Limit = 100
+		}
 	}
 	msgs, err := h.db.ListMessagesQuery(q)
 	if err != nil {

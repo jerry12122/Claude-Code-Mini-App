@@ -8,6 +8,7 @@ import (
 
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -133,6 +134,8 @@ type serverMsg struct {
 	Online       []string           `json:"online,omitempty"`    // presence：目前在線名單
 	Handoff      *manualHandoffInfo `json:"handoff,omitempty"`   // type=handoff_available：自動交接未成功時的手動接手資訊
 
+	HistoryHasMore bool `json:"history_has_more,omitempty"`
+
 	// Telegram 時間線（與 HTTP 分頁同一份 DTO；其他 agent 不使用）。
 	Telegram                *db.TelegramRef `json:"telegram,omitempty"`
 	Delivery                string          `json:"delivery,omitempty"`
@@ -197,8 +200,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 		slog.Info(fmt.Sprintf("[ws] session %s connected (agent=%s agentSessionID=%q mode=%s)", sessionID, sess.AgentType, sess.AgentSessionID, sess.PermissionMode))
 		defer slog.Info(fmt.Sprintf("[ws] session %s disconnected", sessionID))
 
-		var mu sync.Mutex      // 保護 agentSessionID 等連線狀態
-		var writeMu sync.Mutex // 序列化 WebSocket 寫入（goroutine 不可並發 WriteMessage）
+		var mu sync.Mutex // 保護 agentSessionID 等連線狀態
 		agentType := sess.AgentType
 		if agentType == "" {
 			agentType = agent.TypeClaude
@@ -213,23 +215,9 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 
 		isClaude := agentType == agent.TypeClaude
 
-		// connDone：handler 返回後 fiber 會回收 conn。hub.Broadcast 先複製訂閱者清單再呼叫 send，
-		// 其他連線的廣播（例如 presence leave）可能在本連線結束後才送到，所以 send 必須在回收後變成 no-op。
-		connDone := false
-		send := func(msg serverMsg) bool {
-			b, _ := json.Marshal(msg)
-			writeMu.Lock()
-			defer writeMu.Unlock()
-			if connDone {
-				return false
-			}
-			return c.WriteMessage(1, b) == nil
-		}
-		defer func() {
-			writeMu.Lock()
-			connDone = true
-			writeMu.Unlock()
-		}()
+		writer := newSocketWriter(c)
+		defer writer.Close()
+		send := writer.Send
 
 		unsub := hub.Subscribe(sessionID, send)
 		defer unsub()
@@ -270,18 +258,24 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 			hub.Broadcast(sessionID, msg)
 		}
 
-		syncData, err := buildSyncPayload(database, sessionID)
+		historyLimit, err := strconv.Atoi(c.Query("history_limit", "0"))
+		if err != nil || historyLimit < 0 || historyLimit > 200 {
+			c.Close()
+			return
+		}
+		syncData, err := buildSyncPayload(database, sessionID, historyLimit)
 		if err != nil {
 			slog.Info(fmt.Sprintf("[ws] buildSyncPayload: %v", err))
 			syncData = SyncPayload{UIState: StateIdle, InputMode: "agent", ShellType: shellTypeString()}
 		}
 		syncMsg := serverMsg{
-			Type:         "sync",
-			Value:        syncData.UIState,
-			Messages:     syncData.Messages,
-			InputMode:    syncData.InputMode,
-			ShellType:    syncData.ShellType,
-			ShellPending: syncData.ShellPendingCmd,
+			Type:           "sync",
+			Value:          syncData.UIState,
+			Messages:       syncData.Messages,
+			HistoryHasMore: syncData.HistoryHasMore,
+			InputMode:      syncData.InputMode,
+			ShellType:      syncData.ShellType,
+			ShellPending:   syncData.ShellPendingCmd,
 		}
 		if quotaSvc != nil {
 			q := quotaSvc.Get(agentType)
@@ -1044,131 +1038,16 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 			return nil
 		}
 
-		// agentBusy：此時送 input 會打斷進行中的工作（runAgent 開頭會 taskCancel），因此改排隊。
-		// 不看 DB status：awaiting_confirm 在 set_mode 等路徑不一定會被清掉，會讓閒置 session 永遠排隊。
-		// kiroacp 等授權時任務仍在跑（taskIsActive），Claude 等授權以 pending_denials 為準。
-		agentBusy := func(s *db.Session) bool {
-			return taskIsActive(sessionID) || shellTaskActive(sessionID) ||
-				strings.TrimSpace(s.PendingDenials) != ""
+		actor := "owner"
+		if isGuest {
+			actor = fmt.Sprintf("share:%d:%s", shareID, guestNick)
 		}
-
-		// drainQueueLocked 呼叫前須持有 dispatchLock。
-		drainQueueLocked := func() {
-			if paused, err := database.QueuePaused(sessionID); err != nil || paused {
-				return
-			}
-			items, err := database.ListQueuedMessages(sessionID)
-			if err != nil {
-				slog.Info(fmt.Sprintf("[ws] ListQueuedMessages: %v", err))
-				return
-			}
-			if len(items) == 0 {
-				return
-			}
-			q := items[0]
-			// Keep the queued item when an attachment is missing or persistence fails.
-			if err := startInput(clientMsg{Data: q.Content, AttachmentIDs: q.AttachmentIDs}, &q); err != nil {
-				_ = database.SetQueuePaused(sessionID, true)
-				broadcast(serverMsg{Type: "error", Content: err.Error()})
-				broadcastQueue()
-				return
-			}
-			broadcastQueue()
+		dispatcher := &sessionDispatcher{
+			database: database, sessionID: sessionID, actor: actor, author: author,
+			start: startInput, reply: send, broadcastQueue: broadcastQueue, broadcast: broadcast,
 		}
-
-		// dispatchInput：閒置就執行；忙碌就排隊（不打斷進行中的任務）。
-		queueHasItems := func() bool {
-			q, err := database.ListQueuedMessages(sessionID)
-			return err == nil && len(q) > 0
-		}
-		dispatchInput := func(input clientMsg) {
-			reject := func(err error) {
-				if input.RequestID != "" {
-					send(serverMsg{Type: "input_rejected", RequestID: input.RequestID, Content: err.Error()})
-				} else {
-					send(serverMsg{Type: "error", Content: err.Error()})
-				}
-			}
-			if strings.TrimSpace(input.Data) == "" && len(input.AttachmentIDs) == 0 {
-				reject(fmt.Errorf("請輸入訊息或加入附件"))
-				return
-			}
-			if _, err := attachmentPrompt(database, sessionID, input.Data, input.AttachmentIDs); err != nil {
-				reject(err)
-				return
-			}
-			// 閘門要在任何 EnqueueMessage／startInput（會取出佇列）之前；維護中原樣拒絕，不排隊、不刪佇列。
-			release, err := admitWork()
-			if err != nil {
-				send(updateInProgressMsg(input.RequestID))
-				return
-			}
-			defer release()
-			dl := dispatchLock(sessionID)
-			dl.Lock()
-			defer dl.Unlock()
-			s, err := database.GetSession(sessionID)
-			if err != nil {
-				slog.Info(fmt.Sprintf("[ws] GetSession (input): %v", err))
-				reject(err)
-				return
-			}
-			if strings.TrimSpace(s.ShellPending) != "" {
-				reject(fmt.Errorf("請先處理待確認的 Shell 指令"))
-				return
-			}
-			if agentBusy(s) || queueHasItems() {
-				// 佇列還有東西（例如失敗後暫停）時也要排到尾端，否則閒置時的新 input 會插隊到舊項目前面。
-				if _, err := database.EnqueueMessage(sessionID, input.Data, author, input.AttachmentIDs...); err != nil {
-					slog.Info(fmt.Sprintf("[ws] EnqueueMessage: %v", err))
-					reject(err)
-					return
-				}
-				broadcastQueue()
-				if input.RequestID != "" {
-					send(serverMsg{Type: "input_accepted", RequestID: input.RequestID})
-				}
-				// 閒置且未暫停（例如重啟前留下的佇列）：沒有任務收尾會觸發續跑，這裡直接取出最早的一則。
-				if !agentBusy(s) {
-					drainQueueLocked()
-				}
-				return
-			}
-			if err := startInput(input, nil); err != nil {
-				reject(err)
-			}
-		}
-
-		// drainIfIdle：session 真的閒置時才取出下一則（任務成功收尾、授權解除、手動繼續共用）。
-		drainIfIdle = func() {
-			// 維護中不取出佇列：項目原樣保留（TryBegin 也要求佇列為空，這裡是第二道防線）。
-			release, err := admitWork()
-			if err != nil {
-				return
-			}
-			defer release()
-			dl := dispatchLock(sessionID)
-			dl.Lock()
-			defer dl.Unlock()
-			if s, err := database.GetSession(sessionID); err == nil && !agentBusy(s) && strings.TrimSpace(s.ShellPending) == "" {
-				drainQueueLocked()
-			}
-			broadcastQueue()
-		}
-
-		resumeQueue := func() {
-			release, err := admitWork()
-			if err != nil {
-				send(updateInProgressMsg(""))
-				return
-			}
-			defer release()
-			if err := database.SetQueuePaused(sessionID, false); err != nil {
-				slog.Info(fmt.Sprintf("[ws] SetQueuePaused: %v", err))
-				return
-			}
-			drainIfIdle()
-		}
+		drainIfIdle = dispatcher.Drain
+		resumeQueue := dispatcher.Resume
 
 		startShellGoroutine := func(line string, absDir string) {
 			release, err := admitWork()
@@ -1430,7 +1309,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 			switch msg.Type {
 			case "input":
 				slog.Info(fmt.Sprintf("[ws] input len=%d", len(msg.Data)))
-				dispatchInput(msg)
+				dispatcher.Dispatch(msg)
 
 			case "queue_remove":
 				if err := RemoveQueuedMessage(database, sessionID, msg.ID); err != nil {

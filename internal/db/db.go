@@ -86,6 +86,14 @@ func (db *DB) migrate() error {
 			created_at TEXT NOT NULL DEFAULT (datetime('now'))
 		);
 		CREATE INDEX IF NOT EXISTS idx_queued_messages_session ON queued_messages (session_id, id);
+		CREATE TABLE IF NOT EXISTS input_receipts (
+			session_id TEXT NOT NULL,
+			actor TEXT NOT NULL,
+			request_id TEXT NOT NULL,
+			digest TEXT NOT NULL,
+			PRIMARY KEY (session_id, actor, request_id)
+		);
+		CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages (session_id, id);
 		CREATE TABLE IF NOT EXISTS attachments (
 			id TEXT PRIMARY KEY,
 			session_id TEXT NOT NULL,
@@ -142,10 +150,6 @@ func (db *DB) migrate() error {
 	tryAlter(`ALTER TABLE sessions ADD COLUMN cli_extra_args TEXT NOT NULL DEFAULT '[]'`)
 	tryAlter(`ALTER TABLE sessions ADD COLUMN input_mode TEXT NOT NULL DEFAULT 'agent'`)
 	tryAlter(`ALTER TABLE messages ADD COLUMN status TEXT NOT NULL DEFAULT 'done'`)
-	// 重啟後孤兒 pending：標記為 done，保留已累積內容
-	if _, err := db.Exec(`UPDATE messages SET status = 'done' WHERE status = 'pending'`); err != nil {
-		return err
-	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_shell_wd_cmd_dir ON shell_workdir_commands (work_dir_key)`); err != nil {
 		return err
 	}
@@ -182,5 +186,5 @@ func (db *DB) migrate() error {
 		return err
 	}
 
-	return nil
+	return db.ResetPendingMessages()
 }

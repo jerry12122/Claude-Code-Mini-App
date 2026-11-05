@@ -75,11 +75,11 @@ func TestAttachmentInputQueueAndSync(t *testing.T) {
 
 	// Attachments-only messages remain empty text in history, with paths only in the runner prompt.
 	write(clientMsg{Type: "input", RequestID: "direct", AttachmentIDs: []string{"file"}})
+	waitEvent("input_accepted", "direct")
 	msg := waitEvent("user_message", "")
 	if msg.Content != "" || msg.ID == 0 || msg.CreatedAt == "" || len(msg.Attachments) != 1 || msg.Attachments[0].Name != "report.txt" {
 		t.Fatalf("message=%+v", msg)
 	}
-	waitEvent("input_accepted", "direct")
 	waitFor(t, "direct attachment run", func() bool { return !taskIsActive(s.ID) && strings.Contains(lastReply(database, s.ID), p) })
 
 	write(clientMsg{Type: "input", Data: "block-attachments"})

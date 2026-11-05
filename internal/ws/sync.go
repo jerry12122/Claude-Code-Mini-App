@@ -18,7 +18,8 @@ type SyncPayload struct {
 	ShellType       string
 	ShellPendingCmd *shellPendingInfo
 	// Telegram：sync 不帶歷史；TelegramScope 為目前已驗證的 account/peer（未驗證時為 nil）。
-	TelegramScope *tgScope
+	TelegramScope  *tgScope
+	HistoryHasMore bool
 }
 
 func computeWSState(sess *db.Session, msgs []*db.Message) string {
@@ -61,7 +62,7 @@ func computeWSState(sess *db.Session, msgs []*db.Message) string {
 	return StateIdle
 }
 
-func buildSyncPayload(database *db.DB, sessionID string) (SyncPayload, error) {
+func buildSyncPayload(database *db.DB, sessionID string, limits ...int) (SyncPayload, error) {
 	sess, err := database.GetSession(sessionID)
 	if err != nil {
 		return SyncPayload{}, err
@@ -69,6 +70,11 @@ func buildSyncPayload(database *db.DB, sessionID string) (SyncPayload, error) {
 	// Telegram：歷史由 HTTP 直通 getHistory，sync 只帶 scope；其餘 agent 維持完整列表。
 	var msgs []*db.Message
 	var scope *tgScope
+	limit := 0
+	if len(limits) > 0 {
+		limit = limits[0]
+	}
+	hasMore := false
 	if sess.AgentType == agent.TypeTelegram {
 		// 歷史改由 HTTP 直通 getHistory。sync 只帶目前 scope，不從資料庫帶訊息。
 		if telegramScopeFn != nil {
@@ -78,8 +84,16 @@ func buildSyncPayload(database *db.DB, sessionID string) (SyncPayload, error) {
 		}
 	} else {
 		var err error
-		if msgs, err = database.ListMessages(sessionID); err != nil {
+		query := db.MessageQuery{SessionID: sessionID, IncludeResult: true}
+		if limit > 0 {
+			query.Limit = limit + 1
+		}
+		if msgs, err = database.ListMessagesQuery(query); err != nil {
 			return SyncPayload{}, err
+		}
+		if limit > 0 && len(msgs) > limit {
+			hasMore = true
+			msgs = msgs[1:]
 		}
 	}
 	uiState := computeWSState(sess, msgs)
@@ -98,6 +112,7 @@ func buildSyncPayload(database *db.DB, sessionID string) (SyncPayload, error) {
 		ShellType:       shellTypeString(),
 		ShellPendingCmd: peekShellPending(sess.ID),
 		TelegramScope:   scope,
+		HistoryHasMore:  hasMore,
 	}, nil
 }
 
