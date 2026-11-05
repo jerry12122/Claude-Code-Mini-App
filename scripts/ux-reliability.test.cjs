@@ -29,6 +29,7 @@ async function main() {
     setTimeout: fn => { const id = ++next; timers.set(id, fn); return id; },
     clearTimeout: id => timers.delete(id),
     composerDrafts: drafts,
+    writeComposerFiles: async () => {},
     draftInputStorageKey: id => id,
     pendingInputStorageKey: id => id + ':pending',
     localStorage: { getItem: id => storage.get(id), setItem: (id, value) => storage.set(id, value), removeItem: id => storage.delete(id) },

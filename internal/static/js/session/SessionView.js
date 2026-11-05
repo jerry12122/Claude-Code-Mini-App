@@ -30,28 +30,51 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
     }
   };
 
+  const [listLoading, setListLoading] = useState(true);
+  const [listLoaded, setListLoaded] = useState(false);
+  const [listError, setListError] = useState('');
+  const loadControllerRef = useRef(null);
+  const loadGenerationRef = useRef(0);
+  const mountedRef = useRef(true);
+  const onLoadedRef = useRef(onSessionsLoaded);
+  onLoadedRef.current = onSessionsLoaded;
   const load = async () => {
+    if (!mountedRef.current) return;
+    const generation = ++loadGenerationRef.current;
+    loadControllerRef.current?.abort();
+    const controller = new AbortController();
+    loadControllerRef.current = controller;
+    setListLoading(true);
     try {
-      const res = await apiFetch('/sessions');
-      if (!res.ok) {
-        console.warn('[sessions] load failed', res.status);
-        return;
-      }
+      const res = await apiFetch('/sessions', { signal: controller.signal });
+      if (!res.ok) throw new Error('會話列表載入失敗');
       const data = await res.json();
-      if (Array.isArray(data)) {
-        const sorted = sortSessionsByWorkDirThenName(data).filter((s) => !pendingDelRef.current.has(s.id));
-        notifyStatusChanges(sorted);
-        setSessions(sorted);
-        onSessionsLoaded?.(sorted);
-      } else {
-        console.warn('[sessions] unexpected payload', data);
-      }
+      if (!Array.isArray(data)) throw new Error('無法讀取會話列表');
+      if (controller.signal.aborted || generation !== loadGenerationRef.current || !mountedRef.current) return;
+      const sorted = sortSessionsByWorkDirThenName(data).filter(s => !pendingDelRef.current.has(s.id));
+      notifyStatusChanges(sorted);
+      setSessions(sorted);
+      setListLoaded(true);
+      setListError('');
+      onLoadedRef.current?.(sorted);
     } catch (err) {
-      console.warn('[sessions] load error', err);
+      if (!controller.signal.aborted && generation === loadGenerationRef.current && mountedRef.current) {
+        setListError(err.message || '會話列表載入失敗');
+      }
+    } finally {
+      if (generation === loadGenerationRef.current && mountedRef.current) setListLoading(false);
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    load();
+    return () => {
+      mountedRef.current = false;
+      ++loadGenerationRef.current;
+      loadControllerRef.current?.abort();
+    };
+  }, []);
 
   // 即時更新走 /events WS；輪詢只當斷線時的保底，回到分頁時也立即補抓一次。
   useEffect(() => {
@@ -101,6 +124,8 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
       try {
         const res = await apiFetch(`/sessions/${id}`, { method: 'DELETE' });
         if (!res.ok) throw new Error('刪除失敗');
+        try { await writeComposerFiles(draftInputStorageKey(id), []); }
+        catch (_) { showToast('會話已刪除，但本機附件草稿未能清除', { error: true, duration: 5000 }); }
       } catch (_) {
         setSessions(prev => prev.some(s => s.id === id) || !target ? prev : [...prev, target]);
         showToast('無法確認刪除結果，請確認列表後再試', { error: true, duration: 5000 });
@@ -342,6 +367,16 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
     onEnter(s, targetPane);
   };
 
+  const listStatus = (
+    <div aria-live="polite" aria-busy={listLoading} className="px-2 py-2 text-xs text-ra-t4">
+      {listLoading && <div role="status">{listLoaded ? '更新中…' : '載入會話中…'}</div>}
+      {listError && <div role="alert">
+        <span>{listError}{listLoaded ? '，目前顯示上次載入的內容。' : ''}</span>
+        <button type="button" onClick={load} disabled={listLoading} className="mt-1 block rounded border border-ra-line px-2 py-1 disabled:opacity-40">重試</button>
+      </div>}
+    </div>
+  );
+
   const renderSessionRow = (s) => {
     const active = activeSessionId != null && s.id === activeSessionId;
     const extraArgN = Array.isArray(s.cli_extra_args) ? s.cli_extra_args.length : 0;
@@ -540,7 +575,8 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
 
       {/* Session 列表 */}
       <div className="flex-1 overflow-y-auto app-scroll px-3.5 pb-5">
-        {sessions.length === 0 ? (
+        {(listLoading || listError) && listStatus}
+        {!listLoaded ? null : sessions.length === 0 ? (
           <div className="text-center text-ra-t5 mt-24 text-sm px-4">尚無 Session，點 + 建立</div>
         ) : displaySessions.length === 0 ? (
           <div className="text-center text-gray-600 mt-24 text-sm px-4">沒有符合搜尋條件的 Session</div>
@@ -651,6 +687,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
           +
         </button>
         <div className="flex-1 w-full overflow-y-auto app-scroll flex flex-col items-center gap-1.5 pb-4">
+          {(listLoading || listError) && listStatus}
           {(groupedSessions || []).map(([dirKey, dirSessions]) => (
             <React.Fragment key={dirKey}>
               <span

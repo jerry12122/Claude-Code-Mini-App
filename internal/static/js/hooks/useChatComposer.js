@@ -6,6 +6,7 @@ function useChatComposer(sessionId, submitInput) {
     inputRef.current = text;
     setInputState(text);
     composerDrafts.set(sessionId, { ...composerDrafts.get(sessionId), text });
+    try { localStorage.setItem(draftInputStorageKey(sessionId), text); } catch (_) {}
   }, [sessionId]);
   const [mentionChips, setMentionChipsState] = useState([]);
   const mentionChipsRef = useRef([]);
@@ -27,6 +28,35 @@ function useChatComposer(sessionId, submitInput) {
     setAttachments(next);
     composerDrafts.set(sessionId, { ...composerDrafts.get(sessionId), attachments: next });
   }, [sessionId]);
+  const [draftRestoring, setDraftRestoring] = useState(true);
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftSaveError, setDraftSaveError] = useState('');
+  const [draftRestoreFailed, setDraftRestoreFailed] = useState(false);
+  const retryDraftFilesRef = useRef(() => {});
+  const filesReadyRef = useRef(false);
+  const filesSaveGenerationRef = useRef(0);
+  const saveFiles = async () => {
+    const target = sessionId;
+    const generation = ++filesSaveGenerationRef.current;
+    setDraftSaving(true);
+    try {
+      await writeComposerFiles(draftInputStorageKey(target), attachmentItemsRef.current);
+      if (composerSessionRef.current === target && generation === filesSaveGenerationRef.current) setDraftSaveError('');
+    } catch (_) {
+      if (composerSessionRef.current === target && generation === filesSaveGenerationRef.current) setDraftSaveError('附件草稿尚未存妥，請勿重整或關閉此頁');
+    } finally {
+      if (composerSessionRef.current === target && generation === filesSaveGenerationRef.current) setDraftSaving(false);
+    }
+  };
+  useEffect(() => {
+    if (filesReadyRef.current && !draftRestoring) saveFiles();
+  }, [attachments, draftRestoring]);
+  useEffect(() => {
+    if (!draftSaving) return undefined;
+    const warn = e => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [draftSaving]);
   const [pendingInput, setPendingInput] = useState(null);
   const [sending, setSending] = useState(false);
 
@@ -38,6 +68,39 @@ function useChatComposer(sessionId, submitInput) {
     setInput(text);
     setMentionChips(saved?.mentions || []);
     updateAttachments(() => saved?.attachments || []);
+    let cancelled = false;
+    filesReadyRef.current = false;
+    setDraftRestoring(true);
+    setDraftSaving(false);
+    setDraftRestoreFailed(false);
+    setDraftSaveError('');
+    ++filesSaveGenerationRef.current;
+    const restoreFiles = async () => {
+      if (cancelled) return;
+      setDraftRestoring(true);
+      try {
+        const stored = saved?.filesRestored ? [] : await readComposerFiles(draftInputStorageKey(sessionId));
+        if (cancelled) return;
+        const current = attachmentItemsRef.current;
+        const existing = new Set(current.map(a => a.id));
+        const pending = composerDrafts.get(sessionId)?.pending;
+        const outgoing = new Set(pending?.attachmentIds || []);
+        updateAttachments(() => [...current, ...restoreComposerFiles(stored.filter(a => !existing.has(a.id) && !outgoing.has(a.attachmentId)))]);
+        composerDrafts.get(sessionId).filesRestored = true;
+        filesReadyRef.current = true;
+        setDraftRestoreFailed(false);
+        setDraftSaveError('');
+      } catch (_) {
+        if (!cancelled) {
+          setDraftRestoreFailed(true);
+          setDraftSaveError('無法還原附件草稿，請重試；目前附件尚未備份');
+        }
+      } finally {
+        if (!cancelled) setDraftRestoring(false);
+      }
+    };
+    retryDraftFilesRef.current = restoreFiles;
+    restoreFiles();
     const syncPending = (e) => {
       if (e && e.detail?.sessionId !== sessionId) return;
       const pending = composerDrafts.get(sessionId)?.pending || null;
@@ -56,6 +119,8 @@ function useChatComposer(sessionId, submitInput) {
     window.addEventListener('miniapp:draft-restored', onRestored);
     window.addEventListener('miniapp:pending-input', syncPending);
     return () => {
+      cancelled = true;
+      filesReadyRef.current = false;
       window.removeEventListener('miniapp:draft-restored', onRestored);
       window.removeEventListener('miniapp:pending-input', syncPending);
       uploadControllersRef.current.forEach(controller => controller.abort());
@@ -86,5 +151,7 @@ function useChatComposer(sessionId, submitInput) {
     input, setInput, mentionChips, setMentionChips,
     attachments, updateAttachments, attachmentItemsRef, uploadControllersRef,
     composerSessionRef, pendingSendRef, pendingInput, sending, sendComposerInput,
+    draftRestoring, draftSaving, draftSaveError, draftRestoreFailed, saveFiles,
+    retryDraftFiles: () => retryDraftFilesRef.current(),
   };
 }

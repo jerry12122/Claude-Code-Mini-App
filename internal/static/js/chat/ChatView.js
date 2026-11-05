@@ -143,6 +143,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     input, setInput, mentionChips, setMentionChips,
     attachments, updateAttachments, attachmentItemsRef, uploadControllersRef,
     composerSessionRef, pendingSendRef, pendingInput, sending, sendComposerInput,
+    draftRestoring, draftSaving, draftSaveError, draftRestoreFailed, saveFiles, retryDraftFiles,
   } = useChatComposer(session.id, submitInput);
   const [quoteSelection, setQuoteSelection] = useState(null);
   const [lightboxSrc, setLightboxSrc] = useState(null);
@@ -443,9 +444,9 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const prevChatStateRef = useRef(null);
   // 歷史載入完成＝畫面就緒，將 focus 預設在輸入框
   useEffect(() => {
-    if (!histLoaded) return;
+    if (!histLoaded || draftRestoring) return;
     focusChatInput();
-  }, [histLoaded, session.id, focusChatInput]);
+  }, [histLoaded, session.id, focusChatInput, draftRestoring]);
 
   // 切換會話、歷史載入完成：直接跳到最底。平滑捲動在長歷史上會被後續排版（圖片、程式碼上色）撐高而停在半路，
   // 所以用瞬間跳轉，並在排版穩定後（下一幀、150ms）再補跳一次。
@@ -900,7 +901,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const taskRunning = state === 'AWAITING_INPUT' || agentRunning || lingering || state === 'SHELL_RUNNING' || state === 'SHELL_EXEC';
   // Agent 執行中／等授權時仍可送出：後端排入佇列，前一輪成功後依序執行。
   const canQueue = inputMode !== 'shell' && (agentRunning || lingering || state === 'AWAITING_CONFIRM' || state === 'AWAITING_INPUT');
-  const isDisabled = !canQueue && (state === 'THINKING' || state === 'STREAMING' || state === 'AWAITING_CONFIRM' || state === 'AWAITING_INPUT' || state === 'SHELL_RUNNING' || state === 'SHELL_AWAITING_APPROVAL' || state === 'SHELL_EXEC' || state === 'AWAITING_SHELL_CONFIRM');
+  const isDisabled = draftRestoring || (!canQueue && (state === 'THINKING' || state === 'STREAMING' || state === 'AWAITING_CONFIRM' || state === 'AWAITING_INPUT' || state === 'SHELL_RUNNING' || state === 'SHELL_AWAITING_APPROVAL' || state === 'SHELL_EXEC' || state === 'AWAITING_SHELL_CONFIRM'));
   const modeSwitchDisabled = ['THINKING', 'STREAMING', 'AWAITING_CONFIRM', 'AWAITING_INPUT', 'SHELL_RUNNING', 'SHELL_AWAITING_APPROVAL', 'SHELL_EXEC', 'AWAITING_SHELL_CONFIRM'].includes(state);
   const coarsePointer = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
   const slashMenuOpen = slashMenuItems.length > 0;
@@ -1278,6 +1279,11 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         {handoffInfo && !isGuest && (
           <div className="rounded-xl border border-rose-700/70 bg-rose-950/30 px-4 py-3 text-sm mr-8">
             <div className="text-rose-300 font-semibold mb-1">⚠️ 這個會話無法繼續，自動接手未成功</div>
+            {draftRestoring && <div role="status" className="mb-2 text-xs text-ra-t4">還原附件草稿中…</div>}
+            {draftSaving && <div role="status" className="mb-2 text-xs text-ra-t4">保存附件草稿中…</div>}
+            {draftSaveError && <div role="alert" className="mb-2 text-xs text-amber-400">
+              {draftSaveError}<button type="button" onClick={draftRestoreFailed ? retryDraftFiles : saveFiles} disabled={draftSaving || draftRestoring} className="ml-2 underline disabled:opacity-40">{draftRestoreFailed ? '重試還原' : '重試保存'}</button>
+            </div>}
             <div className="text-gray-400 text-xs mb-3">原因：{handoffInfo.reason}</div>
             <button type="button" onClick={openHandoffComposer}
               className="px-3 py-1.5 bg-rose-800 hover:bg-rose-700 text-white rounded-lg text-xs font-medium">
@@ -1421,7 +1427,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 </>
               )}
               <div className="relative flex w-full min-w-0 order-first flex-col" ref={slashInputWrapRef}>
-                {inputMode !== 'shell' && <AttachmentChips items={attachments} onRemove={removeAttachment} onRetry={retryAttachment} disabled={sending} />}
+                {inputMode !== 'shell' && <AttachmentChips items={attachments} onRemove={removeAttachment} onRetry={retryAttachment} disabled={sending || draftRestoring} />}
                 {slashMenuOpen && (
                   <SlashCommandMenu
                     items={slashMenuItems}

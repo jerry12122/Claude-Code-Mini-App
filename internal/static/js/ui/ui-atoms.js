@@ -60,7 +60,7 @@ function inputModeStorageKey(sessionId) {
 }
 
 const DRAFT_INPUT_STORAGE_PREFIX = 'cc_draft_input:';
-// ponytail: 附件 File 草稿留在本頁記憶體；需要跨重整恢復檔案時才加 IndexedDB。
+// Text uses localStorage; attachment Files are backed up in IndexedDB.
 const composerDrafts = new Map();
 
 function restoreComposerDraft(sessionId, text, attachments = [], mentions = []) {
@@ -77,6 +77,11 @@ function restoreComposerDraft(sessionId, text, attachments = [], mentions = []) 
     attachments: [...new Map([...attachments, ...(current.attachments || [])].map(a => [a.id, a])).values()],
     mentions: [...new Map([...mentions, ...(current.mentions || [])].map(s => [s.id, s])).values()],
   });
+  // Do not overwrite a backup this page has not successfully read yet.
+  if (current.filesRestored) {
+    writeComposerFiles(draftInputStorageKey(sessionId), composerDrafts.get(sessionId).attachments)
+      .catch(() => showToast('附件草稿尚未備份，請保留此頁並稍後重試', { error: true, duration: 5000 }));
+  }
   window.dispatchEvent(new CustomEvent('miniapp:draft-restored', { detail: { sessionId, composer: true, text: restored } }));
 }
 
