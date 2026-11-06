@@ -75,6 +75,13 @@ only mounted rows create message DOM. Browsers without ResizeObserver render the
 full loaded list. “顯示全部已載入訊息” also disables windowing for browser find and
 cross-message selection; it does not fetch unloaded history.
 
+Scroll correction runs for message/layout changes, not unrelated composer
+renders. Moving away from the bottom stops following immediately; deferred
+initial jumps and approval panels respect that choice. Away from the bottom,
+only an explicit local send or “latest” action requests a jump. Task completion no longer focuses the
+composer; initial focus skips selections, other controls, inactive panes and
+sessions that changed while the focus callback was pending.
+
 The session list distinguishes loading/failure from a successful empty result,
 keeps the last successful list during failures, and offers retry. Every refresh
 cancels the previous request and checks a generation before applying results;
@@ -89,3 +96,6 @@ static syntax checks were performed; no tests or application were executed.
 `scripts/remaining-ux.test.cjs` adds runnable checks for list-response races,
 virtual-window boundaries/stable keys and IndexedDB commit/abort/recovery paths.
 It has not been executed; actual scrolling, storage and latency remain unmeasured.
+It also drives the virtual-list effects to check that unrelated rerenders do
+not rewind a pending user scroll, while prepending still preserves the anchor,
+and checks small upward scrolling and automatic-focus guards.

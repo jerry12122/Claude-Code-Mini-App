@@ -123,7 +123,7 @@ async function main() {
     setInput: text => { ctx.input = text; ctx.inputRef.current = text; drafts.set('s', { ...drafts.get('s'), text }); },
     setMentionChips: mentions => { ctx.mentionChips = mentions; ctx.mentionChipsRef.current = mentions; drafts.set('s', { ...drafts.get('s'), mentions }); },
     updateAttachments: update => { ctx.attachmentItemsRef.current = update(ctx.attachmentItemsRef.current); drafts.set('s', { ...drafts.get('s'), attachments: ctx.attachmentItemsRef.current }); },
-    closeComposerMenus() {}, setSending() {}, showToast() {},
+    closeComposerMenus() {}, setSending() {}, showToast() {}, jumpToLatest() {},
     submitInput: () => new Promise(resolve => { ack = resolve; }),
     URL: { revokeObjectURL() {} },
   });

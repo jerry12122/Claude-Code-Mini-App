@@ -112,7 +112,7 @@ function VirtualMessages({ messages, scrollRef, followRef, gestureRef, showAll, 
     const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     for (const node of root.children) if (node.hasAttribute('data-virtual-key')) resize?.observe(node);
     return () => resize?.disconnect();
-  });
+  }, [layout, top, followRef, scrollRef, gestureRef]);
 
   return (
     <div ref={rootRef} role="list" aria-label="對話訊息" className="shrink-0 min-w-0" style={messages.length ? undefined : { display: 'none' }}>

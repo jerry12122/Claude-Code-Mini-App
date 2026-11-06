@@ -179,6 +179,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const lastKeyRef = useRef(null);
   const [hasNewBelow, setHasNewBelow] = useState(false);
   const chatInputRef = useRef(null);
+  const focusedPaneRef = useRef(isFocused);
+  focusedPaneRef.current = isFocused;
   const slashInputWrapRef = useRef(null);
   const composerWrapRef = useRef(null);
 
@@ -187,7 +189,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     const el = chatScrollRef.current;
     if (!el) return;
     const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
-    chatNearBottomRef.current = gap < 80;
+    chatNearBottomRef.current = gap <= 2;
     setShowJumpLatest(gap >= 200);
   }, []);
 
@@ -202,7 +204,13 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     Promise.resolve(loadOlder()).then(() => requestAnimationFrame(() => requestAnimationFrame(syncChatNearBottom)));
   }, [loadOlder, syncChatNearBottom]);
 
-  const markGesture = () => { gestureRef.current = true; };
+  const markGesture = (event) => {
+    gestureRef.current = true;
+    if (event.type !== 'wheel' || event.deltaY < 0) {
+      chatNearBottomRef.current = false;
+      sendFollowUntilRef.current = 0;
+    }
+  };
 
   const handleChatScroll = useCallback(() => {
     syncChatNearBottom();
@@ -216,15 +224,18 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     }
   }, [isTGChat, syncChatNearBottom, handleLoadOlder]);
 
-  /** 進入會話或執行結束後將游標放回輸入框（雙 rAF 以配合 React commit／行動裝置鍵盤） */
-  const focusChatInput = useCallback(() => {
+  /** 進入會話或使用者明確操作時聚焦；不改變既有游標或其他控制項的焦點。 */
+  const focusChatInput = useCallback((automatic = false) => {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const el = chatInputRef.current;
-        if (!el || el.disabled) return;
-        // 分割窗格時另一格的任務結束／歷史載入也會呼叫到這裡；使用者正在別的輸入框打字就不能搶走游標
+        if (!el || el.disabled || document.hidden || composerSessionRef.current !== session.id) return;
         const active = document.activeElement;
-        if (active && active !== el && active.closest && active.closest('input, textarea, select, [contenteditable="true"]')) return;
+        if (active === el) return;
+        if (automatic) {
+          if (!focusedPaneRef.current || !chatNearBottomRef.current || window.getSelection()?.isCollapsed === false) return;
+          if (active && active !== document.body && active !== document.documentElement) return;
+        } else if (active?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
         try {
           el.focus({ preventScroll: true });
         } catch (_) {
@@ -232,7 +243,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         }
       });
     });
-  }, []);
+  }, [session.id]);
 
   /** 將游標放回輸入框並移動至文字末尾（引言插入後專用） */
   const focusChatInputToEnd = useCallback(() => {
@@ -316,7 +327,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       if (appended && lastKeyRef.current != null && !chatNearBottomRef.current) setHasNewBelow(true);
     }
     lastKeyRef.current = lastKey;
-    if (isTGChat ? (appended && chatNearBottomRef.current) : (chatNearBottomRef.current || (appended && last?.role === 'user'))) {
+    if (chatNearBottomRef.current && (!isTGChat || appended)) {
       bottomRef.current?.scrollIntoView({ behavior: messages.length > 200 && !showAllMessages ? 'auto' : 'smooth' });
     }
     let id2;
@@ -337,11 +348,11 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       (state === 'AWAITING_CONFIRM' && permTools.length > 0) || !!question ||
       (state === 'SHELL_AWAITING_APPROVAL' && shellPendingCmd) ||
       (state === 'AWAITING_SHELL_CONFIRM' && shellRequest);
-    if (!showPermPanel) return;
+    if (!showPermPanel || !chatNearBottomRef.current) return;
     let id2;
     const id1 = requestAnimationFrame(() => {
       id2 = requestAnimationFrame(() => {
-        bottomRef.current?.scrollIntoView({ behavior: messages.length > 200 && !showAllMessages ? 'auto' : 'smooth' });
+        if (chatNearBottomRef.current) bottomRef.current?.scrollIntoView({ behavior: messages.length > 200 && !showAllMessages ? 'auto' : 'smooth' });
       });
     });
     return () => {
@@ -383,11 +394,10 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     dragDepthRef.current = 0;
   }, [session.id]);
 
-  const prevChatStateRef = useRef(null);
   // 歷史載入完成＝畫面就緒，將 focus 預設在輸入框
   useEffect(() => {
-    if (!histLoaded || draftRestoring) return;
-    focusChatInput();
+    if (!histLoaded || draftRestoring || !chatNearBottomRef.current) return;
+    focusChatInput(true);
   }, [histLoaded, session.id, focusChatInput, draftRestoring]);
 
   // 切換會話、歷史載入完成：直接跳到最底。平滑捲動在長歷史上會被後續排版（圖片、程式碼上色）撐高而停在半路，
@@ -395,6 +405,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   useEffect(() => {
     if (!histLoaded) return;
     const jump = () => {
+      if (!chatNearBottomRef.current) return;
       const el = chatScrollRef.current;
       if (el) el.scrollTop = el.scrollHeight;
       chatNearBottomRef.current = true;
@@ -425,17 +436,6 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       document.removeEventListener('ra-mermaid-zoom', handleMermaidZoom);
     };
   }, []);
-
-  // 狀態切回可輸入時（例如 THINKING／STREAMING 結束）自動 focus。
-  // 只在閒置狀態 focus：執行中輸入框也可用（排隊），若每次狀態變化都 focus，手機鍵盤會反覆彈出。
-  useEffect(() => {
-    const prev = prevChatStateRef.current;
-    prevChatStateRef.current = state;
-    if (prev === null) return;
-    if (prev === state) return;
-    if (state !== 'IDLE' && state !== 'SHELL_IDLE') return;
-    focusChatInput();
-  }, [state, focusChatInput]);
 
   // code block 複製鍵、圖片點擊放大：dangerouslySetInnerHTML 插入的 DOM 沒有 React 事件，
   // 用外層 onClick 事件委派抓 .code-copy-btn / .chat-img（冒泡到這裡才處理，不影響一般點擊/選字）。
@@ -589,6 +589,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     updateAttachments(() => []);
     setMentionChips([]);
     closeComposerMenus();
+    jumpToLatest();
     if (isTGChat) sendFollowUntilRef.current = Date.now() + 15000;
     await sendComposerInput(record);
   };
@@ -962,10 +963,10 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       <div
         ref={chatScrollRef}
         onScroll={handleChatScroll}
-        onWheel={isTGChat ? markGesture : undefined}
-        onTouchMove={isTGChat ? markGesture : undefined}
-        onPointerDown={isTGChat ? markGesture : undefined}
-        onKeyDown={isTGChat ? markGesture : undefined}
+        onWheel={markGesture}
+        onTouchMove={markGesture}
+        onPointerDown={markGesture}
+        onKeyDown={markGesture}
         style={{ overflowAnchor: 'none' }} /* Telegram：錨點由上面的 JS 負責，各瀏覽器行為一致（含無原生 scroll anchoring 的 iOS WebView） */
         className="flex-1 min-h-0 overflow-y-auto app-scroll px-4 py-[18px] sm:px-8 sm:py-7 flex flex-col gap-5"
       >

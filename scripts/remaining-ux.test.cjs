@@ -5,6 +5,66 @@ const vm = require('node:vm');
 const root = path.join(__dirname, '../internal/static/js');
 const read = name => fs.readFileSync(path.join(root, name), 'utf8').replace(/\r\n/g, '\n');
 
+function virtualPositionCheck(source) {
+  const slots = [], effects = [], listeners = new Map();
+  let cursor = 0, position = 1400, writes = 0;
+  const equal = (a, b) => a && b && a.length === b.length && a.every((value, index) => Object.is(value, b[index]));
+  const scroll = {
+    clientHeight: 800, clientWidth: 800, scrollHeight: 54040,
+    get scrollTop() { return position; }, set scrollTop(value) { writes++; position = value; },
+    getBoundingClientRect: () => ({ top: 0 }),
+    addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name),
+  };
+  const rootNode = { children: [], getBoundingClientRect: () => ({ top: 40 - position }) };
+  const context = vm.createContext({
+    useRef(initial) { return slots[cursor++] ||= { current: initial }; },
+    useState(initial) {
+      const slot = slots[cursor++] ||= { value: initial };
+      return [slot.value, update => { slot.value = typeof update === 'function' ? update(slot.value) : update; }];
+    },
+    useMemo(fn, deps) {
+      const index = cursor++, slot = slots[index];
+      if (!slot || !equal(slot.deps, deps)) slots[index] = { value: fn(), deps };
+      return slots[index].value;
+    },
+    useLayoutEffect(fn, deps) {
+      const index = cursor++, previous = slots[index];
+      if (!previous || !equal(previous.deps, deps)) effects.push(() => {
+        previous?.cleanup?.();
+        slots[index] = { deps, cleanup: fn() };
+      });
+    },
+    requestAnimationFrame: () => 1, cancelAnimationFrame() {},
+    ResizeObserver: class { observe() {} disconnect() {} },
+  });
+  // Drive the actual hooks/scroll effects without JSX, a DOM or an application.
+  const component = source.slice(0, source.indexOf('\n  return (\n    <div ref={rootRef}')) + '\n  return rootRef;\n}\n';
+  vm.runInContext(component, context);
+  const props = {
+    messages: Array.from({ length: 300 }, (_, id) => ({ id })),
+    scrollRef: { current: scroll }, followRef: { current: false }, gestureRef: { current: true }, showAll: false,
+  };
+  const render = () => {
+    cursor = 0;
+    context.VirtualMessages(props).current = rootNode;
+    for (const effect of effects.splice(0)) effect();
+  };
+  render();
+  position = 1400;
+  listeners.get('scroll')();
+  render();
+  position = 1370; // input/render arrives before the browser delivers scroll
+  writes = 0;
+  render();
+  assert.equal(writes, 0, '打字等無關重繪不能把捲動位置拉回舊錨點');
+  assert.equal(position, 1370);
+  listeners.get('scroll')();
+  render();
+  props.messages = [{ id: 'older' }, ...props.messages];
+  render();
+  assert.equal(position, 1550, '補一列歷史仍保留正在閱讀的訊息位置');
+}
+
 async function main() {
   const requests = [];
   let rows = [], error = '', loading = false, loaded = false, callbacks = 0;
@@ -60,6 +120,43 @@ async function main() {
   assert.equal(math.virtualMessageWindow(offsets, -80, 800, true).start, 0);
   const pending = { role: 'claude', createdAt: '2026-11-05T00:00:00Z' };
   assert.equal(math.virtualMessageKey(pending, 3), math.virtualMessageKey(pending, 103), '補頁不改變 pending key');
+  virtualPositionCheck(virtual);
+
+  const chat = read('chat/ChatView.js');
+  const body = {}, inputElement = { disabled: false, focus() { focusCount++; } };
+  let focusCount = 0, selected = false;
+  const controls = vm.createContext({
+    useCallback: fn => fn, requestAnimationFrame: fn => fn(),
+    chatScrollRef: { current: { scrollHeight: 1000, scrollTop: 170, clientHeight: 800 } },
+    chatNearBottomRef: { current: true }, setQuoteSelection() {}, setShowJumpLatest() {},
+    chatInputRef: { current: inputElement }, focusedPaneRef: { current: true },
+    composerSessionRef: { current: 's' }, session: { id: 's' },
+    document: { body, documentElement: {}, activeElement: body, hidden: false },
+    window: { getSelection: () => ({ isCollapsed: !selected }) },
+  });
+  const syncStart = chat.indexOf('  const syncChatNearBottom =');
+  vm.runInContext(chat.slice(syncStart, chat.indexOf('  const jumpToLatest =', syncStart)) + '\nglobalThis.sync = syncChatNearBottom;', controls);
+  controls.sync();
+  assert.equal(controls.chatNearBottomRef.current, false, '小幅往上捲 30px 必須停止跟隨');
+  const focusStart = chat.indexOf('  const focusChatInput =');
+  vm.runInContext(chat.slice(focusStart, chat.indexOf('  /** 將游標放回輸入框', focusStart)) + '\nglobalThis.focusInput = focusChatInput;', controls);
+  controls.focusInput(true);
+  assert.equal(focusCount, 0, '閱讀歷史時不得自動搶焦點');
+  controls.chatNearBottomRef.current = true;
+  selected = true;
+  controls.focusInput(true);
+  assert.equal(focusCount, 0, '選取訊息時不得自動搶焦點');
+  selected = false;
+  controls.focusedPaneRef.current = false;
+  controls.focusInput(true);
+  assert.equal(focusCount, 0, '背景窗格不得搶焦點');
+  controls.focusedPaneRef.current = true;
+  controls.document.activeElement = inputElement;
+  controls.focusInput(true);
+  assert.equal(focusCount, 0, '輸入框已有游標時不重設焦點');
+  controls.document.activeElement = { closest: () => null }; // clicked suggestion button
+  controls.focusInput();
+  assert.equal(focusCount, 1, '使用者明確操作仍可聚焦輸入');
 
   // Minimal IndexedDB event model: writes become visible at transaction commit,
   // with a separate abort path. The application checks never call a real API.
