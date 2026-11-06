@@ -190,10 +190,13 @@ function findAction(view, id) {
   }
 }
 
-// 13. 更新說明：只取「## 更新內容」之後的 changelog（Release 內文開頭是下載表與首次設定，不是更新內容）。
+// 13. 更新說明：相容更新內容在前與舊版下載在前的格式，只顯示 changelog。
 {
   const body = '## 下載\n\n| 平台 | 檔案 |\n|---|---|\n| Windows | a.zip |\n\n---\n\n## 更新內容\n\n### 新增\n- 功能 A\n';
   assert.strictEqual(desktopUpdateNotesBody(body), '### 新增\n- 功能 A');
+  const changesFirst = '## 更新內容\n\n### 新增\n- 功能 A\n\n## 下載\n\n下載表\n\n## 桌面版應用程式內更新（Windows）\n更新教學\n';
+  assert.strictEqual(desktopUpdateNotesBody(changesFirst), '### 新增\n- 功能 A');
+  assert.strictEqual(desktopUpdateNotesBody(changesFirst.replace(/\n/g, '\r\n')), '### 新增\n- 功能 A');
   assert.strictEqual(desktopUpdateNotesBody('### 變更\n- 只有 changelog'), '### 變更\n- 只有 changelog', '沒有標記就用整段');
   assert.strictEqual(desktopUpdateNotesBody(''), '');
   assert.strictEqual(desktopUpdateNotesBody(null), '');

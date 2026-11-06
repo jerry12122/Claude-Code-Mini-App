@@ -45,7 +45,8 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
   // 有值＝使用者剛按了刷新、正在等 quota_update；背景自動推送的 quota_update 不跳 toast。
   const quotaTimerRef = useRef(null);
   const [sessionModel, setSessionModel] = useState(null);
-  const [activityHint, setActivityHint] = useState('');
+  const [liveActivity, setLiveActivity] = useState(null);
+  const [runStartedAt, setRunStartedAt] = useState(null);
   /** 執行中先送出、等待前一輪完成的訊息（後端持久化，sync / queue_update 同步） */
   const [queue, setQueue] = useState([]);
   const [queuePaused, setQueuePaused] = useState(false);
@@ -59,7 +60,6 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
   const wsRef = useRef(null);
   const inputRequestsRef = useRef(new Map());
   const streamBuf = useRef('');
-  const thinkingMode = useRef(false);
   const connGenRef = useRef(0);
   const activeSessionRef = useRef(session.id);
   const reconnectTimerRef = useRef(null);
@@ -73,7 +73,8 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
   useEffect(() => {
     activeSessionRef.current = session.id;
     streamBuf.current = '';
-    thinkingMode.current = false;
+    setLiveActivity(null);
+    setRunStartedAt(null);
     shellBuf.current = [];
     shellRenderPending.current = false;
     setMessages([]);
@@ -144,7 +145,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
       const content = streamBuf.current;
       const html = parseMarkdown(content, { streaming: true });
       setMessages(prev => prev.map((m, i) => i === prev.length - 1 && m.role === 'claude'
-        ? { ...m, content, html, thinking: false, streaming: true, status: 'pending' } : m));
+        ? { ...m, content, html, streaming: true, status: 'pending' } : m));
     };
     const init = async () => {
       if (!isTG && !guestSnapshot) { connectWS(); return; }
@@ -256,6 +257,12 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
         if (!isCurrent() || wsRef.current !== ws) return;
         const msg = JSON.parse(evt.data);
         if (msg.type !== 'delta' && deltaTimer !== null) flushDelta();
+        if (msg.type === 'sync' || msg.type === 'status') {
+          // 用伺服器快照的已耗時換算本機起點，避免兩台裝置時鐘不同。
+          const validTiming = Number.isFinite(msg.run_started_at) && msg.run_started_at > 0 &&
+            Number.isFinite(msg.server_time) && msg.server_time >= msg.run_started_at;
+          setRunStartedAt(validTiming ? Date.now() - (msg.server_time - msg.run_started_at) : null);
+        }
 
         if (msg.type === 'presence') {
           setOnline(Array.isArray(msg.online) ? msg.online : []);
@@ -299,6 +306,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
           if (msg.value !== 'AWAITING_INPUT') setQuestion(null);
           setQuestionError('');
           setState(msg.value);
+          setLiveActivity(null);
           if (msg.input_mode) {
             setInputMode(msg.input_mode);
             serverInputAppliedRef.current = msg.input_mode;
@@ -375,13 +383,12 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
 
         if (msg.type === 'status') {
           setState(msg.value);
+          if (msg.value !== 'STREAMING') setLiveActivity(null);
           if (msg.value !== 'AWAITING_SHELL_CONFIRM') {
             setShellRequest(null);
           }
           if (msg.value === 'THINKING') {
             streamBuf.current = '';
-            thinkingMode.current = false;
-            setActivityHint('');
             onHandoffChangeRef.current?.(session.id, null);
             if (agentType !== 'telegram') {
               setMessages((prev) => {
@@ -435,6 +442,8 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
 
         if (msg.type === 'reset') {
           tgAbortRequest();
+          setLiveActivity(null);
+          setRunStartedAt(null);
           setMessages([]);
           setHistoryPaging({ nextCursor: null, hasMore: false, loading: false });
           streamBuf.current = '';
@@ -462,23 +471,17 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
         }
 
         if (msg.type === 'activity') {
-          if (msg.content) setActivityHint(msg.content);
+          if (msg.content) setLiveActivity({ kind: 'tool', content: msg.content });
           return;
         }
 
         if (msg.type === 'thinking') {
-          thinkingMode.current = true;
-          const text = msg.content || '';
-          setMessages((prev) => prev.map((m, i) =>
-            i === prev.length - 1 ? { ...m, content: text, html: null, thinking: true, streaming: true, status: 'pending' } : m
-          ));
+          setLiveActivity({ kind: 'thinking', content: msg.content || '' });
+          return;
         }
 
         if (msg.type === 'delta') {
-          if (thinkingMode.current) {
-            thinkingMode.current = false;
-            streamBuf.current = '';
-          }
+          setLiveActivity(null);
           streamBuf.current += msg.content;
           if (deltaTimer === null) deltaTimer = setTimeout(flushDelta, 50);
         }
@@ -523,7 +526,6 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
               ...(prevContent ? {} : {
                 content: rt,
                 html: rt ? parseMarkdown(rt) : null,
-                thinking: false,
                 streaming: false,
               }),
             };
@@ -855,7 +857,8 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
     shellRequest,
     quota, quotaRefreshing,
     sessionModel,
-    activityHint,
+    liveActivity,
+    runStartedAt,
     queue, queuePaused, lingering,
     send,
     submitInput,

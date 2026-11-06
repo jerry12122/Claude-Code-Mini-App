@@ -2,7 +2,23 @@
 
 格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版本號遵循 [SemVer](https://semver.org/lang/zh-TW/)。
 
-發版流程：更新 `VERSION`、`internal/version/version.go`、README 版本徽章與本檔 → commit → 打 `vX.Y.Z` tag 並 push，GitHub Actions 會自動建置並發佈 Release（說明文字取自本檔對應段落）。
+發版流程：更新 `VERSION`、`internal/version/version.go`、README 版本徽章與本檔 → commit → 打 `vX.Y.Z` tag 並 push，GitHub Actions 會自動建置並發佈 Release（說明文字取自本檔對應段落）。Release 說明依序為：更新內容 → 下載 → 桌面版更新方法 → 首次設定。
+
+## [0.18.0] - 2026-11-06
+
+### 新增
+- 輸入框上方顯示目前思考、工具與指令執行活動，可展開詳情；活動持續更新，不堆疊進聊天紀錄。支援 Claude、Codex、Cursor、Antigravity 與 Kiro ACP
+- 執行時間從後端任務開始計算，重新整理、重連或換裝置仍可恢復實際耗時，並校正裝置與伺服器的時鐘差
+- 訊息、會話與分頁支援右鍵選單、觸控長按及鍵盤操作，可依位置複製、引用、轉發、重新命名、釘選或移至另一窗格
+- 會話可釘選到側欄頂端；點選側欄會話時，自動定位並聚焦對應窗格的分頁，短暫亮框提示位置
+- 分享管理支援逐筆或批次清除已撤銷、已到期的分享連結與訪客資料，保留會話與有效分享
+
+### 修正
+- 停止任務改為按一次即終止子進程並暫停佇列，避免第一次停止訊號被忽略
+- 即時思考與工具事件不再覆寫回覆內容，並隱藏尚無內容的待回覆訊息
+
+### 變更
+- Release 說明優先顯示更新內容，下載、更新方法與首次設定移至下方；程式內更新說明相容新舊排列
 
 ## [0.17.4] - 2026-11-06
 

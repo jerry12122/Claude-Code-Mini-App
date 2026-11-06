@@ -3,15 +3,15 @@ package ws
 import (
 	"context"
 	"sync"
-
-	"github.com/jerry12122/Claude-Code-Mini-App/internal/proc"
+	"time"
 )
 
 type taskEntry struct {
-	cancel   context.CancelFunc
-	msgID    int64
-	pid      int  // 子進程 PID，Run() 啟動後由 taskSetPid 補上
-	softSent bool // 是否已送過優雅停止信號（第一次按停止）
+	cancel    context.CancelFunc
+	msgID     int64
+	startedAt int64 // Unix 毫秒；記錄任務啟動，與瀏覽器連線無關。
+	pid       int   // 子進程 PID，Run() 啟動後由 taskSetPid 補上
+	softSent  bool  // 是否已送過優雅停止信號（第一次按停止）
 }
 
 var taskManager struct {
@@ -93,8 +93,21 @@ func taskStart(sessionID string, cancel context.CancelFunc, msgID int64) {
 	if old, ok := taskManager.tasks[sessionID]; ok && old.cancel != nil {
 		old.cancel()
 	}
-	taskManager.tasks[sessionID] = &taskEntry{cancel: cancel, msgID: msgID}
+	taskManager.tasks[sessionID] = &taskEntry{cancel: cancel, msgID: msgID, startedAt: time.Now().UnixMilli()}
 	taskManager.mu.Unlock()
+}
+
+func (msg serverMsg) withTaskTiming(sessionID string) serverMsg {
+	switch msg.Value {
+	case StateThinking, StateStreaming, StateAwaitingConfirm, StateAwaitingInput:
+		taskManager.mu.Lock()
+		if task := taskManager.tasks[sessionID]; task != nil {
+			msg.RunStartedAt = task.startedAt
+			msg.ServerTime = time.Now().UnixMilli()
+		}
+		taskManager.mu.Unlock()
+	}
+	return msg
 }
 
 // taskSetPid 記錄任務對應子進程的 PID，供 taskInterrupt 第一階段送優雅停止信號用。
@@ -140,27 +153,15 @@ func taskCancel(sessionID string) {
 	}
 }
 
-// taskInterrupt 實作兩段式「停止」：
-//   - 任務仍在跑、且尚未送過優雅信號、且 PID 已知 → 只送 SendInterrupt（可能被子進程忽略），
-//     不 cancel context、不動 DB／狀態，任務繼續跑，等使用者自己判斷要不要再按一次。
-//   - 已經按過一次（softSent）、或 PID 還沒拿到 → 直接 taskCancel 強制終止（既有的乾淨收尾路徑）。
+// taskInterrupt 按一次「停止」就強制終止（taskCancel → KillTree）。
+// 曾改成兩段式（先送 SendInterrupt 優雅信號、第二次按才強制），但優雅信號實務上常被子進程忽略，
+// 使用者得連按兩次且第一下無回饋，故退回單段；SendInterrupt／pid／softSent 保留未用，日後要恢復優雅停止可直接接回。
 //
 // 回傳 true 表示有動作被執行（任務仍在跑），false 表示目前沒有任務可停。
 func taskInterrupt(sessionID string) bool {
-	taskManager.mu.Lock()
-	e, ok := taskManager.tasks[sessionID]
-	if !ok {
-		taskManager.mu.Unlock()
+	if !taskIsActive(sessionID) {
 		return false
 	}
-	if !e.softSent && e.pid != 0 {
-		e.softSent = true
-		pid := e.pid
-		taskManager.mu.Unlock()
-		_ = proc.SendInterrupt(pid)
-		return true
-	}
-	taskManager.mu.Unlock()
 	taskCancel(sessionID)
 	return true
 }

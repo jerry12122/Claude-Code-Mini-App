@@ -226,11 +226,15 @@ func (r *Runner) dispatch(e *StreamEvent, cb agent.EventCallback, st *dispatchSt
 
 	case "tool_call":
 		slog.Info(fmt.Sprintf("[cursor] tool_call subtype=%s call_id=%s", e.Subtype, e.CallID))
-		// 工具開始時送出活動提示（transient，前端覆寫顯示）。completed 不重送，避免噪音。
+		label := e.ToolLabel()
+		if label == "" {
+			label = "工具"
+		}
+		if e.Subtype == "completed" {
+			label = "工具已結束：" + label
+		}
+		cb(agent.Event{Type: agent.EventActivity, Text: label})
 		if e.Subtype != "completed" {
-			if label := e.ToolLabel(); label != "" {
-				cb(agent.Event{Type: agent.EventActivity, Text: label})
-			}
 			return
 		}
 		// tool_call 完成時若帶圖片（如 MCP 截圖工具），落地存檔後以 markdown image 語法併入

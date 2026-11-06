@@ -228,6 +228,9 @@
       }
       /* 按住一小段時間後給回饋，讓人知道長按有被偵測到 */
       .msg-lp.msg-pressing { transform: scale(0.985); opacity: 0.8; }
+      .msg-lp :is(pre, code, a, input, textarea) {
+        -webkit-touch-callout: default; -webkit-user-select: text; user-select: text;
+      }
     }
     @keyframes msg-pop-in { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
     .msg-pop { animation: msg-pop-in 0.14s ease-out; }
@@ -425,6 +428,7 @@
 <script type="text/babel" data-presets="react-classic" src="./js/core/core.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/hooks/composerFiles.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/ui/ui-atoms.js"></script>
+<script type="text/babel" data-presets="react-classic" src="./js/ui/ContextMenu.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/ui/SplitLayout.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/ui/SessionTabs.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/ui/LogsSection.js"></script>

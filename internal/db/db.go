@@ -177,6 +177,8 @@ func (db *DB) migrate() error {
 	tryAlter(`ALTER TABLE sessions ADD COLUMN last_error_at TEXT NOT NULL DEFAULT ''`)
 	// disguise_agent：Telegram 秘密會話的偽裝 agent（例如 claude、cursor、antigravity；空字串＝無偽裝）。
 	tryAlter(`ALTER TABLE sessions ADD COLUMN disguise_agent TEXT NOT NULL DEFAULT ''`)
+	// pinned：側欄釘選（1＝釘選，置頂顯示）。
+	tryAlter(`ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`)
 	// author：訊息說話者。空字串＝擁有者（含舊資料），訪客為其暱稱。
 	tryAlter(`ALTER TABLE messages ADD COLUMN author TEXT NOT NULL DEFAULT ''`)
 	tryAlter(`ALTER TABLE queued_messages ADD COLUMN author TEXT NOT NULL DEFAULT ''`)

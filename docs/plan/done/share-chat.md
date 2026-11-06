@@ -55,6 +55,8 @@ POST   /sessions/:id/shares          建立分享（擁有者驗證）body {ttl,
                                      role=editor 且 mode=snapshot → 400
 DELETE /shares/:id                   結束分享（擁有者驗證）→ 踢出所有訪客
 DELETE /shares                       結束全部有效分享（擁有者驗證）
+DELETE /shares/ended                 清除全部已撤銷／到期的分享紀錄 → {cleared: 數量}
+DELETE /shares/ended/:id             清除單筆已撤銷／到期的分享紀錄 → {cleared: 0 或 1}
 GET    /shares                       全部分享（含 session 名稱、url、pin、在線訪客；擁有者，供設定頁列表）
 GET    /sessions/:id/shares          該聊天室的分享與在線名單（擁有者）
 GET    /share/:token                靜態頁（PIN + 暱稱表單）
@@ -62,6 +64,7 @@ POST   /share/:token/join           {pin, nickname} → {guest_token, session_id
 ```
 
 - PIN 連續錯誤 5 次即鎖定該分享（`failed_attempts`）。
+- 清除只供擁有者使用；有效分享（包含 PIN 鎖定者）回 409，不允許清除。無效或非正整數 id 回 400；重複清除回 `{cleared:0}`。以交易刪除分享與其訪客紀錄，保留聊天室及訊息，舊連結與訪客 token 持續失效。
 - 暱稱在同一分享內重複時自動加數字後綴。
 - `authMiddleware`：在 TG 驗證之後、內網 IP 檢查之前，加入 guest token 分支（`X-Share-Token` 或 `?share=`）。通過後寫入 `share_session_id`，並限制只能存取：
   - `/sessions/:id/ws`

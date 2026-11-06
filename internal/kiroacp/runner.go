@@ -186,6 +186,7 @@ func (r *Runner) runOnce(ctx context.Context, opts agent.RunOptions, cb agent.Ev
 	// 造成複誦且隨回合雪球變大。load 期間關閉轉發；prompt 階段再開。
 	var acceptUpdates atomic.Bool
 	acceptUpdates.Store(true)
+	var activity sessionActivity
 
 	cl.onUpdate = func(body sessionUpdateBody) {
 		act.touch() // 任何 session/update（含思考、工具進度）都算有動靜，包含 load 回放
@@ -196,6 +197,9 @@ func (r *Runner) runOnce(ctx context.Context, opts agent.RunOptions, cb agent.Ev
 		if body.SessionUpdate == "tool_call" || body.SessionUpdate == "tool_call_update" {
 			act.tool(body.ToolCallID, body.Status)
 		}
+		if event := activity.update(body); event.Type != "" {
+			cb(event)
+		}
 		switch body.SessionUpdate {
 		case "agent_message_chunk":
 			text := extractAgentText(body)
@@ -205,17 +209,6 @@ func (r *Runner) runOnce(ctx context.Context, opts agent.RunOptions, cb agent.Ev
 			emitStreamStart()
 			cb(agent.Event{Type: agent.EventDelta, Text: text})
 		case "tool_call", "tool_call_update":
-			label := strings.TrimSpace(body.Title)
-			if label == "" {
-				label = body.Kind
-			}
-			if body.Status != "" {
-				label = label + " (" + body.Status + ")"
-			}
-			if label == "" {
-				label = body.SessionUpdate
-			}
-			cb(agent.Event{Type: agent.EventActivity, Text: label})
 			// 僅在 completed 時落地圖片，避免 started/in_progress 的空 rawOutput 或半成品重覆寫入。
 			if body.SessionUpdate != "tool_call_update" || !strings.EqualFold(body.Status, "completed") {
 				break

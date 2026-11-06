@@ -65,6 +65,23 @@ write deadline. A full queue or failed write closes that connection; the browser
 reconnects and synchronizes persisted state. This isolates slow consumers without
 silently dropping individual stream events.
 
+## Live execution timing
+
+Agent `status` and `sync` events include `run_started_at` and `server_time`
+(Unix milliseconds) while a registered task is thinking, streaming, or awaiting
+permission/input. The start is recorded when the backend starts the task, after
+queue dispatch; waiting for permission/input remains part of the elapsed time.
+Reconnects preserve the same task start. A new task receives a new start.
+Idle/ended tasks omit timing. Times are held with the running task in memory;
+restarting the server ends those tasks rather than resuming their clocks.
+
+The browser anchors elapsed time at `server_time - run_started_at` on receipt,
+then advances locally, including during disconnection. This avoids assuming its
+wall clock matches the server. Refreshing or opening another device restores the
+elapsed time from `sync`. Missing or invalid timing hides the counter instead of
+starting a counter from the connection time. Existing clients may ignore both
+optional fields.
+
 ## Long conversations and session list
 
 Above 200 loaded messages, only rows near the viewport (with 800 pixels of

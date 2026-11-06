@@ -197,3 +197,35 @@ func TestDispatchWorkflow(t *testing.T) {
 		t.Errorf("expected EventDone, got %+v", events[3])
 	}
 }
+
+func TestDispatchToolActivityLifecycle(t *testing.T) {
+	var activities []string
+	var tools []agent.EventType
+	var deltas []string
+	var st dispatchState
+	for _, line := range []string{
+		`{"event":"step_update","step_update":{"step_index":2,"step_type":"tool","state":"ACTIVE","tool_name":"run_command","tool_info":{"parameters":{"CommandLine":"go test ./..."}}}}`,
+		`{"event":"step_update","step_update":{"step_index":2,"step_type":"tool","state":"DONE","tool_name":"run_command"}}`,
+		`{"event":"step_update","step_update":{"step_index":3,"step_type":"tool","state":"ERROR","tool_info":{"name":"view_file","error":{"message":"not found"}}}}`,
+	} {
+		e, err := ParseEvent([]byte(line))
+		if err != nil {
+			t.Fatal(err)
+		}
+		(&Runner{}).dispatch(e, func(e agent.Event) {
+			if e.Type == agent.EventActivity {
+				activities = append(activities, e.Text)
+			}
+			if e.Type == agent.EventToolStarted || e.Type == agent.EventToolCompleted {
+				tools = append(tools, e.Type)
+			}
+			if e.Type == agent.EventDelta {
+				deltas = append(deltas, e.Text)
+			}
+		}, &st)
+	}
+	want := "執行工具：run_command：go test ./...|工具已完成：run_command|工具失敗：view_file：not found"
+	if strings.Join(activities, "|") != want || len(tools) != 3 || len(deltas) != 0 {
+		t.Fatalf("activities=%v tools=%v deltas=%v", activities, tools, deltas)
+	}
+}

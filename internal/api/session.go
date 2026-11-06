@@ -250,12 +250,13 @@ func (h *SessionHandler) Patch(c *fiber.Ctx) error {
 		Name         *string   `json:"name"`
 		CliExtraArgs *[]string `json:"cli_extra_args"`
 		MarkRead     *bool     `json:"mark_read"`
+		Pinned       *bool     `json:"pinned"`
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
-	if body.Name == nil && body.CliExtraArgs == nil && body.MarkRead == nil {
-		return c.Status(400).JSON(fiber.Map{"error": "name、cli_extra_args 或 mark_read 至少指定一項"})
+	if body.Name == nil && body.CliExtraArgs == nil && body.MarkRead == nil && body.Pinned == nil {
+		return c.Status(400).JSON(fiber.Map{"error": "name、cli_extra_args、mark_read 或 pinned 至少指定一項"})
 	}
 	if body.Name != nil {
 		trimmed := strings.TrimSpace(*body.Name)
@@ -278,6 +279,14 @@ func (h *SessionHandler) Patch(c *fiber.Ctx) error {
 	if body.MarkRead != nil && *body.MarkRead {
 		if err := h.db.MarkSessionRead(id); err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		}
+	}
+	if body.Pinned != nil {
+		if err := h.db.SetSessionPinned(id, *body.Pinned); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		}
+		if h.db.OnSessionChange != nil {
+			h.db.OnSessionChange() // 通知其他裝置／側欄
 		}
 	}
 	s, err := h.db.GetSession(id)

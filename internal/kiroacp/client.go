@@ -92,12 +92,23 @@ type sessionUpdateBody struct {
 	Content       json.RawMessage `json:"content,omitempty"`
 	ToolCallID    string          `json:"toolCallId,omitempty"`
 	Title         string          `json:"title,omitempty"`
+	Name          string          `json:"name,omitempty"`
 	Kind          string          `json:"kind,omitempty"`
 	Status        string          `json:"status,omitempty"`
 	Text          string          `json:"text,omitempty"`
+	RawInput      json.RawMessage `json:"rawInput,omitempty"`
+	Locations     []toolLocation  `json:"locations,omitempty"`
+	Entries       []struct {
+		Content string `json:"content"`
+		Status  string `json:"status"`
+	} `json:"entries,omitempty"`
 	// RawOutput 是 tool_call/tool_call_update 帶回的 MCP 工具原始輸出（如截圖工具），
 	// 結構為 rawOutput.items[].Json.content[]，每項是標準 MCP content block（text/image/...）。
 	RawOutput json.RawMessage `json:"rawOutput,omitempty"`
+}
+
+type toolLocation struct {
+	Path string `json:"path"`
 }
 
 type textContent struct {
@@ -440,7 +451,7 @@ func parseSessionResult(raw json.RawMessage) (sessionNewResult, error) {
 }
 
 func extractAgentText(body sessionUpdateBody) string {
-	if body.SessionUpdate != "agent_message_chunk" {
+	if body.SessionUpdate != "agent_message_chunk" && body.SessionUpdate != "agent_thought_chunk" {
 		return ""
 	}
 	if body.Text != "" {

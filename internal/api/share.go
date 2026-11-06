@@ -221,6 +221,30 @@ func (h *ShareHandler) RevokeAll(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"revoked": len(ids)})
 }
 
+// ClearEnded DELETE /shares/ended[/:id]：僅清除已結束的紀錄，既有 DELETE /shares 仍只做撤銷。
+func (h *ShareHandler) ClearEnded(c *fiber.Ctx) error {
+	var id int64
+	if raw := c.Params("id"); raw != "" {
+		var err error
+		id, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil || id <= 0 {
+			return jsonErr(c, 400, "無效的分享 id")
+		}
+		share, err := h.db.GetShare(id)
+		if err != nil && !errors.Is(err, db.ErrShareNotFound) {
+			return jsonErr(c, 500, err.Error())
+		}
+		if share != nil && share.Active(time.Now()) {
+			return jsonErr(c, 409, "只能清除已結束或已到期的分享")
+		}
+	}
+	n, err := h.db.ClearEndedShares(id)
+	if err != nil {
+		return jsonErr(c, 500, err.Error())
+	}
+	return c.JSON(fiber.Map{"cleared": n})
+}
+
 func (h *ShareHandler) kick(id int64) {
 	if h.hooks.Kick != nil {
 		h.hooks.Kick(id)

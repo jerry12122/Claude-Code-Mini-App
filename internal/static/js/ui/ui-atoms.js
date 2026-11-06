@@ -1,17 +1,5 @@
-/** 狀態標籤的活動提示（如執行中的指令）上限字數，超過以 `...` 截斷，避免擠到右側圖示 */
-const CHIP_ACTIVITY_HINT_MAX_CHARS = 16;
-
-function trimChipActivityHint(text) {
-  const chars = [...String(text || '')];
-  return chars.length > CHIP_ACTIVITY_HINT_MAX_CHARS
-    ? chars.slice(0, CHIP_ACTIVITY_HINT_MAX_CHARS).join('') + '...'
-    : chars.join('');
-}
-
-function SessionStateChip({ state, activityHint, compact, className = '' }) {
-  const label = compact
-    ? (state === 'THINKING' && activityHint ? '思考' : (SESSION_STATE_LABEL[state] || state))
-    : (state === 'THINKING' && activityHint ? trimChipActivityHint(activityHint) : (SESSION_STATE_LABEL[state] || state));
+function SessionStateChip({ state, className = '' }) {
+  const label = SESSION_STATE_LABEL[state] || state;
   const dot =
     state === 'IDLE' || state === 'SHELL_IDLE' ? 'bg-[oklch(0.7_0.15_155)]' :
     state === 'THINKING' || state === 'STREAMING' || state === 'SHELL_EXEC' || state === 'SHELL_RUNNING' ? 'bg-[oklch(0.75_0.15_70)]' :

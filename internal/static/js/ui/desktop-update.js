@@ -126,11 +126,11 @@ function desktopUpdateView(status, laterVersion) {
 // （白名單：h3 h4 h5 p ul ol li strong em code pre blockquote hr，屬性只有我們自己的 class），
 // 連結與圖片只留文字（桌面視窗點連結會直接導覽離開首頁）。測試：scripts/desktop-update.test.cjs。
 
-/** Release 內文開頭是下載表與首次設定；只取第一個「## 更新內容」之後的 changelog，沒有標記就用整段。 */
+/** 取第一個「## 更新內容」後、下載章節前的 changelog，相容舊版下載在前的格式；沒有標記就用整段。 */
 function desktopUpdateNotesBody(raw) {
   const text = typeof raw === 'string' ? raw.replace(/\r\n?/g, '\n') : '';
   const m = /^## 更新內容[ \t]*$/m.exec(text);
-  const body = m ? text.slice(m.index + m[0].length) : text;
+  const body = m ? text.slice(m.index + m[0].length).split(/^## 下載[ \t]*$/m)[0] : text;
   return body.trim();
 }
 

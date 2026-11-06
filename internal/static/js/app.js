@@ -199,6 +199,22 @@ function App() {
     }
   }, [isSplit, isWideScreen, tabGroups]);
 
+  const canOpenOtherPane = s => tabGroups.groups.length > 1 || tabGroups.groups[0].tabs.length > 1 ||
+    (tabGroups.groups[0].tabs.length > 0 && !tabGroups.groups[0].tabs.includes(s.id));
+  const openInOtherPane = (s, sourceGroup = tabGroups.focused) => {
+    if (!s?.id || !canOpenOtherPane(s)) return;
+    setKnownSessionsMap(previous => ({ ...previous, [s.id]: { ...previous[s.id], ...s } }));
+    if (tabGroups.groups.length === 1) {
+      dispatchTabGroups({ type: 'splitDrop', sessionId: s.id, edge: 'right' });
+      return;
+    }
+    const target = sourceGroup === 0 ? 1 : 0;
+    const origin = tabGroups.groups.findIndex(group => group.tabs.includes(s.id));
+    dispatchTabGroups(origin >= 0 && origin !== target
+      ? { type: 'move', sessionId: s.id, toGroup: target }
+      : { type: 'open', sessionId: s.id, groupIndex: target });
+  };
+
   const toggleSplit = useCallback(() => {
     if (tabGroups.groups.length > 1) {
       dispatchTabGroups({ type: 'toggleSplit' });
@@ -539,6 +555,8 @@ function App() {
           isSplit={isSplit}
           onToggleSplit={toggleSplit}
           isWideScreen={false}
+          onOpenOtherPane={openInOtherPane}
+          canOpenOtherPane={canOpenOtherPane}
         />
       );
     }
@@ -558,6 +576,8 @@ function App() {
             onOpenSettings={() => setSettingsOpen(true)}
             onToggleSidebar={toggleSidebarCollapsed}
             collapsed={sidebarCollapsed}
+            onOpenOtherPane={openInOtherPane}
+            canOpenOtherPane={canOpenOtherPane}
             isSplit={isSplit}
             onToggleSplit={toggleSplit}
             isWideScreen={isWideScreen}
@@ -608,6 +628,7 @@ function App() {
                   isWideScreen={isWideScreen}
                   onSelectTab={(tabId) => dispatchTabGroups({ type: 'open', sessionId: tabId, groupIndex: 0 })}
                   onCloseTab={(tabId) => dispatchTabGroups({ type: 'close', sessionId: tabId, groupIndex: 0 })}
+                  onMoveTab={tabId => openInOtherPane({ id: tabId }, 0)}
                   onFocusGroup={() => setActivePane('primary')}
                   onDropOnTabBar={(sessionId, fromGroup, insertIndex) =>
                     handleDropOnTabBar(sessionId, fromGroup, 0, insertIndex)
@@ -646,6 +667,7 @@ function App() {
                   isWideScreen={isWideScreen}
                   onSelectTab={(tabId) => dispatchTabGroups({ type: 'open', sessionId: tabId, groupIndex: 1 })}
                   onCloseTab={(tabId) => dispatchTabGroups({ type: 'close', sessionId: tabId, groupIndex: 1 })}
+                  onMoveTab={tabId => openInOtherPane({ id: tabId }, 1)}
                   onFocusGroup={() => setActivePane('secondary')}
                   onDropOnTabBar={(sessionId, fromGroup, insertIndex) =>
                     handleDropOnTabBar(sessionId, fromGroup, 1, insertIndex)

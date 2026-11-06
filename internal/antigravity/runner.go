@@ -234,12 +234,10 @@ func (r *Runner) dispatch(e *StreamTopEvent, cb agent.EventCallback, st *dispatc
 				if su.ToolInfo != nil {
 					params = su.ToolInfo.Parameters
 				}
-				if toolName != "" {
-					cb(agent.Event{
-						Type: agent.EventActivity,
-						Text: fmt.Sprintf("執行工具：%s", toolName),
-					})
-				}
+				cb(agent.Event{
+					Type: agent.EventActivity,
+					Text: "執行工具：" + agent.ToolActivity(toolName, params),
+				})
 				cb(agent.Event{
 					Type: agent.EventToolStarted,
 					Tool: &agent.ToolCall{
@@ -257,6 +255,14 @@ func (r *Runner) dispatch(e *StreamTopEvent, cb agent.EventCallback, st *dispatc
 						errMsg = su.ToolInfo.Error.Message
 					}
 				}
+				label := "工具已完成：" + agent.ToolActivity(toolName, nil)
+				if su.State == "ERROR" {
+					label = "工具失敗：" + agent.ToolActivity(toolName, nil)
+					if errMsg != "" {
+						label += "：" + errMsg
+					}
+				}
+				cb(agent.Event{Type: agent.EventActivity, Text: label})
 				cb(agent.Event{
 					Type: agent.EventToolCompleted,
 					Tool: &agent.ToolCall{

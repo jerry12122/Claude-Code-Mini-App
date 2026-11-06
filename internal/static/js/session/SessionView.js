@@ -1,5 +1,9 @@
 // ── Session 列表畫面 ──────────────────────────────────────────────────────────
-function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, activeSessionId = null, onCreateNew, onOpenSettings, onToggleSidebar, collapsed = false, isSplit = false, onToggleSplit = null, isWideScreen = true }) {
+function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, activeSessionId = null, onCreateNew, onOpenSettings, onToggleSidebar, collapsed = false, isSplit = false, onToggleSplit = null, isWideScreen = true, onOpenOtherPane, canOpenOtherPane }) {
+  const [sessionMenu, setSessionMenu] = useState(null);
+  const bindSessionMenu = useLongPress(setSessionMenu);
+  const closeSessionMenu = useCallback(() => setSessionMenu(null), []);
+  useEffect(() => setSessionMenu(null), [activeSessionId, collapsed]);
   const [sessions, setSessions]   = useState([]);
   const [sessionSearch, setSessionSearch] = useState('');
   const [sessionSort, setSessionSort]     = useState('last_active_desc');
@@ -116,7 +120,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
   }, [renamingId]);
 
   const del = (id, e) => {
-    e.stopPropagation();
+    e?.stopPropagation();
     const target = sessions.find((x) => x.id === id);
     pendingDelRef.current.add(id);
     setSessions((prev) => prev.filter((x) => x.id !== id));
@@ -144,7 +148,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
   };
 
   const startRename = (s, e) => {
-    e.stopPropagation();
+    e?.stopPropagation();
     setRenamingId(s.id);
     setRenameVal(s.name || '');
   };
@@ -172,6 +176,27 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
       renameInputRef.current?.focus();
     } finally {
       renameSavingRef.current = false;
+    }
+  };
+
+  // Optimistic：先改畫面，失敗再還原並提示。
+  const togglePin = async (s, e) => {
+    e?.stopPropagation();
+    const next = !s.pinned;
+    setSessions((prev) => prev.map((row) => (row.id === s.id ? { ...row, pinned: next } : row)));
+    try {
+      const res = await apiFetch(`/sessions/${s.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned: next }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || (next ? '釘選失敗' : '取消釘選失敗'));
+      }
+    } catch (err) {
+      setSessions((prev) => prev.map((row) => (row.id === s.id ? { ...row, pinned: !next } : row)));
+      showToast(err.message || '操作失敗，請稍後再試', { error: true, duration: 5000 });
     }
   };
 
@@ -279,6 +304,9 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
 
   useEffect(() => { onSortedSessionsChange?.(sortedSessionsForForward); }, [sortedSessionsForForward]);
 
+  // 釘選的 session 抽出成虛擬群組，固定排最上面
+  const PIN_GROUP = '釘選';
+
   const groupedSessions = useMemo(() => {
     if (!groupByDir) return null;
     const map = new Map();
@@ -289,6 +317,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
       if (s.agent_type === 'telegram' && !s.disguise_agent) {
         key = 'Telegram 聊天室';
       }
+      if (s.pinned) key = PIN_GROUP;
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(s);
     }
@@ -296,6 +325,8 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
       const ka = String(a[0]);
       const kb = String(b[0]);
       const tgGroup = 'Telegram 聊天室';
+      if (ka === PIN_GROUP && kb !== PIN_GROUP) return -1;
+      if (ka !== PIN_GROUP && kb === PIN_GROUP) return 1;
       if (ka === tgGroup && kb !== tgGroup) return -1;
       if (ka !== tgGroup && kb === tgGroup) return 1;
       if (ka === unset && kb !== unset) return 1;
@@ -365,6 +396,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
       setSessions((prev) => prev.map((row) => (row.id === s.id ? { ...row, last_read_at: nowStr, unread_count: 0 } : row)));
     }
     onEnter(s, targetPane);
+    if (isWideScreen) revealSessionTab(s.id);
   };
 
   const listStatus = (
@@ -378,6 +410,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
   );
 
   const renderSessionRow = (s) => {
+    const menuBindings = bindSessionMenu({ sessionId: s.id });
     const active = activeSessionId != null && s.id === activeSessionId;
     const extraArgN = Array.isArray(s.cli_extra_args) ? s.cli_extra_args.length : 0;
     const displayAgent = sessionDisplayAgent(s);
@@ -392,6 +425,15 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
     return (
       <div
         key={s.id}
+        {...menuBindings}
+        tabIndex={renamingId === s.id ? -1 : 0}
+        aria-label={s.name || '未命名會話'}
+        onKeyDown={event => {
+          menuBindings.onKeyDown(event);
+          if (!event.defaultPrevented && event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+            event.preventDefault(); handleEnter(s);
+          }
+        }}
         draggable={isWideScreen && renamingId !== s.id ? true : undefined}
         onDragStart={(e) => {
           if (!isWideScreen) {
@@ -436,35 +478,10 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
               >
                 {s.name || '未命名'}
               </span>
-              <div className="flex items-center gap-0.5 shrink-0 sm:opacity-0 sm:group-hover/card:opacity-100 transition-opacity">
-                <button
-                  type="button"
-                  onClick={(e) => startRename(s, e)}
-                  aria-label="重新命名"
-                  title="重新命名"
-                  className="text-ra-t5 hover:text-violet-400 p-1 rounded transition-colors"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5" aria-hidden="true">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => del(s.id, e)}
-                  aria-label="刪除"
-                  title="刪除"
-                  className="text-ra-t5 hover:text-red-400 p-1 rounded transition-colors inline-flex items-center justify-center"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5" aria-hidden="true">
-                    <path d="M3 6h18" />
-                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                    <path d="M10 11v6" />
-                    <path d="M14 11v6" />
-                  </svg>
-                </button>
-              </div>
+              {s.pinned && <span className="shrink-0 text-[10px] text-violet-400" title="已釘選">釘選</span>}
+              <button type="button" aria-label={`更多操作：${s.name || '未命名'}`} aria-haspopup="menu"
+                className="shrink-0 min-w-[32px] min-h-[32px] rounded-lg text-ra-t4 hover:bg-ra-raised hover:text-ra-t1 focus-visible:ring-2 focus-visible:ring-violet-400"
+                onClick={event => { event.stopPropagation(); setSessionMenu(openContextPayload(event, { sessionId: s.id }, !isWideScreen)); }}>⋯</button>
               {statusClass ? (
                 <span
                   className={statusClass + ' sm:group-hover/card:opacity-0 transition-opacity'}
@@ -487,8 +504,28 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
     );
   };
 
+  const menuSession = sessions.find(s => s.id === sessionMenu?.sessionId);
+  const menuBusy = menuSession && (['running', 'awaiting_confirm', 'awaiting_input'].includes(menuSession.status) || menuSession.lingering);
+  const menuItems = menuSession ? [
+    { label: '開啟會話', onSelect: () => handleEnter(menuSession) },
+    ...(isWideScreen && onOpenOtherPane ? [{ label: '在另一個窗格開啟', disabled: !canOpenOtherPane?.(menuSession),
+      reason: '需要另一個已開啟的會話才能分割', onSelect: () => onOpenOtherPane(menuSession) }] : []),
+    { separator: true },
+    { label: menuSession.pinned ? '取消釘選' : '釘選', onSelect: () => togglePin(menuSession) },
+    { label: '重新命名…', onSelect: () => { if (collapsed) onToggleSidebar?.(); startRename(menuSession); } },
+    ...(menuSession.work_dir ? [{ label: '複製工作目錄', onSelect: async () => {
+      if (await copyText(menuSession.work_dir)) showToast('已複製工作目錄');
+      else showToast('複製失敗', { error: true });
+    } }] : []),
+    { separator: true },
+    { label: '刪除會話…', danger: true, disabled: !!menuBusy, reason: '請先停止任務，再刪除會話',
+      onSelect: () => del(menuSession.id) },
+  ] : [];
+  const menuElement = <ContextMenu menu={menuSession ? sessionMenu : null} items={menuItems} onClose={closeSessionMenu} label="會話操作" />;
+
   const renderFullPanel = () => (
     <div className="flex flex-col h-app min-w-0 overflow-hidden">
+      {menuElement}
       {/* Header — 設計 1a / 2a */}
       <div className="flex items-center justify-between px-5 pt-[18px] pb-3 shrink-0"
            style={{ paddingTop: 'calc(18px + env(safe-area-inset-top) + var(--tg-content-safe-top))' }}>
@@ -588,7 +625,8 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
             const expanded = sessionSearchActive || !collapsedDirs.has(dirKey);
             const shortLabel = workDirGroupShortLabel(dirKey);
             // 同一 work_dir 即同一 git working tree，分支必然相同，取第一筆即可
-            const dirBranch = (dirSessions.find((s) => s.git_branch) || {}).git_branch;
+            const isPinGroup = dirKey === PIN_GROUP; // 虛擬群組：混合多個目錄，無單一分支、不能在此建立 session
+            const dirBranch = isPinGroup ? '' : (dirSessions.find((s) => s.git_branch) || {}).git_branch;
             return (
               <div key={dirKey} className="space-y-0">
                 <div className="group/dir flex w-full min-w-0 items-center gap-1 px-2 py-1.5 mt-2 transition-colors hover:bg-violet-500/[0.06]">
@@ -600,7 +638,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
                     <span className="shrink-0 text-ra-t5 w-3 text-center text-[10px]" aria-hidden>
                       {expanded ? '▾' : '▸'}
                     </span>
-                    <span className="shrink-0 text-[13px] leading-none" aria-hidden>📁</span>
+                    <span className="shrink-0 text-[13px] leading-none" aria-hidden>{isPinGroup ? '📌' : '📁'}</span>
                     <span
                       className="min-w-0 flex-1 truncate text-[12.5px] text-ra-t3 font-bold"
                       title={dirKey + (expanded ? '' : `（${dirSessions.length}）`)}
@@ -616,15 +654,17 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
                       {dirBranch}
                     </span>
                   ) : null}
-                  <button
-                    type="button"
-                    onClick={() => openNewSessionForDir(dirKey)}
-                    aria-label="在此目錄建立新 Session"
-                    title="在此目錄建立新 Session"
-                    className="shrink-0 rounded-md px-1.5 py-1 text-[13px] leading-none font-semibold text-violet-400 hover:bg-violet-500/10 hover:text-violet-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 sm:opacity-0 sm:group-hover/dir:opacity-100 transition-opacity"
-                  >
-                    ＋
-                  </button>
+                  {!isPinGroup && (
+                    <button
+                      type="button"
+                      onClick={() => openNewSessionForDir(dirKey)}
+                      aria-label="在此目錄建立新 Session"
+                      title="在此目錄建立新 Session"
+                      className="shrink-0 rounded-md px-1.5 py-1 text-[13px] leading-none font-semibold text-violet-400 hover:bg-violet-500/10 hover:text-violet-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 sm:opacity-0 sm:group-hover/dir:opacity-100 transition-opacity"
+                    >
+                      ＋
+                    </button>
+                  )}
                 </div>
                 {expanded && (
                   <div className="ml-[18px] border-l border-ra-line-soft pl-2.5">
@@ -661,6 +701,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
   if (collapsed) {
     return (
       <div className="flex flex-col h-app min-w-0 overflow-hidden items-center">
+        {menuElement}
         <div
           className="pt-[18px] pb-2.5 shrink-0 flex flex-col items-center gap-2"
           style={{ paddingTop: 'calc(18px + env(safe-area-inset-top) + var(--tg-content-safe-top))' }}
@@ -699,7 +740,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
                 title={workDirGroupShortLabel(dirKey) + '（' + dirKey + '）'}
                 aria-hidden
               >
-                📁
+                {dirKey === PIN_GROUP ? '📌' : '📁'}
               </span>
               {dirSessions.map((s) => {
                 const active = activeSessionId != null && s.id === activeSessionId;
@@ -711,6 +752,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
                 return (
                   <button
                     key={s.id}
+                    {...bindSessionMenu({ sessionId: s.id })}
                     type="button"
                     draggable={isWideScreen ? true : undefined}
                     onDragStart={(e) => {

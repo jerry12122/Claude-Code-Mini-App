@@ -133,7 +133,6 @@ function ChatSessionHeader({
   onBack,
   agentType,
   state,
-  activityHint,
   sessionModel,
   quota,
   quotaRefreshing,
@@ -179,7 +178,7 @@ function ChatSessionHeader({
             </button>
           )}
           <SessionIdentity name={session.name} workDir={!isGuest ? session.work_dir : ''} className="flex-1 font-bold text-base text-ra-t1" />
-          <SessionStateChip state={state} activityHint={activityHint} className="shrink-0" />
+          <SessionStateChip state={state} className="shrink-0" />
           <GitBranchBadge branch={session.git_branch} compact />
           {isGuest && <GuestRoleChip guest={guest} />}
           {!isGuest && onShare && <ShareButton onClick={onShare} />}
@@ -198,7 +197,7 @@ function ChatSessionHeader({
         <div className="flex items-center justify-between gap-x-4 gap-y-2 flex-wrap">
           <div className="flex items-center gap-2 min-w-0">
             <SessionIdentity name={session.name} workDir={!isGuest ? session.work_dir : ''} className="text-base font-bold text-ra-t1" />
-            <SessionStateChip state={state} activityHint={activityHint} className="shrink-0" />
+            <SessionStateChip state={state} className="shrink-0" />
             <GitBranchBadge branch={session.git_branch} compact />
             {isGuest && <GuestRoleChip guest={guest} />}
           </div>

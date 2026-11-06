@@ -70,7 +70,7 @@ const shareBtnCls = 'px-2 py-1 rounded-md text-xs bg-ra-raised hover:bg-ra-raise
  * 單一分享的資訊卡：連結／PIN（可複製）、剩餘時間、線上名單、結束分享。
  * showSession：列出所屬聊天室名稱（設定頁用）；onJump：點名稱跳到該聊天室。
  */
-function ShareRow({ share, onRevoke, showSession = false, onJump = null, pinRevealed = true }) {
+function ShareRow({ share, onRevoke, onClear = null, clearing = false, showSession = false, onJump = null, pinRevealed = true }) {
   const now = useNowTick(1000);
   const [showPin, setShowPin] = useState(pinRevealed);
   const info = shareStatusInfo(share);
@@ -131,6 +131,12 @@ function ShareRow({ share, onRevoke, showSession = false, onJump = null, pinReve
           {ended ? '' : online.length > 0 ? `線上：${online.join('、')}` : '目前沒有訪客在線'}
           {share.locked && info.key !== 'ended' ? ' · PIN 錯誤次數過多，已鎖定' : ''}
         </span>
+        {info.key === 'ended' && onClear && (
+          <button type="button" onClick={() => onClear(share)} disabled={clearing}
+            className={`${shareBtnCls} ml-auto shrink-0`} title="清除這筆分享紀錄，保留聊天室內容">
+            清除紀錄
+          </button>
+        )}
         {!ended || info.key === 'locked' ? (
           <button type="button" onClick={() => onRevoke(share)}
             className="ml-auto shrink-0 px-2 py-1 rounded-md text-xs bg-red-900/60 hover:bg-red-800 text-red-200">

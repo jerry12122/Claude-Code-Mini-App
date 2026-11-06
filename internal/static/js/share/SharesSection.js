@@ -10,28 +10,33 @@ function SharesSection({ onJumpToSession = null }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('active');
+  const [clearing, setClearing] = useState(false);
+  const loadGeneration = useRef(0);
 
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current;
     try {
       const res = await apiFetch('/shares');
+      if (generation !== loadGeneration.current) return;
       if (!res.ok) {
         setError(await readApiError(res, '載入分享清單失敗'));
         return;
       }
       const data = await res.json();
+      if (generation !== loadGeneration.current) return;
       setShares(Array.isArray(data) ? data : []);
       setError('');
     } catch (_) {
-      setError('載入分享清單失敗');
+      if (generation === loadGeneration.current) setError('載入分享清單失敗');
     } finally {
-      setLoaded(true);
+      if (generation === loadGeneration.current) setLoaded(true);
     }
   }, []);
 
   useEffect(() => {
     load();
     const t = setInterval(load, 5000);
-    return () => clearInterval(t);
+    return () => { clearInterval(t); ++loadGeneration.current; };
   }, [load]);
 
   const revoke = async (s) => {
@@ -65,8 +70,31 @@ function SharesSection({ onJumpToSession = null }) {
     }
   };
 
+  const clearEnded = async (share = null) => {
+    if (clearing) return;
+    if (!share && !window.confirm('清除全部已結束或已到期的分享紀錄？聊天室內容會保留。')) return;
+    setClearing(true);
+    try {
+      const res = await apiFetch(share ? `/shares/ended/${share.id}` : '/shares/ended', { method: 'DELETE' });
+      if (!res.ok) {
+        showToast(await readApiError(res, '清除分享紀錄失敗'), { error: true });
+        return;
+      }
+      const result = await res.json();
+      ++loadGeneration.current;
+      setShares(previous => previous.filter(s => share ? s.id !== share.id : s.status !== 'revoked' && s.status !== 'expired'));
+      showToast(`已清除 ${result.cleared} 筆分享紀錄`);
+      await load();
+    } catch (_) {
+      showToast('清除分享紀錄失敗', { error: true });
+    } finally {
+      setClearing(false);
+    }
+  };
+
   const isActive = (s) => s.status === 'active';
   const activeCount = shares.filter(isActive).length;
+  const endedCount = shares.filter(s => s.status === 'revoked' || s.status === 'expired').length;
   const visible = shares.filter((s) => filter === 'all' || (filter === 'active' ? isActive(s) : !isActive(s)));
 
   return (
@@ -85,6 +113,10 @@ function SharesSection({ onJumpToSession = null }) {
           className="ml-auto px-2.5 py-1 rounded-md text-xs bg-red-900/60 hover:bg-red-800 text-red-200 disabled:opacity-30">
           結束全部（{activeCount}）
         </button>
+        <button type="button" onClick={() => clearEnded()} disabled={!endedCount || clearing}
+          className={`${shareBtnCls} disabled:cursor-default`}>
+          {clearing ? '清除中…' : `清除已結束（${endedCount}）`}
+        </button>
       </div>
 
       {error && <div className="text-xs text-red-400">{error}</div>}
@@ -97,7 +129,7 @@ function SharesSection({ onJumpToSession = null }) {
       ) : (
         <div className="space-y-2.5">
           {visible.map((s) => (
-            <ShareRow key={s.id} share={s} onRevoke={revoke} showSession onJump={onJumpToSession} pinRevealed={false} />
+            <ShareRow key={s.id} share={s} onRevoke={revoke} onClear={clearEnded} clearing={clearing} showSession onJump={onJumpToSession} pinRevealed={false} />
           ))}
         </div>
       )}

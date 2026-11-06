@@ -40,7 +40,3 @@
 > - 桌面版需要 WebView2 Runtime：Windows 11 內建，Windows 10 請先[安裝](https://developer.microsoft.com/microsoft-edge/webview2/)。
 > - 桌面版關閉視窗只會縮到系統匣，要結束請在匣圖示按右鍵 →「結束」（或 Ctrl+Q）。
 > - 驗證檔案完整性：`checksums.txt` 內有 SHA256。
-
----
-
-## 更新內容

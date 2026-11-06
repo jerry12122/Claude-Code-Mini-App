@@ -380,6 +380,8 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 	app.Post("/sessions/:id/shares", authMiddleware, shareH.Create)
 	app.Get("/sessions/:id/shares", authMiddleware, shareH.ListBySession)
 	app.Get("/shares", authMiddleware, shareH.ListAll)
+	app.Delete("/shares/ended", authMiddleware, shareH.ClearEnded)
+	app.Delete("/shares/ended/:id", authMiddleware, shareH.ClearEnded)
 	app.Delete("/shares/:id", authMiddleware, shareH.Revoke)
 	app.Delete("/shares", authMiddleware, shareH.RevokeAll)
 	app.Get("/guest/me", authMiddleware, shareH.Me)

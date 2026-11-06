@@ -209,6 +209,7 @@ type streamState struct {
 	emittedAnyText bool
 	// thinkingBuf 累積 thinking_delta，每次送出 EventThinking 時語意為「當前完整思考快照」（與 Gemini runner 一致）
 	thinkingBuf strings.Builder
+	toolNames   map[string]string
 	// blockedByRule 記錄被 permissions.deny 規則擋下的 tool_use_id（來自 user 事件的 tool_result_meta），result 時對應回 denial。
 	blockedByRule map[string]bool
 }
@@ -242,6 +243,19 @@ func (r *Runner) dispatch(e *StreamEvent, cb agent.EventCallback, st *streamStat
 	case "user":
 		// tool_result 等以 user 事件回來；下一則 assistant 是新一輪，不可沿用上一輪的 gotStreamTextDelta。
 		st.gotStreamTextDelta = false
+		if e.Message != nil {
+			for _, block := range e.Message.Content {
+				if block.Type != "tool_result" {
+					continue
+				}
+				label := "工具已結束："
+				if block.IsError {
+					label = "工具失敗："
+				}
+				cb(agent.Event{Type: agent.EventActivity, Text: label + agent.ToolActivity(st.toolNames[block.ToolUseID], nil)})
+				delete(st.toolNames, block.ToolUseID)
+			}
+		}
 		for _, m := range e.ToolResultMeta {
 			if m.NonExecutionKind == NonExecPermissionRule && m.ID != "" {
 				if st.blockedByRule == nil {
@@ -272,6 +286,7 @@ func (r *Runner) dispatch(e *StreamEvent, cb agent.EventCallback, st *streamStat
 				case "thinking":
 					// 每個 thinking block 開始時重置，避免連續兩輪 thinking 跨塊累積。
 					st.thinkingBuf.Reset()
+					cb(agent.Event{Type: agent.EventThinking, Text: "思考中…"})
 				case "text":
 					st.thinkingBuf.Reset()
 					if !st.streamStartSent {
@@ -282,6 +297,7 @@ func (r *Runner) dispatch(e *StreamEvent, cb agent.EventCallback, st *streamStat
 					// 從逐行 stream-json 萃取語意事件：現在在呼叫哪個工具。
 					// Info 級、預設就看得到，不用開 Debug 也能確認「還在跑、跑到哪」。
 					slog.Info(fmt.Sprintf("[claude] 呼叫工具: %s", e.Event.ContentBlock.Name))
+					cb(agent.Event{Type: agent.EventActivity, Text: "準備工具：" + agent.ToolActivity(e.Event.ContentBlock.Name, nil)})
 				}
 			}
 		case "content_block_delta":
@@ -308,12 +324,22 @@ func (r *Runner) dispatch(e *StreamEvent, cb agent.EventCallback, st *streamStat
 		}
 
 	case "assistant":
-		// 已透過 content_block_delta 累積內容時，勿再送完整 assistant（與 delta 全文重複，中間易夾大量換行）。
-		// 僅有 content_block_start、尚無任何 text_delta 時仍須採用 assistant 全文。
-		if st.gotStreamTextDelta {
-			break
+		// 文字先送、工具活動後送；避免同一訊息的文字把目前工具提示清掉。
+		if !st.gotStreamTextDelta {
+			st.emitDelta(cb, e.TextContent())
 		}
-		st.emitDelta(cb, e.TextContent())
+		if e.Message != nil {
+			for _, block := range e.Message.Content {
+				if block.Type != "tool_use" {
+					continue
+				}
+				if st.toolNames == nil {
+					st.toolNames = make(map[string]string)
+				}
+				st.toolNames[block.ID] = block.Name
+				cb(agent.Event{Type: agent.EventActivity, Text: "執行工具：" + agent.ToolActivity(block.Name, block.Input)})
+			}
+		}
 
 	case "result":
 		if len(e.PermissionDenials) > 0 {

@@ -3,6 +3,8 @@ package cursor
 import (
 	"encoding/json"
 	"strings"
+
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/agent"
 )
 
 // 參考 docs/cursor-agent-cli.md 與官方 output-format 文件。
@@ -89,7 +91,7 @@ type mcpContentBlock struct {
 //
 // 與標準 MCP 的 {"type":"image","data":"...","mimeType":"..."} 不同。
 type cursorMcpContentBlock struct {
-	Text  *struct {
+	Text *struct {
 		Text string `json:"text"`
 	} `json:"text,omitempty"`
 	Image *struct {
@@ -179,21 +181,26 @@ func (e *StreamEvent) ToolLabel() string {
 	}
 	if raw, ok := m["function"]; ok {
 		var fn struct {
-			Name string `json:"name"`
+			Name      string          `json:"name"`
+			Arguments json.RawMessage `json:"arguments"`
 		}
 		if json.Unmarshal(raw, &fn) == nil && strings.TrimSpace(fn.Name) != "" {
-			return "呼叫工具 " + fn.Name + "…"
+			return agent.ToolActivity(fn.Name, fn.Arguments)
 		}
 	}
-	for k := range m {
+	for k, raw := range m {
+		var call struct {
+			Args json.RawMessage `json:"args"`
+		}
+		_ = json.Unmarshal(raw, &call)
 		switch k {
 		case "readToolCall":
-			return "讀取檔案中…"
+			return agent.ToolActivity("讀取檔案", call.Args)
 		case "writeToolCall":
-			return "修改檔案中…"
+			return agent.ToolActivity("修改檔案", call.Args)
 		default:
 			if name := strings.TrimSuffix(k, "ToolCall"); name != k && name != "" {
-				return "使用工具 " + name + "…"
+				return agent.ToolActivity(name, call.Args)
 			}
 		}
 	}

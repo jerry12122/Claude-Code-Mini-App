@@ -7,9 +7,9 @@ import (
 
 // 頂層事件（每行一個 JSON）
 type StreamEvent struct {
-	Type    string           `json:"type"`
-	Subtype string           `json:"subtype,omitempty"`
-	Event   *APIEvent        `json:"event,omitempty"`   // type=stream_event
+	Type    string            `json:"type"`
+	Subtype string            `json:"subtype,omitempty"`
+	Event   *APIEvent         `json:"event,omitempty"`   // type=stream_event
 	Message *AssistantMessage `json:"message,omitempty"` // type=assistant
 	// type=result
 	IsError           bool               `json:"is_error,omitempty"`
@@ -37,8 +37,13 @@ type AssistantMessage struct {
 }
 
 type MessageContent struct {
-	Type string `json:"type"` // "text" | "tool_use" | "tool_result" | "image" | ...
-	Text string `json:"text,omitempty"`
+	Type      string          `json:"type"` // "text" | "tool_use" | "tool_result" | "image" | ...
+	Text      string          `json:"text,omitempty"`
+	ID        string          `json:"id,omitempty"`
+	Name      string          `json:"name,omitempty"`
+	Input     json.RawMessage `json:"input,omitempty"`
+	ToolUseID string          `json:"tool_use_id,omitempty"`
+	IsError   bool            `json:"is_error,omitempty"`
 	// Content 是 tool_result block 的巢狀內容（type=="tool_result" 時），
 	// MCP 工具若回傳圖片（如截圖）會以 type=="image" 出現在這裡。
 	Content NestedContent `json:"content,omitempty"`
@@ -116,7 +121,7 @@ type ContentBlock struct {
 }
 
 type Delta struct {
-	Type        string `json:"type"`              // "text_delta" | "input_json_delta" | "thinking_delta"
+	Type        string `json:"type"` // "text_delta" | "input_json_delta" | "thinking_delta"
 	Text        string `json:"text,omitempty"`
 	PartialJSON string `json:"partial_json,omitempty"`
 	StopReason  string `json:"stop_reason,omitempty"`

@@ -738,3 +738,82 @@ test('串流合併更新，結束事件先排出尚未繪製的最後文字', ()
   assert.strictEqual(rt.get().messages[0].streaming, false);
   rt.unmount();
 });
+
+test('即時活動獨立於回覆，交錯思考／工具不覆寫內容；結束、重連、切換會話會清除', () => {
+  const h = createHarness();
+  const props = { ...tgProps('activity'), agentType: 'claude' };
+  const rt = h.mount(props);
+  rt.render();
+  const ws = h.sockets[0];
+  ws.open();
+  ws.emit({ type: 'sync', value: 'IDLE', messages: [] });
+  ws.emit({ type: 'status', value: 'THINKING' });
+  ws.emit({ type: 'thinking', content: '先檢查 runner' });
+  assert.deepStrictEqual(clone(rt.get().liveActivity), { kind: 'thinking', content: '先檢查 runner' });
+  assert.strictEqual(rt.get().messages[0].content, '');
+  ws.emit({ type: 'delta', content: '檢查中。' });
+  ws.emit({ type: 'activity', content: '讀取 runner.go' });
+  assert.strictEqual(rt.get().messages[0].content, '檢查中。');
+  assert.strictEqual(rt.get().liveActivity.content, '讀取 runner.go');
+  ws.emit({ type: 'status', value: 'STREAMING' });
+  assert.strictEqual(rt.get().liveActivity.content, '讀取 runner.go');
+  ws.emit({ type: 'thinking', content: '接著確認測試' });
+  ws.emit({ type: 'delta', content: '測試通過。' });
+  assert.strictEqual(rt.get().liveActivity, null);
+  ws.emit({ type: 'status', value: 'IDLE' });
+  assert.strictEqual(rt.get().messages.length, 1);
+  assert.strictEqual(rt.get().messages[0].content, '檢查中。測試通過。');
+  assert.strictEqual(rt.get().messages[0].streaming, false);
+  for (const value of ['IDLE', 'AWAITING_CONFIRM', 'AWAITING_INPUT', 'THINKING']) {
+    ws.emit({ type: 'activity', content: '舊活動' });
+    ws.emit({ type: 'status', value });
+    assert.strictEqual(rt.get().liveActivity, null, value);
+  }
+  ws.emit({ type: 'activity', content: '舊活動' });
+  ws.emit({ type: 'sync', value: 'STREAMING', messages: [] });
+  assert.strictEqual(rt.get().liveActivity, null);
+  ws.emit({ type: 'activity', content: '舊活動' });
+  ws.emit({ type: 'reset' });
+  assert.strictEqual(rt.get().liveActivity, null);
+  ws.emit({ type: 'activity', content: '舊活動' });
+  rt.setProps({ ...props, session: { ...props.session, id: 'other' } });
+  assert.strictEqual(rt.get().liveActivity, null);
+  assert.strictEqual(rt.get().messages.length, 0);
+});
+
+test('計時從後端任務開始恢復；不同裝置時鐘、斷線、重連與新任務不混用起點', () => {
+  const h = createHarness();
+  const props = { ...tgProps('timing'), agentType: 'claude' };
+  const rt = h.mount(props);
+  rt.render();
+  const ws = h.sockets[0];
+  ws.open();
+  const start = 5_000_000_000;
+  ws.emit({ type: 'sync', value: 'THINKING', messages: [], run_started_at: start, server_time: start + 90_000 });
+  assert.strictEqual(h.ctx.Date.now() - rt.get().runStartedAt, 90_000, '晚進入也要顯示已經過的 90 秒');
+  const anchor = rt.get().runStartedAt;
+  h.advance(20_000);
+  assert.strictEqual(h.ctx.Date.now() - rt.get().runStartedAt, 110_000, '沒有新事件也繼續計時');
+  ws.emit({ type: 'sync', value: 'STREAMING', messages: [], run_started_at: start, server_time: start + 110_000 });
+  assert.strictEqual(rt.get().runStartedAt, anchor, '重連不重設任務起點');
+  const fresh = h.mount(props);
+  fresh.render();
+  const otherSocket = h.sockets.at(-1);
+  otherSocket.open();
+  otherSocket.emit({ type: 'sync', value: 'STREAMING', messages: [], run_started_at: start, server_time: start + 110_000 });
+  assert.strictEqual(h.ctx.Date.now() - fresh.get().runStartedAt, 110_000, '全新畫面也恢復相同耗時');
+  ws.emit({ type: 'status', value: 'THINKING', run_started_at: start + 120_000, server_time: start + 120_000 });
+  assert.strictEqual(rt.get().runStartedAt, h.ctx.Date.now(), '新任務從自己的起點計算');
+  for (const timing of [{}, { run_started_at: 'invalid', server_time: start }, { run_started_at: start, server_time: start - 1 }]) {
+    ws.emit({ type: 'status', value: 'THINKING', ...timing });
+    assert.strictEqual(rt.get().runStartedAt, null, '缺少／無效時間不冒充已執行零秒');
+  }
+  ws.emit({ type: 'status', value: 'IDLE' });
+  assert.strictEqual(rt.get().runStartedAt, null);
+  ws.emit({ type: 'status', value: 'THINKING', run_started_at: start, server_time: start + 90_000 });
+  ws.emit({ type: 'reset' });
+  assert.strictEqual(rt.get().runStartedAt, null);
+  ws.emit({ type: 'status', value: 'THINKING', run_started_at: start, server_time: start + 90_000 });
+  rt.setProps({ ...props, session: { ...props.session, id: 'other-timing' } });
+  assert.strictEqual(rt.get().runStartedAt, null);
+});

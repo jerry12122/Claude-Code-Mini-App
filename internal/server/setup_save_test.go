@@ -222,6 +222,9 @@ func TestSetupSaveConcurrent(t *testing.T) {
 }
 
 func TestSetupSaveSwitches(t *testing.T) {
+	// 驗證模式切換即可，模型同步不應啟動本機已安裝的 CLI。
+	t.Setenv("PATH", "")
+	t.Setenv("CC_AGY_BIN", "agy")
 	viper.Reset()
 	t.Cleanup(viper.Reset)
 	dir := t.TempDir()

@@ -37,11 +37,16 @@ is_expected() {
 for n in "${expected[@]}"; do [ -s "$dist/$n" ] || fail "缺少資產 $n"; done
 (cd "$dist" && sha256sum -c checksums.txt >/dev/null) || fail "本機 checksums.txt 驗證失敗"
 
-# 說明：CHANGELOG 中 "## [版本]" 到下一個 "## [" 之間的內容，前面接上 release-header
+# 說明：先放 CHANGELOG 對應版本的更新內容，再附上下載、更新方法與首次設定。
 sed "s/@TAG@/$tag/g" "$repo_root/.github/release-header.md" > "$work/header.md"
 awk -v v="$ver" '/^## \[/{p = index($0, "[" v "]") > 0; next} p' "$repo_root/CHANGELOG.md" > "$work/changes.md"
 test -s "$work/changes.md" || fail "CHANGELOG.md 沒有 [$ver] 區段"
-cat "$work/header.md" "$work/changes.md" > "$work/notes.md"
+{
+  printf '## 更新內容\n\n'
+  cat "$work/changes.md"
+  printf '\n'
+  cat "$work/header.md"
+} > "$work/notes.md"
 
 # 1. 查詢同 tag 的 Release（列表包含草稿）
 gh api "repos/$repo/releases?per_page=100" > "$work/releases.json"

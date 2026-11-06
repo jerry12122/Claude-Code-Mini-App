@@ -3,6 +3,9 @@ package codex
 import (
 	"encoding/json"
 	"errors"
+	"strings"
+
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/agent"
 )
 
 // StreamEvent 為 codex exec --json 的 JSONL 頂層事件。
@@ -17,18 +20,31 @@ type StreamEvent struct {
 
 // Item 是 item.started / item.completed 的承載結構。
 type Item struct {
-	ID     string `json:"id"`
-	Type   string `json:"type"`
-	Text    string `json:"text,omitempty"`
-	Message string `json:"message,omitempty"` // item.type=error（非致命警告）
-	Status  string `json:"status,omitempty"`
+	ID        string          `json:"id"`
+	Type      string          `json:"type"`
+	Text      string          `json:"text,omitempty"`
+	Message   string          `json:"message,omitempty"` // item.type=error（非致命警告）
+	Status    string          `json:"status,omitempty"`
+	Command   string          `json:"command,omitempty"`
+	Query     string          `json:"query,omitempty"`
+	Server    string          `json:"server,omitempty"`
+	Tool      string          `json:"tool,omitempty"`
+	Arguments json.RawMessage `json:"arguments,omitempty"`
+	ExitCode  *int            `json:"exit_code,omitempty"`
+	Changes   []struct {
+		Path string `json:"path"`
+	} `json:"changes,omitempty"`
+	Items []struct {
+		Text      string `json:"text"`
+		Completed bool   `json:"completed"`
+	} `json:"items,omitempty"`
 }
 
 // TurnUsage 來自 turn.completed.usage。
 type TurnUsage struct {
-	InputTokens          int64 `json:"input_tokens"`
-	CachedInputTokens    int64 `json:"cached_input_tokens"`
-	OutputTokens         int64 `json:"output_tokens"`
+	InputTokens           int64 `json:"input_tokens"`
+	CachedInputTokens     int64 `json:"cached_input_tokens"`
+	OutputTokens          int64 `json:"output_tokens"`
 	ReasoningOutputTokens int64 `json:"reasoning_output_tokens"`
 }
 
@@ -48,16 +64,50 @@ func ParseEvent(line []byte) (*StreamEvent, error) {
 func ActivityLabel(itemType string) string {
 	switch itemType {
 	case "command_execution":
-		return "執行指令中…"
+		return "執行指令"
 	case "web_search":
-		return "搜尋中…"
+		return "搜尋"
 	case "file_change":
-		return "修改檔案中…"
+		return "修改檔案"
 	case "mcp_tool_call":
-		return "呼叫工具中…"
+		return "呼叫工具"
 	default:
 		return ""
 	}
+}
+
+func (item *Item) ActivityText() string {
+	label, detail := ActivityLabel(item.Type), ""
+	switch item.Type {
+	case "command_execution":
+		detail = item.Command
+	case "web_search":
+		detail = item.Query
+	case "file_change":
+		var paths []string
+		for _, change := range item.Changes {
+			paths = append(paths, change.Path)
+		}
+		detail = strings.Join(paths, ", ")
+	case "mcp_tool_call":
+		if item.Tool != "" {
+			name := item.Tool
+			if item.Server != "" {
+				name = item.Server + "/" + name
+			}
+			return agent.ToolActivity(name, item.Arguments)
+		}
+	case "todo_list":
+		for _, todo := range item.Items {
+			if !todo.Completed {
+				return "進行中：" + todo.Text
+			}
+		}
+	}
+	if detail != "" {
+		return label + "：" + detail
+	}
+	return label
 }
 
 // AgentMessageText 從 item.completed (agent_message) 取出文字。

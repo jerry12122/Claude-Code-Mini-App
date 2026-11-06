@@ -169,13 +169,29 @@ func (r *Runner) dispatch(ev *StreamEvent, cb agent.EventCallback, st *dispatchS
 			st.sessionID = ev.ThreadID
 			cb(agent.Event{Type: agent.EventSessionInit, SessionID: ev.ThreadID})
 		}
-	case "item.started":
+	case "item.started", "item.updated", "item.completed":
 		if ev.Item != nil {
-			if label := ActivityLabel(ev.Item.Type); label != "" {
+			if ev.Item.Type == "reasoning" {
+				text := ev.Item.Text
+				if text == "" {
+					text = "思考中…"
+				}
+				cb(agent.Event{Type: agent.EventThinking, Text: text})
+			}
+			if label := ev.Item.ActivityText(); label != "" {
+				if ev.Type == "item.completed" && ev.Item.Type != "todo_list" {
+					prefix := "已完成："
+					if ev.Item.Status == "failed" || (ev.Item.ExitCode != nil && *ev.Item.ExitCode != 0) {
+						prefix = "執行失敗："
+					}
+					label = prefix + label
+				}
 				cb(agent.Event{Type: agent.EventActivity, Text: label})
 			}
 		}
-	case "item.completed":
+		if ev.Type != "item.completed" {
+			break
+		}
 		if ev.Item != nil && ev.Item.Type == "error" {
 			// 非致命警告（例如 model metadata 找不到），不中斷回合，只留 log 供排查。
 			slog.Warn("[codex] warning item", "message", ev.Item.Message)

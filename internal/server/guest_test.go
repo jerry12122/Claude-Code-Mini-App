@@ -66,6 +66,8 @@ func newGuestEnv(t *testing.T) *guestEnv {
 	app.Post("/sessions/:id/shares", auth, shareH.Create)
 	app.Get("/sessions/:id/shares", auth, shareH.ListBySession)
 	app.Get("/shares", auth, shareH.ListAll)
+	app.Delete("/shares/ended", auth, shareH.ClearEnded)
+	app.Delete("/shares/ended/:id", auth, shareH.ClearEnded)
 	app.Delete("/shares/:id", auth, shareH.Revoke)
 	app.Delete("/shares", auth, shareH.RevokeAll)
 	app.Get("/guest/me", auth, shareH.Me)

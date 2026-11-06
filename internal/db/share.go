@@ -256,6 +256,38 @@ func (db *DB) RevokeShare(id int64) error {
 	return nil
 }
 
+// ClearEndedShares 清除已撤銷／到期的分享及其訪客；id=0 表示全部，不刪除聊天室或訊息。
+func (db *DB) ClearEndedShares(id int64) (int64, error) {
+	shareMu.Lock()
+	defer shareMu.Unlock()
+	where := `(revoked = 1 OR expires_at <= ?)`
+	args := []any{time.Now().UTC().Format(shareTimeLayout)}
+	if id != 0 {
+		where += ` AND id = ?`
+		args = append(args, id)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM share_guests WHERE share_id IN (SELECT id FROM shares WHERE `+where+`)`, args...); err != nil {
+		return 0, err
+	}
+	res, err := tx.Exec(`DELETE FROM shares WHERE `+where, args...)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
 // RevokeActiveShares 結束全部有效分享，回傳被結束的 id（供踢線）。sessionID 非空時只處理該 session。
 func (db *DB) RevokeActiveShares(sessionID string) ([]int64, error) {
 	q := `SELECT id FROM shares WHERE revoked = 0 AND expires_at > ?`

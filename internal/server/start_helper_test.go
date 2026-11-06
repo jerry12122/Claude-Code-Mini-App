@@ -17,6 +17,9 @@ import (
 // viper 是全域的，所以每個測試前後都重置，避免吃到別的測試留下的設定。
 func startTestServer(t *testing.T, configYAML string) string {
 	t.Helper()
+	// 路由測試不呼叫本機 CLI，避免背景模型同步的子進程占用暫存目錄。
+	t.Setenv("PATH", "")
+	t.Setenv("CC_AGY_BIN", "agy")
 	viper.Reset()
 	t.Cleanup(viper.Reset)
 

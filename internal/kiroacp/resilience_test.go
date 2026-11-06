@@ -153,6 +153,13 @@ func fakeACP(mode string) {
 			failData(-32602, "")
 		case "empty":
 			reply(map[string]any{})
+		case "activity":
+			update(map[string]any{"sessionUpdate": "agent_thought_chunk", "content": map[string]any{"type": "text", "text": "先讀"}})
+			update(map[string]any{"sessionUpdate": "agent_thought_chunk", "content": map[string]any{"type": "text", "text": "檔案"}})
+			update(map[string]any{"sessionUpdate": "tool_call", "toolCallId": "t1", "title": "Bash", "status": "in_progress", "rawInput": map[string]any{"command": "git status"}})
+			update(map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": "t1", "status": "completed"})
+			chunk()
+			reply(map[string]any{})
 		case "tool-running": // 本輪工具執行超過 idleLimit 仍靜默：不可被誤判為卡住
 			update(map[string]any{"sessionUpdate": "tool_call", "toolCallId": "t1", "title": "build", "status": "in_progress"})
 			time.Sleep(900 * time.Millisecond)

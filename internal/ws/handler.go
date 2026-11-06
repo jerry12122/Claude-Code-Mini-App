@@ -107,6 +107,8 @@ type serverMsg struct {
 	RequestID    string             `json:"request_id,omitempty"`
 	Code         string             `json:"code,omitempty"` // 機器可讀的拒絕原因，例如 update_in_progress
 	CreatedAt    string             `json:"created_at,omitempty"`
+	RunStartedAt int64              `json:"run_started_at,omitempty"` // status/sync：任務開始時間，Unix 毫秒。
+	ServerTime   int64              `json:"server_time,omitempty"`    // 同份快照的伺服器時間，供前端校正時鐘差。
 	Attachments  []db.Attachment    `json:"attachments,omitempty"`
 	Type         string             `json:"type"`
 	Role         string             `json:"role,omitempty"`
@@ -253,6 +255,9 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 		}()
 
 		broadcast := func(msg serverMsg) {
+			if msg.Type == "status" {
+				msg = msg.withTaskTiming(sessionID)
+			}
 			hub.Broadcast(sessionID, msg)
 		}
 
@@ -287,7 +292,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 		syncMsg.Model = sessionModelPayload(sess)
 		syncMsg.Queue, syncMsg.QueuePaused = loadQueueState(database, sessionID)
 		syncMsg.Lingering = syncData.UIState == StateIdle && taskIsActive(sessionID)
-		send(syncMsg)
+		send(syncMsg.withTaskTiming(sessionID))
 		announcePresence(sessionID, "join", entry.displayName(), isGuest)
 
 		// 進入會話時若 quota cache 已過期，背景補打一次並推播更新（cache 未過期則 RefreshAfterRun 內部直接跳過）。
@@ -1561,11 +1566,10 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 					shellTaskCancel(sessionID)
 					continue
 				}
-				// 兩段式停止：第一次按只送優雅信號（可能被子進程忽略，狀態/DB 不動，任務繼續跑）；
-				// 第二次按（或 PID 還沒拿到）才 cancel context 強制 KillTree，
+				// 按一次就 cancel context 強制 KillTree（見 taskInterrupt）；
 				// 收尾一律由 Run goroutine 的既有邏輯處理，避免前端提早變 IDLE 但進程還在跑。
-				// 使用者按停止＝不要自動接著跑：軟中斷時子進程可能仍正常結束（exit 0），不暫停會續跑佇列。
-				// kiroacp 等授權時子進程在等我們回覆，軟信號不會有反應，直接強制取消。
+				// 使用者按停止＝不要自動接著跑，故暫停佇列。
+				// kiroacp 等授權時子進程在等我們回覆，直接強制取消。
 				if _, waiting := permPending(sessionID); waiting || questionPending(sessionID) != nil {
 					taskCancel(sessionID)
 					pauseQueue()

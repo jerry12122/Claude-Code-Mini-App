@@ -20,6 +20,66 @@ func newShareTestDB(t *testing.T) (*DB, *Session) {
 	return database, s
 }
 
+func TestClearEndedSharesPreservesActiveAndChat(t *testing.T) {
+	database, session := newShareTestDB(t)
+	makeShare := func() *Share {
+		s, err := database.CreateShare(session.ID, ShareRoleViewer, ShareModeLive, time.Hour)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := database.TryJoin(s.Token, s.PIN, "guest"); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	active, revoked, expired := makeShare(), makeShare(), makeShare()
+	if err := database.RevokeShare(revoked.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`UPDATE shares SET expires_at = ? WHERE id = ?`, time.Now().UTC().Add(-time.Hour).Format(shareTimeLayout), expired.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`UPDATE shares SET failed_attempts = ? WHERE id = ?`, MaxPINAttempts, active.ID); err != nil {
+		t.Fatal(err)
+	}
+	message, err := database.AddUserMessageWithAttachments(session.ID, "keep chat", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, err := database.ClearEndedShares(active.ID); n != 0 || err != nil {
+		t.Fatalf("active: n=%d err=%v", n, err)
+	}
+	if n, err := database.ClearEndedShares(revoked.ID); n != 1 || err != nil {
+		t.Fatalf("single: n=%d err=%v", n, err)
+	}
+	if n, err := database.ClearEndedShares(revoked.ID); n != 0 || err != nil {
+		t.Fatalf("repeat: n=%d err=%v", n, err)
+	}
+	if n, err := database.ClearEndedShares(0); n != 1 || err != nil {
+		t.Fatalf("all: n=%d err=%v", n, err)
+	}
+	if _, err := database.GetShareByToken(revoked.Token); !errors.Is(err, ErrShareNotFound) {
+		t.Fatalf("revoked link still exists: %v", err)
+	}
+	if _, err := database.GetShareByToken(expired.Token); !errors.Is(err, ErrShareNotFound) {
+		t.Fatalf("expired link still exists: %v", err)
+	}
+	var guests int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM share_guests`).Scan(&guests); err != nil || guests != 1 {
+		t.Fatalf("guests=%d err=%v", guests, err)
+	}
+	if _, err := database.GetShare(active.ID); err != nil {
+		t.Fatalf("active removed: %v", err)
+	}
+	if _, err := database.GetSession(session.ID); err != nil {
+		t.Fatalf("session removed: %v", err)
+	}
+	var content string
+	if err := database.QueryRow(`SELECT content FROM messages WHERE id = ?`, message.ID).Scan(&content); err != nil || content != "keep chat" {
+		t.Fatalf("message=%q err=%v", content, err)
+	}
+}
+
 func TestCreateShare_EditorSnapshotRejected(t *testing.T) {
 	database, s := newShareTestDB(t)
 	if _, err := database.CreateShare(s.ID, ShareRoleEditor, ShareModeSnapshot, time.Hour); !errors.Is(err, ErrInvalidShare) {

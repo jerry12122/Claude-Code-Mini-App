@@ -111,6 +111,7 @@ check "全新發佈：建立草稿、上傳、比對、公開為 latest" run_pub
 check "全新發佈後狀態為 published latest" bash -c \
   '[ "$(python "$1" status "$2" "$3")" = "published latest" ]' _ "$sc" "$(wpath "$st")" "$tag"
 check "全新發佈後資產恰為預期四個" names_ok "$st"
+check "全新發佈：更新內容在最上方，下載與更新方法在下方" sc_run notes-order "$(wpath "$st")" "$tag"
 check "全新發佈：公開是最後一個寫入動作" sc_run publish-last "$(wpath "$st")"
 
 # 4b. 已有公開 Release：拒絕，且零寫入
@@ -123,6 +124,7 @@ check "已公開的 tag：零寫入呼叫" bash -c '[ "$(python "$1" writes "$2"
 st="$(new_state draft)"
 seed "$st" draft "claude-miniapp-desktop-v0.11.0-windows-amd64.exe" "claude-miniapp-v0.11.0-windows-amd64.zip"
 check "草稿重跑：重用草稿並公開" run_publish "$st"
+check "草稿重跑：說明採用更新內容在前的新順序" sc_run notes-order "$(wpath "$st")" "$tag"
 check "草稿重跑：舊資產已移除，只剩預期四個" names_ok "$st"
 check "草稿重跑：舊資產以 delete-asset 移除（2 次）" bash -c \
   '[ "$(grep -c "^WRITE delete-asset" "$1/calls.log")" -eq 2 ]' _ "$st"
@@ -165,7 +167,7 @@ check "TestReleaseDistContract：真實 checksums.txt 與桌面 EXE 通過 provi
 
 # ── 6. workflow 結構與 build.bat ─────────────────────────────────────
 check "release.yml 可解析且結構正確" python "$rel/test/check_workflow.py" "$root/.github/workflows/release.yml"
-check "build.bat 使用 -tags production" grep -q -- "-tags production" "$root/build.bat"
+check "build.bat 使用 production 標籤" grep -Eq -- '-tags[[:space:]]+"?production([,"]|[[:space:]]|$)' "$root/build.bat"
 
 echo
 echo "結果：通過 $pass、失敗 $failed"

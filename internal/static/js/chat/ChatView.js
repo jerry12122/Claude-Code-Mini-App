@@ -1,5 +1,40 @@
 const EMPTY_SUGGESTIONS = ['看一下目前 git 狀態與最近的變更', '概覽這個專案的結構', '跑測試並整理失敗原因'];
 
+function LiveActivity({ activity, state, connected, runStartedAt }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const elapsed = runStartedAt == null ? null : Math.max(0, Math.floor((now - runStartedAt) / 1000));
+  const label = !connected ? '連線中斷，等待重連' : activity?.kind === 'thinking' ? '思考中' : activity?.kind === 'tool' ? '執行中' : state === 'STREAMING' ? '正在撰寫回覆' : '處理中';
+  const text = connected ? (activity?.content || '').trim() : '';
+  // ponytail: 只顯示目前快照；思考預覽取尾端，讓新進度持續可見。
+  const preview = activity?.kind === 'thinking' ? text.slice(-180) : text;
+  return (
+    <section aria-label="即時執行狀態" className="shrink-0 bg-ra-bg px-4 sm:px-7 pt-3 pb-2 text-xs text-ra-t3">
+      <div className="flex items-center gap-2 min-w-0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+          className={`h-3.5 w-3.5 shrink-0 text-ra-accent-text ${connected ? 'animate-spin motion-reduce:animate-none' : ''}`} aria-hidden="true">
+          <path d="M21 12a9 9 0 1 1-6.22-8.56" />
+        </svg>
+        <span role="status" className="min-w-0 truncate font-medium">{label}</span>
+        {elapsed != null && <span role="timer" aria-live="off" className="ml-auto shrink-0 tabular-nums text-ra-t4" title="任務開始後的經過時間（包含等待授權）">{elapsed} 秒</span>}
+      </div>
+      {text && (
+        <details className="group mt-1 ml-[22px] min-w-0">
+          <summary aria-label="展開或收起目前活動詳情" className="flex cursor-pointer list-none items-center gap-2 rounded text-ra-t4 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 [&::-webkit-details-marker]:hidden">
+            <span className="min-w-0 flex-1 truncate group-open:hidden">{preview}</span>
+            <span className="hidden flex-1 group-open:inline">收起詳細內容</span>
+            <span className="shrink-0 group-open:rotate-180" aria-hidden="true">⌄</span>
+          </summary>
+          <pre className="ra-mono mt-2 max-h-32 overflow-auto app-scroll whitespace-pre-wrap break-words text-xs leading-relaxed text-ra-t3">{text}</pre>
+        </details>
+      )}
+    </section>
+  );
+}
+
 /**
  * Telegram 較早訊息的頂部控制：按需載入（不自動連抓）、載入中、可重試的錯誤、到頂停止。
  * 429 時在 retryAt 前停用並於到期後自動恢復。
@@ -110,7 +145,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     shellRequest,
     quota, quotaRefreshing,
     sessionModel,
-    activityHint,
+    liveActivity,
+    runStartedAt,
     queue, queuePaused, lingering,
     send,
     submitInput,
@@ -841,6 +877,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   };
 
   const agentRunning = state === 'THINKING' || state === 'STREAMING';
+  const timelineMessages = useMemo(() => messages.filter(m => agentType === 'telegram' || m.role !== 'claude' ||
+    m.status === 'interrupted' || m.content || m.html || m.attachments?.length), [messages, agentType]);
   const taskRunning = state === 'AWAITING_INPUT' || agentRunning || lingering || state === 'SHELL_RUNNING' || state === 'SHELL_EXEC';
   // Agent 執行中／等授權時仍可送出：後端排入佇列，前一輪成功後依序執行。
   const canQueue = inputMode !== 'shell' && (agentRunning || lingering || state === 'AWAITING_CONFIRM' || state === 'AWAITING_INPUT');
@@ -935,7 +973,6 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         onBack={onBack}
         agentType={agentType}
         state={state}
-        activityHint={activityHint}
         sessionModel={sessionModel}
         quota={quota}
         quotaRefreshing={quotaRefreshing}
@@ -1004,7 +1041,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
           className="shrink-0 self-center rounded-full border border-ra-line px-3 py-1 text-xs text-ra-t4">
           {showAllMessages ? '恢復精簡顯示' : '顯示全部已載入訊息（搜尋／選取用）'}
         </button>}
-        <VirtualMessages key={session.id} messages={messages} scrollRef={chatScrollRef} followRef={chatNearBottomRef}
+        <VirtualMessages key={session.id} messages={timelineMessages} scrollRef={chatScrollRef} followRef={chatNearBottomRef}
           gestureRef={gestureRef} showAll={showAllMessages}>
         {(m, i) => {
           const userParts = m.role === 'user' ? attachmentMessageParts(m, session.id) : null;
@@ -1022,10 +1059,10 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
           const showStreamingTail =
             (state === 'THINKING' || state === 'STREAMING') &&
             m.role === 'claude' &&
-            i === messages.length - 1;
+            i === timelineMessages.length - 1;
           const timeLabel = formatMessageTime(m.createdAt);
-          // 長按選單的文字；思考中（thinking）或尚無內容的訊息不啟用。
-          const lpText = m.thinking ? '' : String(forwardBody || '').trim();
+          // 尚無內容的訊息不啟用長按選單。
+          const lpText = String(forwardBody || '').trim();
           return (
           <div
             key={m.id != null ? `m-${m.id}` : i}
@@ -1034,10 +1071,14 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
           >
             <div
               className={`flex flex-col min-w-0 ${lpText ? 'msg-lp' : ''} ${m.role === 'user' ? 'items-end max-w-[60%]' : m.role === 'shell' ? 'items-start max-w-[85%]' : 'items-start max-w-[78%]'}`}
+              tabIndex={lpText ? 0 : undefined}
               {...(lpText ? bindLongPress({
                 text: lpText,
                 role: m.role,
                 canForward: canForwardShellOrAgent,
+                canShowForward: !isGuest && (m.role === 'claude' || m.role === 'shell'),
+                canQuote: !guestReadOnly && !shareOver,
+                streaming: !!m.streaming,
                 messageKey: msgKey,
                 createdAt: m.createdAt,
               }) : {})}
@@ -1081,12 +1122,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                   </div>
                 </div>
                 {claudeAtts.length > 0 && <MessageAttachments items={claudeAtts} onPreview={setLightboxSrc} />}
-                {m.thinking ? (
-                  <div className="flex flex-row items-start gap-1.5">
-                    <span className="text-violet-400/60 text-xs mt-0.5 shrink-0 select-none">💭</span>
-                    <span className="text-ra-t5 text-sm italic leading-relaxed line-clamp-3 min-w-0">{m.content}</span>
-                  </div>
-                ) : (m.html || showStreamingTail) ? (
+                {(m.html || showStreamingTail) ? (
                   <div className="flex flex-row items-start gap-1">
                     {m.html && (
                       <div
@@ -1264,6 +1300,10 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         </button>
       )}
       </div>
+
+      {agentRunning && !isSnapshot && !shareOver && (
+        <LiveActivity key={session.id} activity={liveActivity} state={state} connected={connected} runStartedAt={runStartedAt} />
+      )}
 
       {/* 輸入區：水平內距略小於訊息列表，讓輸入框可用寬度較大。唯讀訪客／分享已結束時改顯示提示列。 */}
       {guestReadOnly || shareOver ? (
@@ -1474,6 +1514,13 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       <MessageActionsHost
         openRef={openMsgSheetRef}
         onForward={handleSheetForward}
+        sessionId={session.id}
+        onQuote={text => {
+          setInput(previous => injectMarkdownQuote(previous, text));
+          setQuoteSelection(null);
+          window.getSelection()?.removeAllRanges();
+          focusChatInputToEnd();
+        }}
       />
 
       <SelectionQuotePopover

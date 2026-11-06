@@ -35,6 +35,43 @@ navigationTarget = null;
 context.focusSessionTabAfterClose(tabBarRef);
 assert.doesNotThrow(() => frames.shift()(), 'an unmounting app has no focus target');
 
+let revealed = null, scrolled = null, flashed = 0, reduceMotion = false;
+const tabNode = id => ({
+  dataset: { sessionTabId: id },
+  querySelector: () => ({ focus: options => { revealed = { id, options }; } }),
+  scrollIntoView: options => { scrolled = { id, options }; },
+  animate: () => { flashed++; },
+});
+context.document.querySelectorAll = () => [tabNode('primary'), tabNode('secondary-hidden')];
+context.window = { matchMedia: () => ({ matches: reduceMotion }) };
+context.revealSessionTab('secondary-hidden');
+assert.equal(revealed, null, 'sidebar focus waits for the selected pane/tab to render');
+frames.shift()();
+assert.equal(revealed.id, 'secondary-hidden', 'locate the exact tab across both panes');
+assert.equal(revealed.options.preventScroll, true);
+assert.equal(scrolled.id, 'secondary-hidden');
+assert.equal(scrolled.options.inline, 'center');
+assert.equal(scrolled.options.behavior, 'smooth');
+assert.equal(flashed, 1);
+reduceMotion = true;
+context.revealSessionTab('secondary-hidden'); // repeated click on an already selected tab still reveals it
+frames.shift()();
+assert.equal(scrolled.options.behavior, 'auto');
+assert.equal(flashed, 1, 'respect reduced motion');
+context.revealSessionTab('closed');
+assert.doesNotThrow(() => frames.shift()(), 'closed tabs and mobile layouts have no target');
+
+const sessionSource = fs.readFileSync(path.join(root, 'js/session/SessionView.js'), 'utf8');
+const sidebarActions = [];
+const sidebarContext = vm.createContext({
+  isUnread: () => false, onEnter: session => sidebarActions.push(['open', session.id]),
+  isWideScreen: true, revealSessionTab: id => sidebarActions.push(['reveal', id]),
+});
+const enterStart = sessionSource.indexOf('  const handleEnter =');
+vm.runInContext(sessionSource.slice(enterStart, sessionSource.indexOf('  const listStatus =', enterStart)) + '\nthis.enter = handleEnter;', sidebarContext);
+sidebarContext.enter({ id: 'secondary-hidden' });
+assert.deepEqual(sidebarActions, [['open', 'secondary-hidden'], ['reveal', 'secondary-hidden']], 'reveal only after selecting the actual session/pane');
+
 const shared = fs.readFileSync(path.join(root, 'js/ui/ui-atoms.js'), 'utf8');
 const quotaContext = vm.createContext({});
 const core = fs.readFileSync(path.join(root, 'js/core/core.js'), 'utf8');

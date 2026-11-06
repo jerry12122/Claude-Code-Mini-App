@@ -53,6 +53,8 @@ type Session struct {
 	// LastErrorText／LastErrorAt：最近一次 run 失敗的原始錯誤文字與時間（UTC，SQLite 格式）；下一輪成功時清空。
 	LastErrorText string `json:"last_error,omitempty"`
 	LastErrorAt   string `json:"last_error_at,omitempty"`
+	// Pinned 為側欄釘選旗標；前端據此將 session 置頂分組。
+	Pinned bool `json:"pinned"`
 }
 
 func (db *DB) CreateSession(name, description, workDir, permissionMode, agentType string, cliExtraArgs []string, inputMode string, disguiseAgent ...string) (*Session, error) {
@@ -97,7 +99,7 @@ func (db *DB) CreateSession(name, description, workDir, permissionMode, agentTyp
 
 func (db *DB) GetSession(id string) (*Session, error) {
 	row := db.QueryRow(
-		`SELECT s.id, s.agent_type, s.agent_session_id, s.name, s.description, s.work_dir, s.permission_mode, s.allowed_tools, s.pending_denials, s.last_active, s.status, s.cli_extra_args, s.input_mode, s.shell_pending, s.active_model, s.active_model_source, s.active_model_at, s.model, s.effort, s.last_read_at, s.disguise_agent, s.last_error_text, s.last_error_at,
+		`SELECT s.id, s.agent_type, s.agent_session_id, s.name, s.description, s.work_dir, s.permission_mode, s.allowed_tools, s.pending_denials, s.last_active, s.status, s.cli_extra_args, s.input_mode, s.shell_pending, s.active_model, s.active_model_source, s.active_model_at, s.model, s.effort, s.last_read_at, s.disguise_agent, s.last_error_text, s.last_error_at, s.pinned,
 		       (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.created_at > s.last_read_at AND m.role != 'user' AND s.agent_type != 'telegram') AS unread_count
 		 FROM sessions s WHERE s.id = ?`, id,
 	)
@@ -106,7 +108,7 @@ func (db *DB) GetSession(id string) (*Session, error) {
 
 func (db *DB) ListSessions() ([]*Session, error) {
 	rows, err := db.Query(
-		`SELECT s.id, s.agent_type, s.agent_session_id, s.name, s.description, s.work_dir, s.permission_mode, s.allowed_tools, s.pending_denials, s.last_active, s.status, s.cli_extra_args, s.input_mode, s.shell_pending, s.active_model, s.active_model_source, s.active_model_at, s.model, s.effort, s.last_read_at, s.disguise_agent, s.last_error_text, s.last_error_at,
+		`SELECT s.id, s.agent_type, s.agent_session_id, s.name, s.description, s.work_dir, s.permission_mode, s.allowed_tools, s.pending_denials, s.last_active, s.status, s.cli_extra_args, s.input_mode, s.shell_pending, s.active_model, s.active_model_source, s.active_model_at, s.model, s.effort, s.last_read_at, s.disguise_agent, s.last_error_text, s.last_error_at, s.pinned,
 		       (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.created_at > s.last_read_at AND m.role != 'user' AND s.agent_type != 'telegram') AS unread_count
 		 FROM sessions s ORDER BY s.last_active DESC`,
 	)
@@ -152,6 +154,13 @@ func (db *DB) UpdateSessionName(id, name string) error {
 		`UPDATE sessions SET name = ?, last_active = datetime('now') WHERE id = ?`,
 		name, id,
 	)
+	return err
+}
+
+// SetSessionPinned 設定側欄釘選。只動 pinned，不動 last_active——釘選不是新活動，
+// 否則會讓排序與其他裝置的未讀判斷失真（同 MarkSessionRead）。
+func (db *DB) SetSessionPinned(id string, pinned bool) error {
+	_, err := db.Exec(`UPDATE sessions SET pinned = ? WHERE id = ?`, pinned, id)
 	return err
 }
 
@@ -320,7 +329,7 @@ func scanSession(s scanner) (*Session, error) {
 	err := s.Scan(
 		&sess.ID, &sess.AgentType, &sess.AgentSessionID, &sess.Name, &sess.Description,
 		&sess.WorkDir, &sess.PermissionMode, &allowedTools, &sess.PendingDenials, &sess.LastActive, &sess.Status, &extraJSON, &sess.InputMode, &sess.ShellPending,
-		&sess.ActiveModel, &sess.ActiveModelSource, &sess.ActiveModelAt, &sess.Model, &sess.Effort, &sess.LastReadAt, &sess.DisguiseAgent, &sess.LastErrorText, &sess.LastErrorAt,
+		&sess.ActiveModel, &sess.ActiveModelSource, &sess.ActiveModelAt, &sess.Model, &sess.Effort, &sess.LastReadAt, &sess.DisguiseAgent, &sess.LastErrorText, &sess.LastErrorAt, &sess.Pinned,
 		&sess.UnreadCount,
 	)
 	if err != nil {

@@ -21,7 +21,7 @@ func TestDispatch_streamTextDeltaThenAssistantSkipped(t *testing.T) {
 	r.dispatch(&StreamEvent{
 		Type: "stream_event",
 		Event: &APIEvent{
-			Type: "content_block_delta",
+			Type:  "content_block_delta",
 			Delta: &Delta{Type: "text_delta", Text: "hello"},
 		},
 	}, cb, &st)
@@ -139,25 +139,67 @@ func TestDispatch_consecutiveThinkingBlocksResetBuffer(t *testing.T) {
 	}
 	// 第一個 thinking block
 	r.dispatch(&StreamEvent{
-		Type: "stream_event",
+		Type:  "stream_event",
 		Event: &APIEvent{Type: "content_block_start", ContentBlock: &ContentBlock{Type: "thinking"}},
 	}, cb, &st)
 	r.dispatch(&StreamEvent{
-		Type: "stream_event",
+		Type:  "stream_event",
 		Event: &APIEvent{Type: "content_block_delta", Delta: &Delta{Type: "thinking_delta", Text: "A"}},
 	}, cb, &st)
 	// 第二個 thinking block 開始，應重置 buffer
 	r.dispatch(&StreamEvent{
-		Type: "stream_event",
+		Type:  "stream_event",
 		Event: &APIEvent{Type: "content_block_start", ContentBlock: &ContentBlock{Type: "thinking"}},
 	}, cb, &st)
 	r.dispatch(&StreamEvent{
-		Type: "stream_event",
+		Type:  "stream_event",
 		Event: &APIEvent{Type: "content_block_delta", Delta: &Delta{Type: "thinking_delta", Text: "B"}},
 	}, cb, &st)
 	// 第二輪應只看到 "B"，不是 "AB"
-	if len(thoughts) != 2 || thoughts[0] != "A" || thoughts[1] != "B" {
+	if !slices.Equal(thoughts, []string{"思考中…", "A", "思考中…", "B"}) {
 		t.Fatalf("連續 thinking block 間應重置 thinkingBuf，got thoughts=%v", thoughts)
+	}
+}
+
+func TestDispatchToolActivityLifecycle(t *testing.T) {
+	for _, streamed := range []bool{false, true} {
+		var st streamState
+		var events []agent.Event
+		cb := func(e agent.Event) { events = append(events, e) }
+		r := &Runner{}
+		if streamed {
+			e, _ := ParseEvent([]byte(`{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"檢查中"}}}`))
+			r.dispatch(e, cb, &st)
+		}
+		for _, line := range []string{
+			`{"type":"stream_event","event":{"type":"content_block_start","content_block":{"type":"tool_use","name":"Bash"}}}`,
+			`{"type":"assistant","message":{"content":[{"type":"text","text":"檢查中"},{"type":"tool_use","id":"call-1","name":"Bash","input":{"command":"git status"}}]}}`,
+		} {
+			e, err := ParseEvent([]byte(line))
+			if err != nil {
+				t.Fatal(err)
+			}
+			r.dispatch(e, cb, &st)
+		}
+		last := events[len(events)-1]
+		if last.Type != agent.EventActivity || last.Text != "執行工具：Bash：git status" {
+			t.Fatalf("工具活動必須在文字之後，streamed=%v: %+v", streamed, events)
+		}
+		var text string
+		for _, e := range events {
+			if e.Type == agent.EventDelta {
+				text += e.Text
+			}
+		}
+		if text != "檢查中" {
+			t.Fatalf("工具不得重複文字: %q", text)
+		}
+		e, _ := ParseEvent([]byte(`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"call-1","is_error":true,"content":"failed"}]}}`))
+		r.dispatch(e, cb, &st)
+		last = events[len(events)-1]
+		if last.Type != agent.EventActivity || last.Text != "工具失敗：Bash" || len(st.toolNames) != 0 {
+			t.Fatalf("工具結果: %+v names=%v", last, st.toolNames)
+		}
 	}
 }
 

@@ -47,7 +47,7 @@ func TestDispatchEvents(t *testing.T) {
 	foundActivity := false
 	foundDelta := false
 	for _, e := range events {
-		if e.Type == agent.EventActivity && e.Text == "執行指令中…" {
+		if e.Type == agent.EventActivity && e.Text == "執行指令" {
 			foundActivity = true
 		}
 		if e.Type == agent.EventDelta && e.Text == "POC_OK" {
@@ -211,10 +211,37 @@ func TestBuildArgsResumeModelAndEffort(t *testing.T) {
 }
 
 func TestActivityLabel(t *testing.T) {
-	if ActivityLabel("command_execution") != "執行指令中…" {
+	if ActivityLabel("command_execution") != "執行指令" {
 		t.Fatal("command_execution label")
 	}
 	if ActivityLabel("reasoning") != "" {
 		t.Fatal("reasoning should be ignored")
+	}
+}
+
+func TestDispatchActivityDetails(t *testing.T) {
+	for _, tc := range []struct {
+		line string
+		kind agent.EventType
+		text string
+	}{
+		{`{"type":"item.started","item":{"type":"command_execution","command":"go test ./..."}}`, agent.EventActivity, "執行指令：go test ./..."},
+		{`{"type":"item.updated","item":{"type":"web_search","query":"Go docs"}}`, agent.EventActivity, "搜尋：Go docs"},
+		{`{"type":"item.completed","item":{"type":"file_change","changes":[{"path":"a.go"},{"path":"b.go"}],"status":"completed"}}`, agent.EventActivity, "已完成：修改檔案：a.go, b.go"},
+		{`{"type":"item.started","item":{"type":"mcp_tool_call","server":"docs","tool":"search","arguments":{"query":"Go docs"}}}`, agent.EventActivity, "docs/search：Go docs"},
+		{`{"type":"item.completed","item":{"type":"command_execution","command":"exit 1","status":"completed","exit_code":1}}`, agent.EventActivity, "執行失敗：執行指令：exit 1"},
+		{`{"type":"item.started","item":{"type":"reasoning"}}`, agent.EventThinking, "思考中…"},
+		{`{"type":"item.completed","item":{"type":"reasoning","text":"檢查現有測試"}}`, agent.EventThinking, "檢查現有測試"},
+		{`{"type":"item.updated","item":{"type":"todo_list","items":[{"text":"讀取檔案","completed":true},{"text":"執行測試","completed":false}]}}`, agent.EventActivity, "進行中：執行測試"},
+	} {
+		e, err := ParseEvent([]byte(tc.line))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var events []agent.Event
+		(&Runner{}).dispatch(e, func(e agent.Event) { events = append(events, e) }, &dispatchState{})
+		if len(events) != 1 || events[0].Type != tc.kind || events[0].Text != tc.text {
+			t.Errorf("%s: got %+v, want %s %q", tc.line, events, tc.kind, tc.text)
+		}
 	}
 }

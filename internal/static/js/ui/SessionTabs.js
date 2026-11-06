@@ -1,6 +1,21 @@
 // ── 會話分頁列與群組外框元件 (VSCode-style Session Tabs) ───────────────────────
 // 純瀏覽器 React 元件，無 import/export，依賴全域作用域。
 
+function revealSessionTab(sessionId) {
+  requestAnimationFrame(() => {
+    const tab = Array.from(document.querySelectorAll('[data-session-tab-id]'))
+      .find(element => element.dataset.sessionTabId === sessionId);
+    if (!tab) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    tab.querySelector('[role="tab"]')?.focus({ preventScroll: true });
+    tab.scrollIntoView({ block: 'nearest', inline: 'center', behavior: reduced ? 'auto' : 'smooth' });
+    if (!reduced) tab.animate?.([
+      { boxShadow: 'inset 0 0 0 2px oklch(var(--ra-accent-text) / 0.85)' },
+      { boxShadow: 'inset 0 0 0 2px transparent' },
+    ], { duration: 1200 });
+  });
+}
+
 function focusSessionTabAfterClose(tabBarRef) {
   requestAnimationFrame(() => {
     const target = tabBarRef.current?.querySelector('[role="tab"][aria-selected="true"]')
@@ -23,8 +38,14 @@ function SessionTabBar({
   onSelectTab,
   onCloseTab,
   onDropOnTabBar,
+  onMoveTab,
+  groupCount = 1,
 }) {
   const tabBarRef = useRef(null);
+  const [tabMenu, setTabMenu] = useState(null);
+  const bindTabMenu = useLongPress(setTabMenu);
+  const closeTabMenu = useCallback(() => setTabMenu(null), []);
+  useEffect(() => setTabMenu(null), [activeTab]);
   const [dropInsertIndex, setDropInsertIndex] = useState(null);
 
   const sessionMap = useMemo(() => {
@@ -58,6 +79,10 @@ function SessionTabBar({
 
   // 滾輪（垂直）轉橫向捲動分頁列；React onWheel 為 passive，需原生 listener 才能 preventDefault
   const hasTabs = Array.isArray(tabs) && tabs.length > 0;
+  const closeTabs = ids => {
+    ids.forEach(id => onCloseTab?.(id));
+    focusSessionTabAfterClose(tabBarRef);
+  };
   useEffect(() => {
     const el = tabBarRef.current;
     if (!el) return undefined;
@@ -94,6 +119,7 @@ function SessionTabBar({
   };
 
   return (
+    <>
     <div
       ref={tabBarRef}
       role="tablist"
@@ -153,6 +179,8 @@ function SessionTabBar({
         return (
           <div
             key={tabId}
+            data-session-tab-id={tabId}
+            {...bindTabMenu({ sessionId: tabId })}
             title={s.name || tabId}
             draggable={isWideScreen ? true : undefined}
             onDragStart={(e) => {
@@ -284,6 +312,20 @@ function SessionTabBar({
         />
       )}
     </div>
+    <ContextMenu menu={tabs.includes(tabMenu?.sessionId) ? tabMenu : null} onClose={closeTabMenu} label="分頁操作" items={[
+      ...(isWideScreen && onMoveTab ? [{ label: '移到另一個窗格', disabled: groupCount === 1 && tabs.length < 2,
+        reason: '至少需要兩個分頁才能分割', onSelect: () => {
+          const id = tabMenu.sessionId;
+          onMoveTab(id);
+          requestAnimationFrame(() => Array.from(document.querySelectorAll('.session-tab'))
+            .find(element => element.dataset.sessionTabId === id)?.querySelector('[role="tab"]')?.focus());
+        } }, { separator: true }] : []),
+      { label: '關閉分頁', onSelect: () => closeTabs([tabMenu.sessionId]) },
+      { label: '關閉其他分頁', disabled: tabs.length < 2, onSelect: () => closeTabs(contextTabCloseIds(tabs, tabMenu.sessionId, 'others')) },
+      { label: '關閉右側分頁', disabled: tabs.indexOf(tabMenu?.sessionId) === tabs.length - 1,
+        onSelect: () => closeTabs(contextTabCloseIds(tabs, tabMenu.sessionId, 'right')) },
+    ]} />
+    </>
   );
 }
 
@@ -299,6 +341,7 @@ function SessionGroupFrame({
   isWideScreen = true,
   onSelectTab,
   onCloseTab,
+  onMoveTab,
   onFocusGroup,
   onDropOnTabBar,
   onDropOnContent,
@@ -359,6 +402,8 @@ function SessionGroupFrame({
         isWideScreen={isWideScreen}
         onSelectTab={onSelectTab}
         onCloseTab={onCloseTab}
+        onMoveTab={onMoveTab}
+        groupCount={groupCount}
         onDropOnTabBar={onDropOnTabBar}
       />
       <div

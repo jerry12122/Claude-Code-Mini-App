@@ -126,10 +126,12 @@ func TestToolLabel(t *testing.T) {
 		line string
 		want string
 	}{
-		{"read", `{"type":"tool_call","subtype":"started","call_id":"1","tool_call":{"readToolCall":{"args":{"path":"README.md"}}}}`, "讀取檔案中…"},
-		{"write", `{"type":"tool_call","subtype":"started","call_id":"2","tool_call":{"writeToolCall":{"args":{"path":"a.go"}}}}`, "修改檔案中…"},
-		{"function", `{"type":"tool_call","subtype":"started","call_id":"3","tool_call":{"function":{"name":"grep","arguments":"{}"}}}`, "呼叫工具 grep…"},
-		{"unknown-suffix", `{"type":"tool_call","subtype":"started","call_id":"4","tool_call":{"searchToolCall":{"args":{}}}}`, "使用工具 search…"},
+		{"read", `{"type":"tool_call","subtype":"started","call_id":"1","tool_call":{"readToolCall":{"args":{"path":"README.md"}}}}`, "讀取檔案：README.md"},
+		{"write", `{"type":"tool_call","subtype":"started","call_id":"2","tool_call":{"writeToolCall":{"args":{"path":"a.go"}}}}`, "修改檔案：a.go"},
+		{"function", `{"type":"tool_call","subtype":"started","call_id":"3","tool_call":{"function":{"name":"grep","arguments":"{}"}}}`, "grep"},
+		{"unknown-suffix", `{"type":"tool_call","subtype":"started","call_id":"4","tool_call":{"searchToolCall":{"args":{}}}}`, "search"},
+		{"command", `{"type":"tool_call","subtype":"started","tool_call":{"shellToolCall":{"args":{"command":"go test ./..."}}}}`, "shell：go test ./..."},
+		{"encoded-arguments", `{"type":"tool_call","subtype":"started","tool_call":{"function":{"name":"Bash","arguments":"{\"command\":\"git status\"}"}}}`, "Bash：git status"},
 		{"empty", `{"type":"tool_call","subtype":"started","call_id":"5"}`, ""},
 	}
 	for _, c := range cases {
@@ -142,6 +144,29 @@ func TestToolLabel(t *testing.T) {
 				t.Errorf("ToolLabel() = %q, want %q", got, c.want)
 			}
 		})
+	}
+}
+
+func TestDispatchToolActivityLifecycle(t *testing.T) {
+	var activities []string
+	var deltas []string
+	var st dispatchState
+	for _, subtype := range []string{"started", "completed"} {
+		e, err := ParseEvent([]byte(`{"type":"tool_call","subtype":"` + subtype + `","tool_call":{"readToolCall":{"args":{"path":"a.go"},"result":{"success":{"content":"file contents"}}}}}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		(&Runner{}).dispatch(e, func(e agent.Event) {
+			if e.Type == agent.EventActivity {
+				activities = append(activities, e.Text)
+			}
+			if e.Type == agent.EventDelta {
+				deltas = append(deltas, e.Text)
+			}
+		}, &st)
+	}
+	if strings.Join(activities, "|") != "讀取檔案：a.go|工具已結束：讀取檔案：a.go" || len(deltas) != 0 {
+		t.Fatalf("activities=%v deltas=%v", activities, deltas)
 	}
 }
 
