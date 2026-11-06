@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Agent Console · UX 提案預覽</title>
+<link rel="icon" href="../../internal/static/favicon.ico">
+<style>
+@font-face{font-family:Manrope;src:url('../../internal/static/js/vendor/manrope-latin-wght-normal.woff2')}@font-face{font-family:JetBrains;src:url('../../internal/static/js/vendor/jetbrains-mono-latin-wght-normal.woff2')}
+*{box-sizing:border-box}body{margin:0;background:#edf0f5;color:#202738;font:14px/1.65 Manrope,system-ui,sans-serif}button,input,select,textarea{font:inherit}button,select,summary{cursor:pointer}button{color:inherit}button:disabled{cursor:not-allowed;opacity:.55}button:focus-visible,a:focus-visible,select:focus-visible,textarea:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid #9b8afb;outline-offset:3px}svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}button svg{pointer-events:none}[hidden]{display:none!important}.sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%)}
+.review{max-width:1600px;margin:auto;padding:24px 28px 14px}.review-top{display:flex;justify-content:space-between;align-items:center;gap:16px}.review h1{font-size:21px;letter-spacing:-.5px;margin:0}.review p{margin:4px 0 16px;color:#536176}.review-tools{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px}.review-tools label{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600}.review select,.review button{min-height:36px;border:1px solid #c9d0dc;border-radius:7px;padding:5px 10px;background:#fff}.review button:hover{background:#f6f7fb}.review-tools .push{margin-left:auto}.stage{padding:8px 20px 22px;overflow:auto}.frame{--bg:#0c1019;--sunken:#080c13;--card:#141a26;--raised:#202838;--line:#30394a;--text:#eef0f6;--secondary:#bbc4d5;--muted:#9aa7bc;--accent:#b5a6ff;--accent-bg:#28223d;--button:#7864db;--warn:#f5cb82;--warn-bg:#2d2417;--ok:#7ed8b0;--danger:#ffb0b4;color-scheme:dark;container-type:inline-size;background:var(--bg);color:var(--text);border:1px solid #c0c7d4;border-radius:12px;overflow:hidden;margin:0 auto;width:100%;max-width:1520px;box-shadow:0 12px 40px #23304a12;font-size:14px;line-height:1.7}.frame[data-theme=light]{--bg:#f8f9fc;--sunken:#f0f2f7;--card:#fff;--raised:#e9edf5;--line:#c9d0df;--text:#202738;--secondary:#414f65;--muted:#55647a;--accent:#6145b0;--accent-bg:#ece7fb;--button:#6c51c7;--warn:#79500b;--warn-bg:#fff4da;--ok:#207150;--danger:#a82c40;color-scheme:light}.frame[data-device=narrow]{max-width:680px}.frame[data-device=mobile]{max-width:390px}.frame[data-density=compact]{font-size:13px;--control:32px;--body:14px;--space:20px}.frame[data-density=readable]{--control:36px;--body:15px;--space:26px}.app{display:grid;grid-template-columns:240px minmax(0,1fr);height:720px}.frame button,.frame select,.frame input,.frame textarea{color:var(--text)}.icon-btn{display:inline-flex;align-items:center;justify-content:center;width:var(--control);height:var(--control);padding:0;border:0;border-radius:7px;background:transparent;flex-shrink:0}.icon-btn:hover,.text-btn:hover{background:var(--raised)}.text-btn{min-height:var(--control);display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:5px 10px;border:1px solid var(--line);border-radius:7px;background:transparent;white-space:nowrap;font-size:12px}.primary{background:var(--button)!important;border-color:transparent!important;color:#fff!important}.secondary{color:var(--secondary)}.muted{color:var(--muted)}.mono,code,pre{font-family:JetBrains,ui-monospace,monospace}.mono{font-size:12px}.sidebar{background:var(--sunken);border-right:1px solid var(--line);padding:18px 12px;display:flex;flex-direction:column;min-width:0}.brand{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:750;margin:0 8px 22px}.brand-mark{background:#7864db;border-radius:7px;width:25px;height:25px;display:grid;place-items:center;color:#fff;font-size:14px}.search{width:100%;min-width:0;background:var(--card);border:1px solid var(--line);padding:9px 10px;border-radius:8px;margin-bottom:24px;font-size:12px}.project{margin:0 8px 8px;display:flex;align-items:center;gap:7px;color:var(--secondary);font-size:12px;font-weight:650}.session{display:flex;align-items:center;gap:9px;width:100%;text-align:left;border:1px solid transparent;border-radius:7px;padding:9px;margin-bottom:4px;background:transparent;font-size:12px;min-width:0}.session[aria-current=true]{background:var(--accent-bg);border-color:var(--accent);color:var(--text)}.session:hover{background:var(--raised)}.session-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.agent-mark{width:23px;height:23px;display:grid;place-items:center;border-radius:5px;background:var(--raised);color:var(--accent);font-size:11px;font-weight:700;flex-shrink:0}.count{margin-left:auto;border-radius:10px;padding:0 6px;background:var(--button);color:#fff;font-size:10px}.sidebar-bottom{margin-top:auto;padding-top:20px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}.workspace{display:grid;grid-template-columns:minmax(0,1fr);min-width:0;overflow:hidden}.workspace.split{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.panel{min-width:0;display:flex;flex-direction:column;overflow:hidden}.panel+.panel{border-left:1px solid var(--line)}.tabs{display:flex;align-items:center;gap:4px;padding:6px 8px 0;background:var(--sunken);border-bottom:1px solid var(--line);overflow-x:auto;flex-shrink:0}.tab-shell{display:flex;align-items:center;min-width:0;flex-shrink:0;border-radius:7px 7px 0 0;border:1px solid transparent;border-bottom:0}.tab-shell:has([aria-selected=true]){border-color:var(--line);background:var(--card);box-shadow:inset 0 2px var(--accent)}.tab{padding:9px 8px 10px 10px;border:0;background:transparent;max-width:190px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)!important;font-size:12px}.tab[aria-selected=true]{color:var(--text)!important}.tab-close{width:26px;height:28px;margin:0 4px 0 0}.tab-close svg{width:13px;height:13px}.tab-shell:not(:has([aria-selected=true])) .tab-close{opacity:.45}.tab-shell:focus-within .tab-close,.tab-shell:hover .tab-close{opacity:1}.chat-head{padding:18px var(--space) 14px;border-bottom:1px solid var(--line);flex-shrink:0}.head-main{display:flex;align-items:center;gap:10px;min-width:0}.head-main h2{font-size:15px;line-height:1.5;margin:0;min-width:0;overflow-wrap:anywhere}.head-actions{display:flex;gap:4px;margin-left:auto;flex-shrink:0}.status-chip{color:var(--ok);background:var(--card);border:1px solid var(--line);border-radius:5px;font-size:11px;font-weight:650;padding:2px 7px;white-space:nowrap}.status-chip[data-state=approval],.status-chip[data-state=offline]{color:var(--warn)}.status-chip[data-state=error]{color:var(--danger)}.header-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;color:var(--muted)}.path{max-width:100%;min-width:0}.path summary{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;list-style:none}.path[open] summary{white-space:normal;overflow-wrap:anywhere}.path small{display:block;color:var(--secondary);overflow-wrap:anywhere}.quota{display:flex;align-items:center;gap:7px;color:var(--secondary);font-size:12px;font-variant-numeric:tabular-nums}.track{width:48px;height:4px;border-radius:2px;background:var(--line);overflow:hidden}.track span{display:block;height:100%;width:42%;background:var(--accent)}.quota .icon-btn{width:28px;height:28px}.quota .icon-btn svg{width:14px;height:14px}.mobile-back{display:none}.notice{padding:10px var(--space);background:var(--warn-bg);color:var(--warn);border-bottom:1px solid var(--line);display:flex;align-items:flex-start;gap:9px;font-size:12px}.notice strong{font-weight:650}.messages{flex:1;overflow:auto;min-height:0;padding:22px var(--space);scrollbar-gutter:stable}.message{font-size:var(--body);max-width:74ch;line-height:1.85}.message p{margin:8px 0 12px}.user{margin-left:auto;max-width:88%;background:#665ed0;color:#fff;border-radius:12px 12px 3px 12px;padding:12px 16px}.author{display:flex;align-items:center;gap:8px;margin:24px 0 12px;font-size:12px;font-weight:750}.message pre{padding:14px 16px;margin:14px 0;border:1px solid var(--line);border-radius:8px;overflow-x:auto;color:var(--secondary);font-size:12px;line-height:1.85;background:var(--sunken)}.code-key{color:var(--accent)}.message-actions{display:flex;align-items:center;gap:3px;margin-top:12px;font-size:11px;color:var(--muted)}.message-actions .icon-btn{color:var(--muted);width:32px;height:32px}.permission{border:1px solid var(--line);border-radius:9px;background:var(--card);padding:14px;margin-top:20px;font-size:13px}.permission strong{color:var(--warn)}.permission pre{font-size:12px;margin:10px 0;overflow:auto;padding:10px;background:var(--sunken);border-radius:5px}.permission-actions{display:flex;gap:8px;flex-wrap:wrap}.permission .text-btn{min-height:36px}.composer-wrap{padding:14px var(--space) 18px;border-top:1px solid var(--line);padding-bottom:max(18px,env(safe-area-inset-bottom))}.composer{--control:32px;padding:8px 12px;background:var(--card);border:1px solid var(--line);border-radius:11px}.composer:focus-within{border-color:var(--accent)}.composer textarea{display:block;resize:vertical;width:100%;min-height:48px;max-height:150px;border:0;background:transparent;font-size:14px;line-height:1.7;padding:0 2px}.composer textarea::placeholder{color:var(--muted)}.composer textarea:focus-visible{outline:0}.composer-tools{display:grid;grid-template-columns:var(--control) minmax(44px,84px) minmax(60px,132px) minmax(44px,72px) minmax(var(--control),1fr);align-items:center;gap:4px;min-width:0;margin-top:8px}.composer select{width:100%;min-width:0;height:32px;min-height:32px;border:0;border-radius:6px;max-width:135px;padding:3px 7px;background:var(--raised);font-size:12px}.send{margin-left:0;justify-self:end;grid-column:5}.send svg{width:17px;height:17px}.composer-help{margin:8px 1px 0;font-size:11px;color:var(--muted)}.secondary-panel .messages{color:var(--secondary)}.secondary-panel .chat-head{padding-top:19px}.activity{font-size:12px;color:var(--secondary);padding:10px 0}.dot{width:6px;height:6px;border-radius:50%;background:var(--ok);display:inline-block;margin-right:6px}.review-notes{max-width:1520px;margin:auto;padding:0 28px 28px;color:#536176;font-size:12px}.review-notes strong{color:#202738}.review-notes p{margin:5px 0}.feedback{min-height:22px;font-size:12px;color:#395685}.frame[data-device=narrow] .app,.frame[data-device=mobile] .app{grid-template-columns:minmax(0,1fr)}.frame[data-device=narrow] .sidebar,.frame[data-device=mobile] .sidebar,.frame[data-device=narrow] .secondary-panel,.frame[data-device=mobile] .secondary-panel{display:none}.frame[data-device=narrow] .workspace,.frame[data-device=mobile] .workspace{grid-template-columns:minmax(0,1fr)}.frame[data-device=mobile]{--control:44px;--space:16px;--body:15px}.frame[data-device=mobile] .app{height:740px}.frame[data-device=mobile] .tabs{display:none}.frame[data-device=mobile] .chat-head{padding-top:12px;padding-bottom:12px}.frame[data-device=mobile] .mobile-back{display:inline-flex}.frame[data-device=mobile] .head-main{flex-wrap:wrap;gap:6px}.frame[data-device=mobile] .head-main h2{flex:1;font-size:14px}.frame[data-device=mobile] .head-actions{margin-left:0}.frame[data-device=mobile] .desktop-only{display:none}.frame[data-device=mobile] .status-chip{margin-left:50px}.frame[data-device=mobile] .header-meta{margin-top:4px;gap:5px}.frame[data-device=mobile] .quota .icon-btn,.frame[data-device=mobile] .message-actions .icon-btn{width:44px;height:44px}.frame[data-device=mobile] .composer textarea{font-size:16px}.frame[data-device=mobile] .composer select{width:100%;min-width:0;height:32px;min-height:32px;font-size:12px}.frame[data-device=mobile] .model{max-width:140px}.frame[data-device=mobile] .permission-select{max-width:110px}.frame[data-device=mobile] .effort{max-width:80px}.frame[data-device=mobile] .permission .text-btn{min-height:44px}.frame[data-device=mobile] .message pre{font-size:12px}.frame[data-device=mobile] .composer-help{display:none}.frame[data-device=mobile] .user{max-width:95%}.frame[data-device=mobile] .messages{padding-top:16px}.frame[data-device=mobile] .composer-wrap{padding:10px 12px 12px}.frame[data-device=mobile] .composer{padding:8px 10px}.frame[data-device=mobile] .composer-tools{grid-template-columns:32px minmax(44px,.9fr) minmax(60px,1.5fr) minmax(44px,.8fr) 32px;gap:4px}.frame[data-device=mobile] .composer select{font-size:12px;padding:0 16px 0 6px;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 9px) 50%,calc(100% - 6px) 50%;background-size:3px 3px;background-repeat:no-repeat}.composer-tools .permission-select{grid-column:2}.composer-tools .model{grid-column:3}.composer-tools .effort{grid-column:4}.composer-tools:has(.permission-select[hidden]) .model{grid-column:2/4}.frame[data-device=mobile] .send{margin-left:0;justify-self:end;grid-column:5}
+@container(max-width:1150px){.sidebar{padding-left:8px;padding-right:8px}.app{grid-template-columns:210px minmax(0,1fr)}.head-main{flex-wrap:wrap}.head-actions{margin-left:auto}.head-main h2{flex:1}.status-chip{order:3}.header-meta{gap:4px}.chat-head{padding-left:18px;padding-right:18px}}
+@media(max-width:700px){.review{padding:16px}.review-top{align-items:flex-start}.review h1{font-size:18px}.review-tools{gap:9px}.review-tools .push{margin-left:0}.stage{padding:5px 8px 15px}.review-notes{padding:0 16px 20px}.frame{border-radius:9px}.review-top>button{font-size:11px;flex-shrink:0}.review select,.review button{min-height:44px}.review-tools label{flex-wrap:wrap}}
+dialog{width:min(1100px,95vw);padding:18px;border:1px solid #c9d0dc;border-radius:12px;background:#fff;color:#202738}dialog::backdrop{background:#0c1019a6}.dialog-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}.dialog-head h2{margin:0;font-size:16px}dialog button{min-height:44px;border:1px solid #c9d0dc;background:#f6f7fb;border-radius:6px;padding:6px 12px}dialog img{width:100%;height:auto;display:block}#sessions-dialog{width:min(440px,95vw)}#sessions-dialog .session{color:#202738;min-height:44px}#sessions-dialog .session:hover{background:#edf0f5}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<svg hidden aria-hidden="true"><defs>
+<symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol><symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></symbol><symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H3v13h5"/></symbol><symbol id="i-attach" viewBox="0 0 24 24"><path d="m8 13 7-7a3 3 0 0 1 4 4L10 19a5 5 0 0 1-7-7L13 2m-3 11 6-6"/></symbol><symbol id="i-split" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></symbol><symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol><symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 10a8 8 0 1 0-1 7M20 4v6h-6"/></symbol><symbol id="i-back" viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></symbol><symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6h7l2 3h9v11H3Z"/></symbol><symbol id="i-warn" viewBox="0 0 24 24"><path d="m12 3 10 18H2Zm0 6v5m0 3v1"/></symbol>
+</defs></svg>
+<header class="review">
+ <div class="review-top"><h1>Agent Console · 操作細節提案</h1><button id="show-original" type="button">對照現有截圖</button></div>
+ <p>保留現有輸入列的順序與單列排列，局部修正操作細節。獨立 prototype，以下皆為示範資料，不會執行指令或送出訊息。</p>
+ <div class="review-tools">
+  <label>預覽範圍 <select id="device"><option value="desktop">桌面工作區</option><option value="narrow">分割窄欄 · 680px</option><option value="mobile">手機 · 390px</option></select></label>
+  <label>閱讀密度 <select id="density"><option value="readable">易讀 · 提案</option><option value="compact" selected>緊湊 · 沿用現有密度</option></select></label>
+  <label>主題 <select id="theme"><option value="dark">深色</option><option value="light">淺色</option></select></label>
+  <label>情境 <select id="scenario"><option value="normal">一般對話</option><option value="approval">待授權</option><option value="offline">連線中斷</option><option value="error">操作失敗</option></select></label>
+  <button type="button" id="check" class="push">檢查 prototype</button>
+ </div>
+ <div class="feedback" id="review-feedback" role="status" aria-live="polite">試試 Tab 聚焦分頁，再用左右方向鍵、Home／End 切換。</div>
+</header>
+<main class="stage">
+ <div class="frame" id="frame" data-device="desktop" data-density="compact" data-theme="dark">
+ <div class="app">
+  <aside class="sidebar" aria-label="會話導覽">
+   <div class="brand"><span class="brand-mark" aria-hidden="true">▣</span>Agent Console</div>
+   <label class="sr-only" for="search">搜尋示範會話</label><input id="search" class="search" type="search" placeholder="搜尋會話…">
+   <div class="project"><svg aria-hidden="true"><use href="#i-folder"/></svg>claude-miniapp</div>
+   <button type="button" class="session" data-session="0" aria-current="true"><span class="agent-mark">C</span><span class="session-name">修正串流回覆重複顯示</span></button>
+   <button type="button" class="session" data-session="1"><span class="agent-mark">X</span><span class="session-name">整理前端無障礙檢查</span><span class="count" aria-label="1 則未讀">1</span></button>
+   <div class="project" style="margin-top:26px"><svg aria-hidden="true"><use href="#i-folder"/></svg>api-server</div>
+   <button type="button" class="session" data-session="2"><span class="agent-mark">C</span><span class="session-name">補上工作佇列回歸測試</span></button>
+   <div class="sidebar-bottom">示範工作區<br>保留專案分組與既有會話結構</div>
+  </aside>
+  <div class="workspace split" id="workspace">
+  <section class="panel" aria-label="主要會話">
+   <div class="tabs" role="tablist" aria-label="示範會話分頁">
+    <div class="tab-shell"><button type="button" id="tab-0" class="tab" role="tab" aria-selected="true" aria-controls="chat-content" tabindex="0" data-index="0">修正串流回覆重複顯示</button><button type="button" class="icon-btn tab-close" aria-label="關閉修正串流回覆重複顯示分頁" data-close="0"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>
+    <div class="tab-shell"><button type="button" id="tab-1" class="tab" role="tab" aria-selected="false" aria-controls="chat-content" tabindex="-1" data-index="1">整理前端無障礙檢查</button><button type="button" class="icon-btn tab-close" aria-label="關閉整理前端無障礙檢查分頁" data-close="1"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>
+   </div>
+   <div class="chat-head">
+    <div class="head-main">
+     <button type="button" class="icon-btn mobile-back" id="open-sessions" aria-label="切換會話"><svg aria-hidden="true"><use href="#i-back"/></svg></button>
+     <h2 id="chat-title">修正串流回覆重複顯示</h2>
+     <span class="status-chip" id="state-chip" data-state="normal">待命</span>
+     <div class="head-actions"><button type="button" class="icon-btn desktop-only" id="toggle-split" aria-label="切換分割檢視" aria-pressed="true"><svg aria-hidden="true"><use href="#i-split"/></svg></button><button type="button" class="icon-btn" id="more" aria-label="查看會話完整名稱"><svg aria-hidden="true"><use href="#i-more"/></svg></button></div>
+    </div>
+    <div class="header-meta">
+     <details class="path mono"><summary title="展開完整工作目錄">claude-miniapp / feature/stream-recovery</summary><small>C:\Users\user\Documents\Repo\claude-miniapp<br>分支：feature/stream-recovery</small></details>
+     <div class="quota"><span>5h</span><span class="track" aria-hidden="true"><span></span></span><span>42%</span><span class="muted">週 24%</span><button type="button" class="icon-btn" aria-label="刷新帳戶用量" id="refresh"><svg aria-hidden="true"><use href="#i-refresh"/></svg></button></div>
+    </div>
+   </div>
+   <div class="notice" id="notice" role="status" hidden><svg aria-hidden="true"><use href="#i-warn"/></svg><span id="notice-text"></span></div>
+   <div class="messages" id="chat-content" role="tabpanel" aria-labelledby="tab-0" tabindex="0">
+    <div class="message user"><p style="margin:0">檢查連線恢復後，為什麼最後一段回覆會顯示兩次。先找原因，再告訴我需要改哪些地方。</p></div>
+    <div class="author"><span class="agent-mark" id="message-agent">C</span><span id="agent-name">Claude</span><span class="muted" style="font-weight:400">14:32</span></div>
+    <article class="message" id="reply">
+     <p>重連時，歷史訊息和串流片段會各自加入同一則回覆。目前缺少穩定的訊息識別，所以畫面把它們當成兩則訊息。</p>
+     <p>我建議沿用訊息 ID 合併，並保留你正在閱讀的位置：</p>
+     <pre tabindex="0" aria-label="示範程式碼，可水平捲動"><code><span class="code-key">const</span> existing = messages.find(m =&gt; m.id === incoming.id);
+<span class="code-key">if</span> (existing) mergeMessage(existing, incoming);
+<span class="code-key">else</span> messages.push(incoming);</code></pre>
+     <p>這次只需要調整訊息合併。工作佇列、權限模式與輸入框的草稿都可以維持原本行為。</p>
+     <div class="message-actions"><span>14:33</span><button type="button" class="icon-btn" id="copy" aria-label="複製示範回覆"><svg aria-hidden="true"><use href="#i-copy"/></svg></button></div>
+    </article>
+    <section class="permission" id="permission" aria-label="工具執行授權" hidden><strong>Claude 正在等待你的授權</strong><p>將在目前工作目錄執行以下指令：</p><pre>node --test scripts/telegram-chat.test.cjs</pre><div class="permission-actions"><button type="button" class="text-btn primary" data-permission="允許一次">允許一次</button><button type="button" class="text-btn" data-permission="拒絕">拒絕</button></div><p class="muted" style="margin-bottom:0">示範操作，不會執行指令。</p></section>
+   </div>
+   <div class="composer-wrap"><form id="composer-form" class="composer" aria-label="訊息輸入區">
+    <label class="sr-only" for="draft">傳給 Agent 的訊息</label><textarea id="draft" placeholder="輸入訊息，或用 @ 提及會話…">先列出需要修改的檔案，暫時不要動程式。</textarea>
+    <div class="composer-tools"><button type="button" class="icon-btn" id="attachment" aria-label="示範加入附件"><svg aria-hidden="true"><use href="#i-attach"/></svg></button><label class="sr-only" for="permission-mode">權限模式</label><select id="permission-mode" class="permission-select"><option>預設</option><option>唯讀</option></select><label class="sr-only" for="model">模型</label><select id="model" class="model"><option>預設</option><option>Claude Sonnet</option></select><label class="sr-only" for="effort">思考強度</label><select id="effort" class="effort"><option>high</option><option>medium</option></select><button type="submit" class="icon-btn primary send" id="send" aria-label="示範送出訊息"><svg aria-hidden="true"><use href="#i-send"/></svg></button></div>
+   </form><p class="composer-help" id="composer-help">示範草稿 · Enter 換行，按送出只展示回饋</p></div>
+  </section>
+  <section class="panel secondary-panel" aria-label="另一個分割群組">
+   <div class="tabs"><span class="tab" style="color:var(--text)!important">補上工作佇列回歸測試</span></div>
+   <div class="chat-head"><div class="head-main"><h2>補上工作佇列回歸測試</h2><span class="status-chip">待命</span></div><div class="header-meta mono">api-server / fix/queue-resume</div></div>
+   <div class="messages"><div class="message user">整理失敗與重試的邊界，保留目前佇列順序。</div><div class="author"><span class="agent-mark">X</span>Codex<span class="muted" style="font-weight:400">14:35</span></div><div class="message"><p>需要驗證三個情境：</p><p>連線中斷時保留尚未送出的輸入。<br>任務失敗後暫停佇列。<br>恢復執行時沿用原本順序。</p><pre tabindex="0" aria-label="另一會話的示範程式碼"><code>queued → running → completed
+                 ↘ failed → paused</code></pre><p>測試結果會顯示在同一個會話，方便你確認再繼續。</p></div></div>
+   <div class="composer-wrap"><div class="activity"><span class="dot" aria-hidden="true"></span>此群組為版面示意，可用頂欄按鈕合併。</div></div>
+  </section>
+  </div>
+ </div>
+ </div>
+</main>
+<footer class="review-notes"><p><strong>這輪討論：</strong>選單與按鈕已恢復現有的 32px 高度；保留原本單列排列，送出維持最右側。</p><p>「緊湊」是密度比較，並非逐像素還原現有畫面。正式功能以現有規格為準；prototype 中省略的工具不代表刪除。</p></footer>
+<dialog id="original-dialog" aria-labelledby="original-title"><div class="dialog-head"><h2 id="original-title">文件中的現有介面截圖</h2><button type="button" data-dismiss>關閉</button></div><img src="../images/split-view.png" width="1902" height="879" alt="現有 Agent Console 的側欄、分頁及雙群組聊天畫面"><p>來自 docs/images/split-view.png，作為原有風格參考。</p></dialog>
+<dialog id="sessions-dialog" aria-labelledby="sessions-title"><div class="dialog-head"><h2 id="sessions-title">切換示範會話</h2><button type="button" data-dismiss>關閉</button></div><button type="button" class="session" data-session="0">修正串流回覆重複顯示</button><button type="button" class="session" data-session="1">整理前端無障礙檢查</button></dialog>
+<script>
+// ponytail: one static review file; all actions stay in this page, with no service calls.
+const $ = id => document.getElementById(id);
+const names = ['修正串流回覆重複顯示', '整理前端無障礙檢查', '補上工作佇列回歸測試'];
+let active = 0;
+const say = message => { $('review-feedback').textContent = message; };
+function selectSession(index, focus = false) {
+  active = index;
+  document.querySelectorAll('.tab').forEach(tab => {
+    if (!tab.hasAttribute('role')) return;
+    const selected = Number(tab.dataset.index) === index;
+    tab.setAttribute('aria-selected', String(selected)); tab.tabIndex = selected ? 0 : -1;
+    tab.nextElementSibling.tabIndex = selected ? 0 : -1;
+    if (selected) { tab.parentElement.hidden = false; $('chat-content').setAttribute('aria-labelledby', tab.id); if (focus) tab.focus(); }
+  });
+  document.querySelectorAll('[data-session]').forEach(button => button.setAttribute('aria-current', String(Number(button.dataset.session) === index)));
+  $('chat-title').textContent = names[index];
+  $('agent-name').textContent = index === 1 ? 'Codex' : 'Claude';
+  $('message-agent').textContent = index === 1 ? 'X' : 'C';
+  $('permission-mode').hidden = index === 1;
+  $('model').options[0].textContent = '預設';
+  $('model').options[1].textContent = index === 1 ? 'Codex 預設' : 'Claude Sonnet';
+  say('已切換示範會話：' + names[index] + '。訊息內容為共用示範，不代表真實紀錄。');
+}
+document.querySelectorAll('[data-session]').forEach(button => button.addEventListener('click', () => {
+  if (Number(button.dataset.session) === 2) { say('此示範會話顯示在右側群組。'); return; }
+  selectSession(Number(button.dataset.session)); if ($('sessions-dialog').open) $('sessions-dialog').close();
+}));
+document.querySelectorAll('[role=tab]').forEach(tab => {
+  tab.addEventListener('click', () => selectSession(Number(tab.dataset.index)));
+  tab.addEventListener('keydown', event => {
+    const tabs = [...document.querySelectorAll('[role=tab]')].filter(item => !item.parentElement.hidden);
+    const current = tabs.indexOf(tab);
+    const targets = { ArrowRight: (current + 1) % tabs.length, ArrowLeft: (current - 1 + tabs.length) % tabs.length, Home: 0, End: tabs.length - 1 };
+    if (!(event.key in targets)) return;
+    event.preventDefault(); selectSession(Number(tabs[targets[event.key]].dataset.index), true);
+  });
+});
+document.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => {
+  const remaining = [...document.querySelectorAll('[role=tab]')].filter(tab => !tab.parentElement.hidden && tab !== button.previousElementSibling);
+  if (!remaining.length) { say('保留最後一個示範分頁，方便繼續比較。正式關閉行為仍依既有規格。'); return; }
+  button.parentElement.hidden = true;
+  if (Number(button.dataset.close) === active) selectSession(Number(remaining[0].dataset.index), true);
+  else document.querySelector('[role=tab][aria-selected=true]').focus();
+}));
+function setScenario(value) {
+  $('scenario').value = value;
+  $('notice').hidden = !['offline','error'].includes(value);
+  $('permission').hidden = value !== 'approval';
+  $('state-chip').dataset.state = value;
+  $('state-chip').textContent = {normal:'待命',approval:'待授權',offline:'連線中斷',error:'操作失敗'}[value];
+  $('notice-text').textContent = value === 'offline' ? '連線中斷，正在重新連線。你可以繼續編輯，草稿會保留在輸入框。' : '操作未送出，草稿仍在。請確認連線後再試一次。';
+  $('send').disabled = value === 'offline';
+  if (value === 'approval') $('chat-content').scrollTop = $('chat-content').scrollHeight;
+  if (value === 'normal') $('chat-content').scrollTop = 0;
+  $('composer-help').textContent = value === 'offline' ? '連線中斷 · 可繼續編輯草稿' : '示範草稿 · Enter 換行，按送出只展示回饋';
+}
+['device','density','theme'].forEach(id => $(id).addEventListener('change', () => { $('frame').dataset[id] = $(id).value; }));
+$('scenario').addEventListener('change', () => setScenario($('scenario').value));
+$('composer-form').addEventListener('submit', event => { event.preventDefault(); if ($('send').disabled) return; say('示範：' + ($('draft').value.trim() ? '已展示送出回饋，草稿保留供比較；沒有傳送任何訊息。' : '請先輸入訊息。')); });
+$('toggle-split').addEventListener('click', () => { const split = $('workspace').classList.toggle('split'); $('toggle-split').setAttribute('aria-pressed', String(split)); $('workspace').querySelector('.secondary-panel').hidden = !split; });
+$('show-original').addEventListener('click', () => $('original-dialog').showModal());
+$('open-sessions').addEventListener('click', () => $('sessions-dialog').showModal());
+document.querySelectorAll('[data-dismiss]').forEach(button => button.addEventListener('click', () => button.closest('dialog').close()));
+$('refresh').addEventListener('click', () => say('示範：用量已更新。5 小時用量 42%，每週用量 24%。'));
+$('more').addEventListener('click', () => say('完整會話名稱：' + names[active]));
+$('attachment').addEventListener('click', () => say('此 prototype 只討論附件按鈕的位置與點擊範圍，不會上傳檔案。'));
+$('copy').addEventListener('click', () => say('示範：回覆已複製的提示位置；此頁不會改動剪貼簿。'));
+document.querySelectorAll('[data-permission]').forEach(button => button.addEventListener('click', () => { say('示範：已選擇「' + button.dataset.permission + '」，不會執行指令。'); setScenario('normal'); }));
+$('search').addEventListener('input', () => document.querySelectorAll('.sidebar [data-session]').forEach(button => { button.hidden = !button.textContent.toLowerCase().includes($('search').value.toLowerCase()); }));
+function runPrototypeChecks() {
+  const saved = { active, draft: $('draft').value, scenario: $('scenario').value, device: $('frame').dataset.device, focus: document.activeElement, width: $('frame').style.width };
+  $('frame').dataset.device = 'desktop';
+  const results = [];
+  const check = (condition, message) => { if (!condition) throw Error(message); results.push(message); };
+  try {
+    document.querySelectorAll('.tab-shell').forEach(shell => { shell.hidden = false; });
+    selectSession(0, true);
+    check(document.querySelectorAll('[role=tab][tabindex="0"]').length === 1, '單一分頁 Tab 入口');
+    $('tab-0').dispatchEvent(new KeyboardEvent('keydown', { key:'ArrowRight', bubbles:true }));
+    check(active === 1 && document.activeElement === $('tab-1'), '方向鍵同步分頁與焦點');
+    $('tab-1').dispatchEvent(new KeyboardEvent('keydown', { key:'ArrowRight', bubbles:true }));
+    check(active === 0, '方向鍵首尾循環');
+    $('tab-0').dispatchEvent(new KeyboardEvent('keydown', { key:'End', bubbles:true }));
+    check(active === 1, 'End 到最後分頁');
+    $('tab-1').dispatchEvent(new KeyboardEvent('keydown', { key:'Home', bubbles:true }));
+    check(active === 0, 'Home 到第一分頁');
+    $('draft').value = 'prototype check 草稿'; setScenario('offline');
+    check($('draft').value === 'prototype check 草稿' && !$('draft').disabled && $('send').disabled, '離線保留可編輯草稿');
+    setScenario('approval'); check(!$('permission').hidden, '待授權保留明確操作');
+    setScenario('error'); check(!$('notice').hidden && $('draft').value === 'prototype check 草稿', '失敗提示與輸入保留');
+    document.querySelector('[data-close="0"]').click();
+    check(active === 1 && document.activeElement === $('tab-1'), '關閉作用中分頁後移交焦點');
+    selectSession(0);
+    $('frame').dataset.device = 'mobile';
+    for (const width of [320, 390]) {
+      $('frame').style.width = width + 'px';
+      const controls = [...$('composer-form').querySelectorAll('.composer-tools button,.composer-tools select')].filter(el => !el.hidden);
+      const rects = controls.map(el => el.getBoundingClientRect());
+      const form = $('composer-form').getBoundingClientRect();
+      check(rects.every(rect => Math.abs(rect.top - rects[0].top) < 1 && rect.left >= form.left && rect.right <= form.right), width + 'px 工具列維持同列且未超出輸入框');
+      check(rects.every(rect => rect.width >= 32 && Math.abs(rect.height - 32) < 0.1), width + 'px 選單及按鈕沿用現有 32px 高度');
+    }
+    check(!$('frame').querySelector('script[src]'), '不載入執行期函式庫');
+    return results;
+  } finally {
+    document.querySelectorAll('.tab-shell').forEach(shell => { shell.hidden = false; });
+    $('draft').value = saved.draft; setScenario(saved.scenario); selectSession(saved.active);
+    $('frame').dataset.device = saved.device; $('frame').style.width = saved.width; saved.focus?.focus();
+  }
+}
+window.runPrototypeChecks = runPrototypeChecks;
+$('check').addEventListener('click', () => { try { const results = runPrototypeChecks(); say('PASS · ' + results.length + ' 項互動檢查通過。此檢查只涵蓋 prototype。'); } catch(error) { say('FAIL · ' + error.message); throw error; } });
+selectSession(0); say('試試 Tab 聚焦分頁，再用左右方向鍵、Home／End 切換。');
+if (matchMedia('(max-width:600px)').matches) { $('device').value = 'mobile'; $('frame').dataset.device = 'mobile'; }
+</script>
+</body>
+</html>

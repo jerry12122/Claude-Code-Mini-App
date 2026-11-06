@@ -1,6 +1,15 @@
 // ── 會話分頁列與群組外框元件 (VSCode-style Session Tabs) ───────────────────────
 // 純瀏覽器 React 元件，無 import/export，依賴全域作用域。
 
+function focusSessionTabAfterClose(tabBarRef) {
+  requestAnimationFrame(() => {
+    const target = tabBarRef.current?.querySelector('[role="tab"][aria-selected="true"]')
+      || document.querySelector('.session-tab-bar [role="tab"][aria-selected="true"]')
+      || document.querySelector('[data-session-navigation]');
+    target?.focus();
+  });
+}
+
 /**
  * 個別群組的分頁列元件
  */
@@ -89,7 +98,7 @@ function SessionTabBar({
       ref={tabBarRef}
       role="tablist"
       aria-label={`會話分頁列 ${groupIndex + 1}`}
-      className="session-tab-bar shrink-0 flex items-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex-nowrap bg-ra-sunken border-b border-ra-line-soft px-1.5 pt-1.5 gap-1 select-none relative"
+      className="session-tab-bar group/tabbar shrink-0 flex items-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex-nowrap bg-ra-sunken border-b border-ra-line-soft px-1.5 pt-1.5 gap-1 select-none relative"
       onDragOver={(e) => {
         if (!isSessionDragTypes(e.dataTransfer.types)) return;
         e.preventDefault();
@@ -144,9 +153,6 @@ function SessionTabBar({
         return (
           <div
             key={tabId}
-            role="tab"
-            aria-selected={isActive}
-            tabIndex={0}
             title={s.name || tabId}
             draggable={isWideScreen ? true : undefined}
             onDragStart={(e) => {
@@ -177,13 +183,7 @@ function SessionTabBar({
             onMouseDown={(e) => {
               if (e.button === 1) e.preventDefault();
             }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                onSelectTab?.(tabId);
-              }
-            }}
-            className={`session-tab group/tab relative flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg text-xs cursor-pointer border-t border-x transition-all shrink-0 max-w-[200px] min-w-[90px] outline-none ${
+            className={`session-tab group/tab relative flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg text-xs cursor-pointer border-t border-x transition-colors shrink-0 max-w-[200px] min-w-[90px] ${
               isActive
                 ? 'bg-ra-card text-ra-t1 font-medium border-ra-line shadow-sm'
                 : 'bg-transparent text-ra-t4 hover:bg-ra-bg hover:text-ra-t2 border-transparent'
@@ -199,6 +199,24 @@ function SessionTabBar({
               />
             )}
 
+            <button
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              tabIndex={isActive ? 0 : -1}
+              className="flex items-center gap-1.5 flex-1 min-w-0 text-left rounded-sm"
+              onKeyDown={(e) => {
+                if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing || e.keyCode === 229) return;
+                const targetId = sessionTabKeyboardTarget(tabs, tabId, e.key);
+                if (targetId === null) return;
+                e.preventDefault();
+                onSelectTab?.(targetId);
+                const targetIndex = tabs.indexOf(targetId);
+                const target = tabBarRef.current?.querySelectorAll('[role="tab"]')[targetIndex];
+                target?.focus();
+                target?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+              }}
+            >
             {/* Agent 圖示 */}
             <span
               className={`inline-flex items-center justify-center w-4 h-4 shrink-0 rounded text-[10px] ${getAgentBadgeClass(
@@ -222,6 +240,7 @@ function SessionTabBar({
             <span className="truncate flex-1 min-w-0">
               {s.name || '未命名'}
             </span>
+            </button>
 
             {/* 關閉按鈕 */}
             <button
@@ -229,11 +248,13 @@ function SessionTabBar({
               onClick={(e) => {
                 e.stopPropagation();
                 onCloseTab?.(tabId);
+                focusSessionTabAfterClose(tabBarRef);
               }}
+              tabIndex={isActive ? 0 : -1}
               aria-label={`關閉 ${s.name || '分頁'}`}
               title="關閉分頁"
               className={`p-0.5 rounded text-ra-t5 hover:text-red-400 hover:bg-ra-raised transition-opacity shrink-0 ${
-                isActive ? 'opacity-80 hover:opacity-100' : 'opacity-0 group-hover/tab:opacity-100'
+                isActive ? 'opacity-80 hover:opacity-100' : 'opacity-0 group-hover/tab:opacity-100 group-focus-within/tabbar:opacity-100'
               }`}
             >
               <svg

@@ -112,6 +112,21 @@ function GuestRoleChip({ guest }) {
   );
 }
 
+function SessionIdentity({ name, workDir, className = '' }) {
+  const label = name || '未命名';
+  return (
+    <details data-session-identity className={'ra-session-identity min-w-0 ' + className}>
+      <summary className="truncate rounded-sm" title={label} aria-label={`查看完整會話資訊：${label}`}>
+        {label}
+      </summary>
+      <div className="ra-session-identity-content mt-2 text-xs font-normal text-ra-t3 select-text">
+        <div>{label}</div>
+        {workDir && <div className="ra-mono mt-1">{workDir}</div>}
+      </div>
+    </details>
+  );
+}
+
 function ChatSessionHeader({
   session,
   showBack,
@@ -158,14 +173,12 @@ function ChatSessionHeader({
       <div className="sm:hidden px-4 pt-2 pb-3">
         <div className="flex items-center gap-2.5 min-w-0">
           {showBack && !isGuest && (
-            <button type="button" onClick={onBack}
+            <button type="button" onClick={onBack} aria-label="回到會話列表"
               className="shrink-0 text-ra-t3 hover:text-ra-t1 text-lg leading-none px-0.5">
               ←
             </button>
           )}
-          <div className="min-w-0 flex-1 font-bold text-base text-ra-t1 truncate" title={session.name}>
-            {session.name || '未命名'}
-          </div>
+          <SessionIdentity name={session.name} workDir={!isGuest ? session.work_dir : ''} className="flex-1 font-bold text-base text-ra-t1" />
           <SessionStateChip state={state} activityHint={activityHint} className="shrink-0" />
           <GitBranchBadge branch={session.git_branch} compact />
           {isGuest && <GuestRoleChip guest={guest} />}
@@ -183,10 +196,8 @@ function ChatSessionHeader({
       {/* 桌面：Row 1 標題＋分支（左）｜ 操作控制（右）。Row 2 只放細的 repo/model/quota 副標，不跟控制項搶版面。 */}
       <div className="hidden sm:block px-7 py-4">
         <div className="flex items-center justify-between gap-x-4 gap-y-2 flex-wrap">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="text-base font-bold text-ra-t1 truncate" title={session.name}>
-              {session.name || '未命名'}
-            </div>
+          <div className="flex flex-1 items-center gap-2 min-w-0">
+            <SessionIdentity name={session.name} workDir={!isGuest ? session.work_dir : ''} className="flex-1 text-base font-bold text-ra-t1" />
             <SessionStateChip state={state} activityHint={activityHint} className="shrink-0" />
             <GitBranchBadge branch={session.git_branch} compact />
             {isGuest && <GuestRoleChip guest={guest} />}
@@ -223,7 +234,7 @@ function ChatSessionHeader({
         </div>
         <div className="flex items-center gap-2 mt-1.5 min-w-0 flex-wrap">
           {subLine ? (
-            <span className="text-xs text-ra-t5 ra-mono truncate">{subLine}</span>
+            <span className="text-xs text-ra-t3 ra-mono truncate">{subLine}</span>
           ) : null}
           {quotaBars ? (
             <span className="text-xs ra-mono shrink-0">
@@ -241,7 +252,7 @@ function ChatSessionHeader({
               type="button"
               onClick={onQuotaRefresh}
               disabled={quotaRefreshing}
-              className={'text-xs ra-mono ' + (quotaRefreshing ? 'text-violet-400 animate-spin' : 'text-ra-t5 hover:text-violet-300')}
+              className={'text-xs ra-mono ' + (quotaRefreshing ? 'text-violet-400 animate-spin motion-reduce:animate-none' : 'text-ra-t3 hover:text-violet-300')}
               title="刷新帳戶用量"
               aria-label="刷新帳戶用量"
             >

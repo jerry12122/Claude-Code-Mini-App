@@ -525,6 +525,8 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
             <span className="text-ra-t5 text-sm shrink-0" aria-hidden>⌕</span>
             <input
               type="search"
+              data-session-navigation
+              aria-label="搜尋會話"
               value={sessionSearch}
               onChange={(e) => setSessionSearch(e.target.value)}
               placeholder="搜尋 session…"
@@ -535,6 +537,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
         )}
         <button
           type="button"
+          data-session-navigation
           onClick={() => onCreateNew?.()}
           aria-label="建立新 Session"
           title="新 Session"
@@ -666,6 +669,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
             type="button"
             onClick={onToggleSidebar}
             aria-label="展開會話列表"
+            data-session-navigation
             title="展開會話列表"
             className="flex h-9 w-9 items-center justify-center rounded-[9px] border border-ra-line text-gray-400 hover:text-gray-200 hover:bg-ra-card transition-colors focus:outline-none"
           >

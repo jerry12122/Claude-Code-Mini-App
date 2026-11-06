@@ -1388,6 +1388,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 <textarea
                   ref={chatInputRef}
                   data-chat-input
+                  aria-label="訊息或指令"
                   value={input}
                   onChange={(e) => {
                     const value = e.target.value;

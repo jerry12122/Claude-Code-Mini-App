@@ -662,6 +662,17 @@ function resolveDropAction(state, sessionId, target) {
     : { type: 'move', sessionId, toGroup: group };
 }
 
+/** 同群組方向鍵導覽；空群組或不支援的按鍵不改變分頁。 */
+function sessionTabKeyboardTarget(tabs, activeTab, key) {
+  if (!tabs.length) return null;
+  const current = Math.max(0, tabs.indexOf(activeTab));
+  if (key === 'Home') return tabs[0];
+  if (key === 'End') return tabs[tabs.length - 1];
+  if (key === 'ArrowRight') return tabs[(current + 1) % tabs.length];
+  if (key === 'ArrowLeft') return tabs[(current + tabs.length - 1) % tabs.length];
+  return null;
+}
+
 /**
  * 鍵盤事件 → 分頁群組動作（純函式，回傳 null 表示不處理）。
  * - Ctrl/Cmd+\（不含 Alt/Shift）→ toggleSplit；Ctrl+Alt+←/→ → focus 群組 0/1

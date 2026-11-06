@@ -688,10 +688,10 @@ function sessionStateChipClass(state) {
   // 與 session 列表下方方塊 badge 同構：無邊框、軟底色
   if (state === 'IDLE' || state === 'SHELL_IDLE') return 'bg-[oklch(0.7_0.15_155_/16%)] text-ra-ok';
   if (state === 'THINKING') return 'bg-violet-500/20 text-violet-300';
-  if (state === 'STREAMING') return 'bg-sky-500/20 text-sky-300';
-  if (state === 'SHELL_EXEC' || state === 'SHELL_RUNNING') return 'bg-amber-500/20 text-amber-200';
+  if (state === 'STREAMING') return 'bg-sky-500/20 text-sky-200';
+  if (state === 'SHELL_EXEC' || state === 'SHELL_RUNNING') return 'bg-amber-500/20 text-ra-warn';
   if (state === 'AWAITING_SHELL_CONFIRM' || state === 'SHELL_AWAITING_APPROVAL' || state === 'AWAITING_CONFIRM' || state === 'AWAITING_INPUT') return 'bg-orange-500/20 text-orange-200';
-  return 'bg-amber-500/20 text-amber-200';
+  return 'bg-amber-500/20 text-ra-warn';
 }
 
 /**

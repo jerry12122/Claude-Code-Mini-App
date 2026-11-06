@@ -635,13 +635,13 @@ function extractMaxQuotaPercent(text) {
 function quotaTextColorClass(quota, segmentText) {
   const pct = extractMaxQuotaPercent(segmentText !== undefined ? segmentText : quota && quota.display_text);
   return quota.error
-    ? 'text-amber-400'
+    ? 'text-ra-warn'
     : pct !== null && pct >= 100
-    ? 'text-red-400'
+    ? 'text-red-200'
     : pct !== null && pct >= 80
-    ? 'text-orange-400'
+    ? 'text-orange-200'
     : quota.stale
-    ? 'text-gray-500'
+    ? 'text-ra-t3'
     : 'text-gray-400';
 }
 
@@ -650,7 +650,7 @@ function QuotaSegments({ quota, text, className = '' }) {
   const segments = String(text).split(' · ');
   return segments.map((seg, i) => (
     <React.Fragment key={i}>
-      {i > 0 ? <span className="text-gray-500"> · </span> : null}
+      {i > 0 ? <span className="text-ra-t3"> · </span> : null}
       <span className={quotaTextColorClass(quota, seg) + ' ' + className}>{seg}</span>
     </React.Fragment>
   ));
@@ -715,10 +715,10 @@ function resolveQuotaBars(quota, agentType) {
 
 /** 進度條顏色：error 琥珀 > ≥100 紅 > ≥80 橘 > stale 灰 > 預設（與文字版 quotaTextColorClass 同順序） */
 function quotaBarTone(quota, pct) {
-  if (quota.error) return { bg: 'bg-amber-400', text: 'text-amber-400' };
-  if (pct >= 100) return { bg: 'bg-red-400', text: 'text-red-400' };
-  if (pct >= 80) return { bg: 'bg-orange-400', text: 'text-orange-400' };
-  if (quota.stale) return { bg: 'bg-gray-500', text: 'text-gray-500' };
+  if (quota.error) return { bg: 'bg-amber-400', text: 'text-ra-warn' };
+  if (pct >= 100) return { bg: 'bg-red-400', text: 'text-red-200' };
+  if (pct >= 80) return { bg: 'bg-orange-400', text: 'text-orange-200' };
+  if (quota.stale) return { bg: 'bg-gray-500', text: 'text-ra-t3' };
   return { bg: 'bg-violet-400', text: 'text-gray-400' };
 }
 
@@ -776,14 +776,14 @@ function QuotaUsage({ quota, agentType }) {
     <span data-quota-usage className="inline-flex items-center gap-2 whitespace-nowrap shrink-0 text-[10px] ra-mono" title={quotaTooltip(quota, agentType)}>
       {groups.map((g, gi) => (
         <span key={gi} className="inline-flex items-center gap-1">
-          {g.label ? <span className="text-gray-500">{g.label}</span> : null}
+          {g.label ? <span className="text-ra-t3">{g.label}</span> : null}
           {g.bars.map((b) => (
             <span key={b.key} className="inline-flex items-center gap-1">
-              {layout.showPct ? <span className="text-gray-500">{b.label}</span> : null}
+              {layout.showPct ? <span className="text-ra-t3">{b.label}</span> : null}
               <QuotaBar quota={quota} pct={b.pct} bar={b.key} className={layout.showPct ? 'w-12' : 'w-7'} />
               {layout.showPct ? <span className={quotaBarTone(quota, b.pct).text}>{Math.round(b.pct)}%</span> : null}
               {layout.showUsed && b.win && typeof b.win.used === 'number' && typeof b.win.limit === 'number' ? (
-                <span className="text-gray-500">{quotaFmtNum(b.win.used)}/{quotaFmtNum(b.win.limit)}</span>
+                <span className="text-ra-t3">{quotaFmtNum(b.win.used)}/{quotaFmtNum(b.win.limit)}</span>
               ) : null}
             </span>
           ))}
@@ -819,8 +819,8 @@ function QuotaBadge({ quota, onRefresh, refreshing, className = '', compact = fa
   const Chip = tappable ? 'button' : 'span';
   return (
     <Chip
-      {...(tappable ? { type: 'button', onClick: onRefresh, disabled: refreshing } : {})}
-      className={chipCls + className + (tappable ? ' cursor-pointer' : '') + (refreshing ? ' animate-pulse' : '')}
+      {...(tappable ? { type: 'button', onClick: onRefresh, disabled: refreshing, 'aria-label': `刷新帳戶用量：${shown || peak + '%'}` } : {})}
+      className={chipCls + className + (tappable ? ' cursor-pointer' : '') + (refreshing ? ' animate-pulse motion-reduce:animate-none' : '')}
       title={tappable ? title + ' · 點擊刷新' : title}
     >
       <span className="text-[10px] font-mono truncate">
@@ -838,8 +838,9 @@ function QuotaBadge({ quota, onRefresh, refreshing, className = '', compact = fa
           type="button"
           onClick={onRefresh}
           disabled={refreshing}
-          className={'shrink-0 text-[10px] px-0.5 ' + (refreshing ? 'text-violet-400 animate-spin' : 'text-gray-500 hover:text-gray-300')}
+          className={'shrink-0 text-[10px] px-0.5 ' + (refreshing ? 'text-violet-400 animate-spin motion-reduce:animate-none' : 'text-ra-t3 hover:text-gray-300')}
           title="刷新帳戶用量"
+          aria-label="刷新帳戶用量"
         >
           ↻
         </button>

@@ -5,7 +5,7 @@
   <script src="./js/wails-runtime-ready.js"></script>
   <script src="./js/devtool-easter-egg.js"></script>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <!-- 選用：反代下 API 與自動推算不一致時設 content="/部署前綴"（無則由目前 index.html 目錄自動推算） -->
   <!-- <meta name="cc-api-base" content="" /> -->
   <title>Claude Code · Remote Agent</title>
@@ -56,6 +56,14 @@
   <link id="hljs-theme-dark" rel="stylesheet" href="./js/vendor/github-dark.min.css" />
   <link id="hljs-theme-light" rel="stylesheet" href="./js/vendor/github.min.css" disabled />
   <style>
+    body :is(button, a[href], input, select, summary, [tabindex]):focus-visible {
+      outline: 2px solid oklch(var(--ra-accent-text));
+      outline-offset: 2px;
+    }
+    .ra-cmd-bar:focus-within { outline: 2px solid oklch(var(--ra-accent-text)); outline-offset: 2px; }
+    .ra-session-identity > summary { list-style: none; cursor: pointer; }
+    .ra-session-identity > summary::-webkit-details-marker { display: none; }
+    .ra-session-identity-content { overflow-wrap: anywhere; }
     :root {
       color-scheme: dark;
       --tg-content-safe-top: 0px;

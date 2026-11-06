@@ -633,5 +633,20 @@ function deepFreeze(obj) {
 
 
 
+// Keyboard navigation stays within a group and preserves the existing close-selection rules.
+{
+  const { sessionTabKeyboardTarget } = context;
+  assert.equal(typeof sessionTabKeyboardTarget, 'function');
+  for (const [tabs, active, key, expected] of [
+    [['A', 'B', 'C'], 'C', 'ArrowRight', 'A'],
+    [['A', 'B', 'C'], 'A', 'ArrowLeft', 'C'],
+    [['A', 'B', 'C'], 'B', 'Home', 'A'],
+    [['A', 'B', 'C'], 'B', 'End', 'C'],
+    [['A'], 'A', 'ArrowRight', 'A'],
+    [[], null, 'Home', null],
+    [['A'], 'A', 'Tab', null],
+  ]) assert.equal(sessionTabKeyboardTarget(tabs, active, key), expected);
+}
+
 console.log('tab-groups checks passed');
 
