@@ -196,8 +196,8 @@ function ChatSessionHeader({
       {/* 桌面：Row 1 標題＋分支（左）｜ 操作控制（右）。Row 2 只放細的 repo/model/quota 副標，不跟控制項搶版面。 */}
       <div className="hidden sm:block px-7 py-4">
         <div className="flex items-center justify-between gap-x-4 gap-y-2 flex-wrap">
-          <div className="flex flex-1 items-center gap-2 min-w-0">
-            <SessionIdentity name={session.name} workDir={!isGuest ? session.work_dir : ''} className="flex-1 text-base font-bold text-ra-t1" />
+          <div className="flex items-center gap-2 min-w-0">
+            <SessionIdentity name={session.name} workDir={!isGuest ? session.work_dir : ''} className="text-base font-bold text-ra-t1" />
             <SessionStateChip state={state} activityHint={activityHint} className="shrink-0" />
             <GitBranchBadge branch={session.git_branch} compact />
             {isGuest && <GuestRoleChip guest={guest} />}

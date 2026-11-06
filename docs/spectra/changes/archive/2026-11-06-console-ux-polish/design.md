@@ -32,6 +32,8 @@ SessionTabBar 的視覺外框保留，分頁主動作與關閉動作使用相鄰
 
 以可重用的原生 details／summary 在手機及桌面標題提供完整名稱與工作目錄，預設收合維持原標題尺寸；展開時允許標頭暫時增高並自然換行。使用 React 文字節點避免注入，摘要有可讀名稱及焦點。解除 maximum-scale 限制，CSS 只增加 focus-visible 樣式與 composer focus-within，不變更控制尺寸。只在有證據的副標與用量標籤使用既有 ra-t3，不改全域色盤。
 
+桌面標題及其左側容器不使用 flex-1 撐滿剩餘寬度，狀態與分支緊接標題，維持原本靠左的排列；長標題仍以 min-w-0 與 truncate 縮短顯示。
+
 ### 現有錯誤與傳輸行為先驗證再補缺漏
 
 重用 ChatView 的 sendOrToast 和既有 pending-input 邏輯；不改 useChatSocket 或傳輸協議。既有失敗路徑符合就維持原碼。必要時補 toast 的語意 live status 與按鈕標籤，不逐 token 播報聊天內容，不靠動畫判定成功。
