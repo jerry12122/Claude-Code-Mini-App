@@ -60,7 +60,7 @@ func TestFullSocketQueueDoesNotBlockOtherSubscribers(t *testing.T) {
 	app.Get("/ws", fiberws.New(func(c *fiberws.Conn) {
 		// A full queue models a writer stalled in a network write, without a
 		// timing-dependent large-payload flood or a real five-second timeout.
-		w := &socketWriter{conn: c, queue: make(chan []byte, 1), done: make(chan struct{}), exited: make(chan struct{})}
+		w := &socketWriter{conn: c, queue: make(chan socketPacket, 1), done: make(chan struct{}), exited: make(chan struct{})}
 		close(w.exited)
 		defer w.Close()
 		if !w.Send(serverMsg{Type: "first"}) {

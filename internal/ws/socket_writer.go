@@ -10,17 +10,22 @@ import (
 
 // Each connection has one bounded writer. A slow reader reconnects and syncs
 // from the database instead of blocking the agent or another subscriber.
+type socketPacket struct {
+	data       []byte
+	closeAfter bool
+}
+
 type socketWriter struct {
 	conn    *fiberws.Conn
 	mu      sync.Mutex
 	stopped bool
-	queue   chan []byte
+	queue   chan socketPacket
 	done    chan struct{}
 	exited  chan struct{}
 }
 
 func newSocketWriter(c *fiberws.Conn) *socketWriter {
-	w := &socketWriter{conn: c, queue: make(chan []byte, 128), done: make(chan struct{}), exited: make(chan struct{})}
+	w := &socketWriter{conn: c, queue: make(chan socketPacket, 128), done: make(chan struct{}), exited: make(chan struct{})}
 	go func() {
 		defer close(w.exited)
 		defer w.stop()
@@ -37,7 +42,11 @@ func newSocketWriter(c *fiberws.Conn) *socketWriter {
 				if err := c.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
 					return
 				}
-				if err := c.WriteMessage(fiberws.TextMessage, b); err != nil {
+				if err := c.WriteMessage(fiberws.TextMessage, b.data); err != nil {
+					return
+				}
+				if b.closeAfter {
+					_ = c.WriteControl(fiberws.CloseMessage, fiberws.FormatCloseMessage(4001, "share ended"), time.Now().Add(time.Second))
 					return
 				}
 			}
@@ -67,7 +76,8 @@ func (w *socketWriter) Send(msg serverMsg) bool {
 		return false
 	}
 	select {
-	case w.queue <- b:
+	// The terminal event and close frame must use the same FIFO writer.
+	case w.queue <- socketPacket{data: b, closeAfter: msg.Type == "share_ended"}:
 		w.mu.Unlock()
 		return true
 	default:

@@ -235,8 +235,6 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				return
 			}
 			send(serverMsg{Type: "share_ended", Content: reason})
-			_ = c.WriteControl(fiberws.CloseMessage, fiberws.FormatCloseMessage(4001, "share ended"), time.Now().Add(time.Second))
-			c.Close()
 		}
 		defer func() {
 			kickMu.Lock()
