@@ -4,6 +4,12 @@
 
 發版流程：更新 `VERSION`、`internal/version/version.go`、README 版本徽章與本檔 → commit → 打 `vX.Y.Z` tag 並 push，GitHub Actions 會自動建置並發佈 Release（說明文字取自本檔對應段落）。Release 說明依序為：更新內容 → 下載 → 桌面版更新方法 → 首次設定。
 
+## [0.18.1] - 2026-11-07
+
+### 修正
+- 修正 MCP 工具輸出 schema 與舊版 client 的相容性，避免工具清單驗證失敗後整組 miniapp 工具消失，被 agent 回報為連線中斷
+- 保留待回答問題與待授權請求的任意 JSON 輸出，並新增實際 HTTP 工具清單的回歸測試
+
 ## [0.18.0] - 2026-11-06
 
 ### 新增

@@ -421,11 +421,12 @@ type askSessionIn struct {
 	TimeoutSec    int    `json:"timeout_sec,omitempty" jsonschema:"最多等幾秒，預設 600、上限 1800；逾時回傳目前的部分回覆，可再用 get_status 追"`
 }
 
+// any 欄位保留描述，讓 schema 序列化為物件；舊版 MCP client 會拒絕 boolean schema true。
 type askSessionOut struct {
-	PendingQuestion   any    `json:"pending_question,omitempty"`
+	PendingQuestion   any    `json:"pending_question,omitempty" jsonschema:"等待使用者回答的問題 JSON"`
 	State             string `json:"state" jsonschema:"本輪結果狀態：idle 已回答完；awaiting_input 等待使用者回答；awaiting_permission 或 shell_pending 對方卡在授權；running 逾時仍在跑"`
 	Text              string `json:"text,omitempty"`
-	PendingPermission any    `json:"pending_permission,omitempty"`
+	PendingPermission any    `json:"pending_permission,omitempty" jsonschema:"等待使用者授權的請求 JSON"`
 	Error             string `json:"error,omitempty"`
 	TimedOut          bool   `json:"timed_out,omitempty"`
 }
@@ -457,10 +458,10 @@ func (d *deps) askSession(ctx context.Context, _ *gomcp.CallToolRequest, in askS
 // --- get_status ---
 
 type getStatusOut struct {
-	PendingQuestion   any           `json:"pending_question,omitempty"`
+	PendingQuestion   any           `json:"pending_question,omitempty" jsonschema:"等待使用者回答的問題 JSON"`
 	State             string        `json:"state"` // idle | running | awaiting_permission | shell_pending
 	LatestText        string        `json:"latest_text,omitempty"`
-	PendingPermission any           `json:"pending_permission,omitempty"`
+	PendingPermission any           `json:"pending_permission,omitempty" jsonschema:"等待使用者授權的請求 JSON"`
 	PendingShell      *pendingShell `json:"pending_shell,omitempty"`
 	Error             string        `json:"error,omitempty"`
 	Connected         bool          `json:"connected"`
