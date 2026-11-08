@@ -124,7 +124,7 @@ async function main() {
 
   const chat = read('chat/ChatView.js');
   const body = {}, inputElement = { disabled: false, focus() { focusCount++; } };
-  let focusCount = 0, selected = false;
+  let focusCount = 0, selected = false, mobile = false;
   const controls = vm.createContext({
     useCallback: fn => fn, requestAnimationFrame: fn => fn(),
     chatScrollRef: { current: { scrollHeight: 1000, scrollTop: 170, clientHeight: 800 } },
@@ -132,7 +132,7 @@ async function main() {
     chatInputRef: { current: inputElement }, focusedPaneRef: { current: true },
     composerSessionRef: { current: 's' }, session: { id: 's' },
     document: { body, documentElement: {}, activeElement: body, hidden: false },
-    window: { getSelection: () => ({ isCollapsed: !selected }) },
+    window: { getSelection: () => ({ isCollapsed: !selected }), matchMedia: () => ({ matches: mobile }) },
   });
   const syncStart = chat.indexOf('  const syncChatNearBottom =');
   vm.runInContext(chat.slice(syncStart, chat.indexOf('  const jumpToLatest =', syncStart)) + '\nglobalThis.sync = syncChatNearBottom;', controls);
@@ -154,6 +154,13 @@ async function main() {
   controls.document.activeElement = inputElement;
   controls.focusInput(true);
   assert.equal(focusCount, 0, '輸入框已有游標時不重設焦點');
+  controls.document.activeElement = body;
+  controls.focusInput(true);
+  assert.equal(focusCount, 1, '桌面仍會在對話載入後自動聚焦');
+  focusCount = 0;
+  mobile = true;
+  controls.focusInput(true);
+  assert.equal(focusCount, 0, '手機閱讀時不自動聚焦，避免展開輸入工具列');
   controls.document.activeElement = { closest: () => null }; // clicked suggestion button
   controls.focusInput();
   assert.equal(focusCount, 1, '使用者明確操作仍可聚焦輸入');

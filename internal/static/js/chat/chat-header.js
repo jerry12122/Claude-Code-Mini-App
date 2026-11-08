@@ -168,28 +168,38 @@ function ChatSessionHeader({
       className="shrink-0 border-b border-ra-line-soft bg-ra-bg"
       style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top) + var(--tg-content-safe-top))' }}
     >
-      {/* 手機：標題列 + badge 列（設計 2b） */}
-      <div className="sm:hidden px-4 pt-2 pb-3">
-        <div className="flex items-center gap-2.5 min-w-0">
-          {showBack && !isGuest && (
-            <button type="button" onClick={onBack} aria-label="回到會話列表"
-              className="shrink-0 text-ra-t3 hover:text-ra-t1 text-lg leading-none px-0.5">
-              ←
-            </button>
-          )}
-          <SessionIdentity name={session.name} workDir={!isGuest ? session.work_dir : ''} className="flex-1 font-bold text-base text-ra-t1" />
-          <SessionStateChip state={state} className="shrink-0" />
-          <GitBranchBadge branch={session.git_branch} compact />
-          {isGuest && <GuestRoleChip guest={guest} />}
-          {!isGuest && onShare && <ShareButton onClick={onShare} />}
-        </div>
-        <div className="flex items-center gap-1.5 mt-2.5 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex-wrap">
-          <span className={`inline-flex items-center gap-1 shrink-0 text-[11.5px] font-semibold px-2 py-1 rounded-md ${getAgentBadgeClass(displayAgent, session)}`}>
-            <AgentBadgeIcon agentType={displayAgent} session={session} />
-            {AGENT_LABEL[displayAgent] || displayAgent}
-          </span>
-          {!isGuest && <QuotaBadge quota={quota} compact agentType={agentType} onRefresh={onQuotaRefresh} refreshing={quotaRefreshing} />}
-        </div>
+      {/* 手機預設單列；會話資訊與次要操作按需展開。 */}
+      <div className="sm:hidden flex items-start gap-1 px-3 py-1">
+        {showBack && !isGuest && (
+          <button type="button" onClick={onBack} aria-label="回到會話列表"
+            className="shrink-0 flex h-11 w-11 items-center justify-center rounded-lg text-ra-t3 hover:text-ra-t1 focus-visible:ring-2 focus-visible:ring-violet-400">
+            ←
+          </button>
+        )}
+        <details key={session.id} className="ra-mobile-session-details min-w-0 flex-1">
+          <summary className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400" title="會話資訊與操作">
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ra-t1">{session.name || '未命名'}</span>
+            <SessionStateChip state={state} className="shrink-0" />
+            {isGuest && <GuestRoleChip guest={guest} />}
+            <svg className="ra-mobile-header-chevron shrink-0 text-ra-t4" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </summary>
+          <div className="pb-2 pt-1 text-xs text-ra-t3">
+            <div className="break-words font-medium text-ra-t2">{session.name || '未命名'}</div>
+            {!isGuest && session.work_dir && <div className="mt-1 break-all ra-mono text-ra-t4">{session.work_dir}</div>}
+            {modelOk && <div className="mt-1 break-words">{modelLabel}</div>}
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className={`inline-flex items-center gap-1 text-[11.5px] font-semibold px-2 py-1 rounded-md ${getAgentBadgeClass(displayAgent, session)}`}>
+                <AgentBadgeIcon agentType={displayAgent} session={session} />
+                {AGENT_LABEL[displayAgent] || displayAgent}
+              </span>
+              <GitBranchBadge branch={session.git_branch} compact />
+              {!isGuest && <QuotaBadge quota={quota} compact agentType={agentType} onRefresh={onQuotaRefresh} refreshing={quotaRefreshing} />}
+              {!isGuest && onShare && <ShareButton onClick={onShare} />}
+            </div>
+          </div>
+        </details>
       </div>
 
       {/* 桌面：Row 1 標題＋分支（左）｜ 操作控制（右）。Row 2 只放細的 repo/model/quota 副標，不跟控制項搶版面。 */}

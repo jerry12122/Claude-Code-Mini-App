@@ -283,7 +283,7 @@
     }
     .ra-cmd-bar {
       display: flex;
-      /* 輸入框獨佔第一行（JSX 以 order-first + w-full 排在最前），按鈕列換到第二行 */
+      /* 桌面輸入框獨佔第一行，手機在下方改為輸入框與送出並排。 */
       flex-wrap: wrap;
       align-items: center;
       gap: 6px 10px;
@@ -296,6 +296,35 @@
     .ra-cmd-bar.shell {
       background: #120d00;
       border-color: rgba(180, 83, 9, 0.45);
+    }
+    .ra-composer-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+    .ra-mobile-session-details > summary { list-style: none; }
+    .ra-mobile-session-details > summary::-webkit-details-marker { display: none; }
+    .ra-mobile-session-details[open] .ra-mobile-header-chevron { transform: rotate(180deg); }
+    @media (max-width: 639px) {
+      .ra-chat-composer .ra-cmd-bar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: end;
+        gap: 0 6px;
+        padding: 4px 6px 4px 10px;
+      }
+      .ra-chat-composer .ra-composer-input { grid-column: 1; grid-row: 1; align-self: center; }
+      .ra-chat-composer .ra-composer-actions { grid-column: 2; grid-row: 1; }
+      .ra-chat-composer .ra-composer-actions > button { width: 44px; height: 44px; }
+      .ra-chat-composer .ra-composer-spacer { display: none; }
+      .ra-chat-composer .ra-composer-tools { display: none; grid-column: 1 / -1; grid-row: 2; }
+      .ra-chat-composer .ra-cmd-bar:focus-within .ra-composer-tools {
+        display: flex;
+        margin-top: 4px;
+        padding-top: 6px;
+        border-top: 1px solid oklch(var(--ra-line-soft));
+      }
+      .ra-chat-composer .ra-composer-tools > button,
+      .ra-chat-composer .ra-composer-tools select { min-height: 40px; }
+      .ra-chat-composer .ra-composer-tools > button { min-width: 40px; }
+      .ra-chat-composer textarea[data-chat-input] { max-height: min(160px, 30svh); }
+      .ra-chat-composer .ra-cmd-bar:not(:focus-within) textarea[data-chat-input] { max-height: 44px; }
     }
     .ra-cmd-badge {
       font-size: 12px;

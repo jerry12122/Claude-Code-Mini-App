@@ -269,6 +269,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         const active = document.activeElement;
         if (active === el) return;
         if (automatic) {
+          if (window.matchMedia('(max-width: 639px)').matches) return;
           if (!focusedPaneRef.current || !chatNearBottomRef.current || window.getSelection()?.isCollapsed === false) return;
           if (active && active !== document.body && active !== document.documentElement) return;
         } else if (active?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
@@ -1310,7 +1311,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         <GuestReadOnlyBar snapshot={isSnapshot} ended={shareOver} />
       ) : (
       <div
-        className={`shrink-0 px-4 sm:px-7 py-4 border-t transition-colors duration-200 ${inputMode === 'shell' ? 'bg-ra-bg border-amber-900/40' : 'bg-ra-bg border-ra-line-soft'}`}
+        className={`ra-chat-composer shrink-0 px-3 sm:px-7 py-2 sm:py-4 border-t transition-colors duration-200 ${inputMode === 'shell' ? 'bg-ra-bg border-amber-900/40' : 'bg-ra-bg border-ra-line-soft'}`}
         style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
       >
         {taskRunning && !canQueue ? (
@@ -1350,73 +1351,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               />
             )}
             <div className={(inputMode === 'shell' ? 'ra-cmd-bar shell' : 'ra-cmd-bar') + ' w-full' + (dragOver ? ' ring-2 ring-violet-500/70' : '')}>
-              {!isGuest && (
-                <ModeToggleBtn
-                  value={inputMode}
-                  onChange={handleInputModeChange}
-                  disabled={modeSwitchDisabled || sending}
-                  agentLabel={AGENT_LABEL[displayAgent] || 'Claude'}
-                />
-              )}
-              {inputMode !== 'shell' && (
-                <>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    onChange={handleFilesPicked}
-                  />
-                  <button type="button" onClick={() => fileInputRef.current?.click()}
-                    disabled={sending || isDisabled}
-                    aria-label="附加圖片或檔案"
-                    title="附加圖片或檔案"
-                    className="shrink-0 flex items-center justify-center w-8 h-8 rounded-[8px] text-ra-t3 hover:bg-ra-raised hover:text-violet-300 disabled:opacity-40 transition-colors">
-                    {uploading ? (
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="w-4 h-4 animate-spin" aria-hidden="true">
-                        <path d="M21 12a9 9 0 1 1-6.22-8.56" />
-                      </svg>
-                    ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true">
-                        <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                      </svg>
-                    )}
-                  </button>
-                  {!isGuest && (
-                    <>
-                      {showPermModeSelect && (
-                        <PermModeSelect
-                          compact
-                          agentType={agentType}
-                          value={mode}
-                          onChange={handlePermModeDraftChange}
-                          disabled={modeSwitchDisabled}
-                          title={agentType === 'antigravity' ? 'Antigravity 權限模式' : agentType === 'cursor' ? '權限模式（bypass：Cursor 會加 --force）' : '權限模式'}
-                          id="chat-perm-mode"
-                        />
-                      )}
-                      <ModelSelect
-                        compact
-                        agentType={agentType}
-                        value={modelSel}
-                        onChange={handleModelDraftChange}
-                        disabled={modeSwitchDisabled}
-                        id="chat-model"
-                      />
-                      {showEffortSelect && (
-                        <EffortSelect
-                          compact
-                          value={effortSel}
-                          onChange={handleEffortDraftChange}
-                          disabled={modeSwitchDisabled}
-                          id="chat-effort"
-                        />
-                      )}
-                    </>
-                  )}
-                </>
-              )}
-              <div className="relative flex w-full min-w-0 order-first flex-col" ref={slashInputWrapRef}>
+              <div className="ra-composer-input relative flex w-full min-w-0 flex-col" ref={slashInputWrapRef}>
                 {inputMode !== 'shell' && <AttachmentChips items={attachments} onRemove={removeAttachment} onRetry={retryAttachment} disabled={sending || draftRestoring} />}
                 {slashMenuOpen && (
                   <SlashCommandMenu
@@ -1468,22 +1403,92 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                   ].join(' ')}
                 />
               </div>
+              <div className="ra-composer-tools">
+                {!isGuest && (
+                  <ModeToggleBtn
+                    value={inputMode}
+                    onChange={handleInputModeChange}
+                    disabled={modeSwitchDisabled || sending}
+                    agentLabel={AGENT_LABEL[displayAgent] || 'Claude'}
+                  />
+                )}
+                {inputMode !== 'shell' && (
+                  <>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={handleFilesPicked}
+                    />
+                    <button type="button" onClick={() => fileInputRef.current?.click()}
+                      disabled={sending || isDisabled}
+                      aria-label="附加圖片或檔案"
+                      title="附加圖片或檔案"
+                      className="shrink-0 flex items-center justify-center w-8 h-8 rounded-[8px] text-ra-t3 hover:bg-ra-raised hover:text-violet-300 disabled:opacity-40 transition-colors">
+                      {uploading ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="w-4 h-4 animate-spin" aria-hidden="true">
+                          <path d="M21 12a9 9 0 1 1-6.22-8.56" />
+                        </svg>
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true">
+                          <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                        </svg>
+                      )}
+                    </button>
+                    {!isGuest && (
+                      <>
+                        {showPermModeSelect && (
+                          <PermModeSelect
+                            compact
+                            agentType={agentType}
+                            value={mode}
+                            onChange={handlePermModeDraftChange}
+                            disabled={modeSwitchDisabled}
+                            title={agentType === 'antigravity' ? 'Antigravity 權限模式' : agentType === 'cursor' ? '權限模式（bypass：Cursor 會加 --force）' : '權限模式'}
+                            id="chat-perm-mode"
+                          />
+                        )}
+                        <ModelSelect
+                          compact
+                          agentType={agentType}
+                          value={modelSel}
+                          onChange={handleModelDraftChange}
+                          disabled={modeSwitchDisabled}
+                          id="chat-model"
+                        />
+                        {showEffortSelect && (
+                          <EffortSelect
+                            compact
+                            value={effortSel}
+                            onChange={handleEffortDraftChange}
+                            disabled={modeSwitchDisabled}
+                            id="chat-effort"
+                          />
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
               {/* 把中斷／送出推到按鈕列右側 */}
-              <div className="flex-1" aria-hidden="true" />
-              {(agentRunning || lingering) && (
-                <button type="button" onClick={handleInterrupt}
-                  aria-label={interrupting ? '再按一次強制停止' : '中斷'}
-                  title={interrupting ? '再按一次強制停止' : '中斷'}
-                  className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-[8px] bg-red-900/70 hover:bg-red-800 text-red-200 text-sm ${interrupting ? 'animate-pulse' : ''}`}>
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2" /></svg>
+              <div className="ra-composer-spacer flex-1" aria-hidden="true" />
+              <div className="ra-composer-actions flex shrink-0 items-center gap-2">
+                {(agentRunning || lingering) && (
+                  <button type="button" onClick={handleInterrupt}
+                    aria-label={interrupting ? '再按一次強制停止' : '中斷'}
+                    title={interrupting ? '再按一次強制停止' : '中斷'}
+                    className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-[8px] bg-red-900/70 hover:bg-red-800 text-red-200 text-sm ${interrupting ? 'animate-pulse' : ''}`}>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2" /></svg>
+                  </button>
+                )}
+                <button type="button" onClick={() => handleSend()} disabled={!!pendingInput || sending || isDisabled || (!input.trim() && (inputMode === 'shell' || attachments.length === 0)) || (inputMode !== 'shell' && attachments.some(a => a.status !== 'ready'))}
+                  aria-label={canQueue ? '排入佇列' : '送出'}
+                  title={sending ? '送出中…' : inputMode !== 'shell' && attachments.some(a => a.status !== 'ready') ? '請等待附件上傳完成，或移除失敗的附件' : (canQueue ? '排入佇列' : '送出') + (coarsePointer ? '' : '（Enter）')}
+                  className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-[8px] ${inputMode === 'shell' ? 'bg-amber-700 hover:bg-amber-600' : 'bg-[oklch(0.62_0.19_275)] hover:brightness-110'} disabled:opacity-30 text-white transition-colors text-sm`}>
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true"><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg>
                 </button>
-              )}
-              <button type="button" onClick={() => handleSend()} disabled={!!pendingInput || sending || isDisabled || (!input.trim() && (inputMode === 'shell' || attachments.length === 0)) || (inputMode !== 'shell' && attachments.some(a => a.status !== 'ready'))}
-                aria-label={canQueue ? '排入佇列' : '送出'}
-                title={sending ? '送出中…' : inputMode !== 'shell' && attachments.some(a => a.status !== 'ready') ? '請等待附件上傳完成，或移除失敗的附件' : (canQueue ? '排入佇列' : '送出') + (coarsePointer ? '' : '（Enter）')}
-                className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-[8px] ${inputMode === 'shell' ? 'bg-amber-700 hover:bg-amber-600' : 'bg-[oklch(0.62_0.19_275)] hover:brightness-110'} disabled:opacity-30 text-white transition-colors text-sm`}>
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true"><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg>
-              </button>
+              </div>
             </div>
           </div>
         )}
