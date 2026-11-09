@@ -78,6 +78,12 @@ async function main() {
     apiFetch: (_url, options) => new Promise(resolve => { requests.push({ resolve, options }); }),
   });
   const sessions = read('session/SessionView.js');
+  const statusMarkup = sessions.slice(sessions.indexOf('  const listStatus ='), sessions.indexOf('  const renderSessionRow'));
+  const statusClass = statusMarkup.match(/className=\{([^}]+)\}/)?.[1] || JSON.stringify(statusMarkup.match(/className="([^"]+)"/)[1]);
+  for (const [listLoaded, listError, hidden] of [[false, '', false], [true, '', true], [false, 'failed', false], [true, 'failed', false]]) {
+    const className = vm.runInNewContext(statusClass, { listLoaded, listError });
+    assert.equal(className.split(/\s+/).includes('sr-only'), hidden, '背景刷新不撐高列表，首次載入和錯誤仍顯示');
+  }
   const start = sessions.indexOf('  const load = async');
   const end = sessions.indexOf('\n  useEffect(', start);
   vm.runInContext(sessions.slice(start, end) + '\nglobalThis.load = load;', context);

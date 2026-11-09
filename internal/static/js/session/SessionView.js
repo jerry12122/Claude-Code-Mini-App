@@ -400,7 +400,8 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
   };
 
   const listStatus = (
-    <div aria-live="polite" aria-busy={listLoading} className="px-2 py-2 text-xs text-ra-t4">
+    <div aria-live="polite" aria-busy={listLoading}
+      className={listLoaded && !listError ? 'sr-only' : 'px-2 py-2 text-xs text-ra-t4'}>
       {listLoading && <div role="status">{listLoaded ? '更新中…' : '載入會話中…'}</div>}
       {listError && <div role="alert">
         <span>{listError}{listLoaded ? '，目前顯示上次載入的內容。' : ''}</span>
