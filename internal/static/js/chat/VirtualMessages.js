@@ -25,7 +25,6 @@ function virtualMessageWindow(offsets, top, height, windowed) {
 function VirtualMessages({ messages, scrollRef, followRef, gestureRef, showAll, children }) {
   const rootRef = useRef(null);
   const heightsRef = useRef(new Map());
-  const anchorRef = useRef(null);
   const layoutRef = useRef(null);
   const [revision, setRevision] = useState(0);
   const [viewport, setViewport] = useState({ top: Infinity, height: 800 });
@@ -37,15 +36,20 @@ function VirtualMessages({ messages, scrollRef, followRef, gestureRef, showAll, 
     for (const key of keys) offsets.push(offsets[offsets.length - 1] + (heightsRef.current.get(key) || 180));
     return { keys, offsets };
   }, [messages, revision]);
-  layoutRef.current = layout;
   const { keys, offsets } = layout;
   const total = offsets[offsets.length - 1];
   let top = viewport.top;
   if (followRef.current || !Number.isFinite(top)) top = Math.max(0, total - viewport.height);
-  else if (anchorRef.current) {
-    const index = keys.indexOf(anchorRef.current.key);
-    if (index >= 0) top = offsets[index] + anchorRef.current.delta;
+  if (!followRef.current && layoutRef.current && scrollRef.current && rootRef.current) {
+    // Read the live position before replacing the layout: wheel scrolling can precede its scroll event.
+    const scroll = scrollRef.current;
+    const position = scroll.getBoundingClientRect().top - rootRef.current.getBoundingClientRect().top;
+    const previous = layoutRef.current;
+    const anchor = virtualMessageIndex(previous.offsets, position);
+    const index = keys.indexOf(previous.keys[anchor]);
+    top = index >= 0 ? offsets[index] + position - previous.offsets[anchor] : position;
   }
+  layoutRef.current = layout;
   // ponytail: prefix sums are O(n) per message batch; only visible rows mount.
   // Use an indexed height tree if loaded histories make this arithmetic expensive.
   const windowed = messages.length > 200 && !showAll && typeof ResizeObserver !== 'undefined';
@@ -60,9 +64,6 @@ function VirtualMessages({ messages, scrollRef, followRef, gestureRef, showAll, 
       const origin = root.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop;
       // Negative positions preserve the older-page controls above the list.
       const position = scroll.scrollTop - origin;
-      const current = layoutRef.current;
-      const index = virtualMessageIndex(current.offsets, position);
-      anchorRef.current = current.keys.length ? { key: current.keys[index], delta: position - current.offsets[index] } : null;
       setViewport(previous => previous.top === position && previous.height === scroll.clientHeight
         ? previous : { top: position, height: scroll.clientHeight });
     };

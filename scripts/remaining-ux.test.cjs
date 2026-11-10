@@ -58,11 +58,20 @@ function virtualPositionCheck(source) {
   render();
   assert.equal(writes, 0, '打字等無關重繪不能把捲動位置拉回舊錨點');
   assert.equal(position, 1370);
+  props.messages = props.messages.map((message, index) => index === 299 ? { ...message, content: 'streaming update' } : message);
+  render();
+  assert.equal(position, 1370, '往上捲但 scroll 事件尚未送達時，串流更新也不能把位置拉回舊錨點');
+  for (const expected of [1340, 1310, 1280]) {
+    position = expected;
+    props.messages = [...props.messages, { id: `new-${expected}` }];
+    render();
+    assert.equal(position, expected, '連續往上捲時，新訊息也必須保留目前位置');
+  }
   listeners.get('scroll')();
   render();
   props.messages = [{ id: 'older' }, ...props.messages];
   render();
-  assert.equal(position, 1550, '補一列歷史仍保留正在閱讀的訊息位置');
+  assert.equal(position, 1460, '補一列歷史仍保留正在閱讀的訊息位置');
 }
 
 async function main() {
@@ -144,6 +153,19 @@ async function main() {
   vm.runInContext(chat.slice(syncStart, chat.indexOf('  const jumpToLatest =', syncStart)) + '\nglobalThis.sync = syncChatNearBottom;', controls);
   controls.sync();
   assert.equal(controls.chatNearBottomRef.current, false, '小幅往上捲 30px 必須停止跟隨');
+  let smoothScrolling = true;
+  controls.gestureRef = { current: false };
+  controls.sendFollowUntilRef = { current: 123 };
+  controls.chatScrollRef.current.scrollTo = ({ top }) => {
+    assert.equal(top, 170, '停止動畫時必須保留當下的閱讀位置');
+    smoothScrolling = false;
+  };
+  const gestureStart = chat.indexOf('  const markGesture =');
+  vm.runInContext(chat.slice(gestureStart, chat.indexOf('  const handleChatScroll =', gestureStart)) + '\nglobalThis.markGesture = markGesture;', controls);
+  controls.markGesture({ type: 'wheel', deltaY: -120 });
+  assert.equal(smoothScrolling, false, '往上滾必須立即停止尚未結束的捲到底動畫');
+  assert.equal(controls.chatNearBottomRef.current, false);
+  assert.equal(controls.sendFollowUntilRef.current, 0);
   const focusStart = chat.indexOf('  const focusChatInput =');
   vm.runInContext(chat.slice(focusStart, chat.indexOf('  /** 將游標放回輸入框', focusStart)) + '\nglobalThis.focusInput = focusChatInput;', controls);
   controls.focusInput(true);

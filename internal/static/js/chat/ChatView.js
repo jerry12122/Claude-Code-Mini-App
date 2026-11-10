@@ -245,6 +245,9 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     if (event.type !== 'wheel' || event.deltaY < 0) {
       chatNearBottomRef.current = false;
       sendFollowUntilRef.current = 0;
+      // Stop an in-flight scrollIntoView animation before it can undo the user's scroll.
+      const scroll = chatScrollRef.current;
+      if (scroll) scroll.scrollTo({ top: scroll.scrollTop, behavior: 'instant' });
     }
   };
 
