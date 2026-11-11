@@ -197,7 +197,7 @@ Open **設定 → 日誌** (Settings → Logs). If the UI cannot load, inspect `
 
 ## Building from source
 
-Install [Git](https://git-scm.com/downloads) and [Go 1.25 or newer](https://go.dev/dl/). Check `git --version` and `go version` first.
+Install [Git](https://git-scm.com/downloads) and [Go 1.26.11 or newer](https://go.dev/dl/). Check `git --version` and `go version` first.
 
 ```bash
 git clone https://github.com/jerry12122/Claude-Code-Mini-App

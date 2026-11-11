@@ -195,7 +195,7 @@ cloudflared tunnel --url http://127.0.0.1:8080
 
 ## 從原始碼建置
 
-需要 [Git](https://git-scm.com/downloads) 與 [Go 1.25 或更新版本](https://go.dev/dl/)。先確認 `git --version` 和 `go version` 可執行。
+需要 [Git](https://git-scm.com/downloads) 與 [Go 1.26.11 或更新版本](https://go.dev/dl/)。先確認 `git --version` 和 `go version` 可執行。
 
 ```bash
 git clone https://github.com/jerry12122/Claude-Code-Mini-App
