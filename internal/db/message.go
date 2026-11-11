@@ -276,7 +276,17 @@ func (db *DB) ListMessagesQuery(q MessageQuery) ([]*Message, error) {
 		return nil, err
 	}
 	rows.Close()
-	all, err := db.AttachmentMap(q.SessionID)
+	ids := make([]string, 0)
+	seen := make(map[string]bool)
+	for _, m := range msgs {
+		for _, id := range m.AttachmentIDs {
+			if !seen[id] {
+				ids = append(ids, id)
+				seen[id] = true
+			}
+		}
+	}
+	all, err := db.attachmentMap(q.SessionID, ids)
 	if err != nil {
 		return nil, err
 	}

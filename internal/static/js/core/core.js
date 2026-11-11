@@ -479,10 +479,10 @@ function fetchWithTimeout(url, { timeoutMs = 15000, ...opts } = {}) {
     controller.abort(opts.signal.reason);
   };
   const cleanup = () => opts.signal?.removeEventListener('abort', abort);
-  const timer = setTimeout(() => {
+  const timer = timeoutMs > 0 ? setTimeout(() => {
     controller.abort(new Error('連線逾時，請稍後再試'));
     cleanup();
-  }, timeoutMs);
+  }, timeoutMs) : null;
   if (opts.signal?.aborted) abort();
   else opts.signal?.addEventListener('abort', abort, { once: true });
   return fetch(url, { ...opts, signal: controller.signal }).catch((err) => {
@@ -490,6 +490,38 @@ function fetchWithTimeout(url, { timeoutMs = 15000, ...opts } = {}) {
     cleanup();
     throw err;
   });
+}
+
+// Session storage also works inside Telegram Web's third-party iframe.
+const TELEGRAM_SESSION_KEY = 'cc_tg_session:' + (tgApp?.initDataUnsafe?.user?.id || 'default');
+let telegramSessionToken = (() => { try { return isTelegram ? sessionStorage.getItem(TELEGRAM_SESSION_KEY) || '' : ''; } catch { return ''; } })();
+let telegramAuthPromise = null;
+let telegramAuthEnded = false;
+function ensureTelegramSession(invalidToken) {
+  if (invalidToken && telegramSessionToken === invalidToken) {
+    telegramSessionToken = '';
+    try { sessionStorage.removeItem(TELEGRAM_SESSION_KEY); } catch {}
+  }
+  if (telegramSessionToken) return Promise.resolve(telegramSessionToken);
+  if (telegramAuthEnded) return Promise.reject(new Error('登入已失效，請重新開啟 Mini App；草稿會保留'));
+  if (!telegramAuthPromise) {
+    telegramAuthPromise = fetchWithTimeout(resolveApiUrl('/auth/telegram'), {
+      method: 'POST', headers: { 'X-Telegram-Init-Data': initData },
+    }).then(async res => {
+      if (res.status === 401 || res.status === 403) {
+        telegramAuthEnded = true;
+        onSessionExpired?.();
+        throw new Error('登入已失效，請重新開啟 Mini App；草稿會保留');
+      }
+      if (!res.ok) throw new Error('暫時無法連線，請稍後重試');
+      const data = await res.json();
+      if (!data.token) throw new Error('無法建立登入，請稍後重試');
+      telegramSessionToken = data.token;
+      try { sessionStorage.setItem(TELEGRAM_SESSION_KEY, data.token); } catch {}
+      return data.token;
+    }).finally(() => { telegramAuthPromise = null; });
+  }
+  return telegramAuthPromise;
 }
 
 // 統一 fetch：TMA 帶 initData；Web 帶 Bearer（localStorage），舊版仍相容後端 Cookie
@@ -500,14 +532,19 @@ const apiFetch = async (url, opts = {}) => {
     const gt = guestTokenValue();
     if (gt) headers['X-Share-Token'] = gt;
   } else if (isTelegram) {
-    headers['X-Telegram-Init-Data'] = initData;
+    headers['Authorization'] = 'Bearer ' + await ensureTelegramSession();
   } else {
     try {
       const t = localStorage.getItem(WEB_SESSION_STORAGE_KEY);
       if (t) headers['Authorization'] = `Bearer ${t}`;
     } catch (_) {}
   }
-  const res = await fetchWithTimeout(resolveApiUrl(url), { ...opts, headers });
+  let res = await fetchWithTimeout(resolveApiUrl(url), { ...opts, headers });
+  if (isTelegram && !isGuestMode && res.status === 401) {
+    const oldToken = headers.Authorization.slice(7);
+    headers.Authorization = 'Bearer ' + await ensureTelegramSession(oldToken);
+    res = await fetchWithTimeout(resolveApiUrl(url), { ...opts, headers });
+  }
   handleUnauthorized(res);
   return res;
 };
@@ -522,7 +559,7 @@ const wsBaseURL = (path) => {
     return gt ? `${url}${sep(url)}share=${encodeURIComponent(gt)}` : url;
   }
   if (isTelegram) {
-    return `${url}${sep(url)}initData=${encodeURIComponent(initData)}`;
+    return `${url}${sep(url)}token=${encodeURIComponent(telegramSessionToken)}`;
   }
   try {
     const t = localStorage.getItem(WEB_SESSION_STORAGE_KEY);
@@ -530,6 +567,12 @@ const wsBaseURL = (path) => {
   } catch (_) {}
   return url;
 };
+let socketMessageLimit = 16 * 1024 * 1024;
+function socketPayloadError(obj) {
+  const json = JSON.stringify(obj);
+  if (json.length * 3 <= socketMessageLimit || new TextEncoder().encode(json).byteLength <= socketMessageLimit) return '';
+  return `訊息超過 ${Math.round(socketMessageLimit / 1024 / 1024)} MiB，請分段或改用附件；草稿已保留`;
+}
 const wsURL = (sessionId, { historyLimit = 100 } = {}) => wsBaseURL(`/sessions/${sessionId}/ws?history_limit=${historyLimit}`);
 /** 全域事件頻道：session 列表有變動時伺服器會推 sessions_changed */
 const eventsWsURL = () => wsBaseURL('/events');
@@ -551,10 +594,47 @@ marked.use({
   },
 });
 
+// Cache independently sanitized blocks, never unfinished HTML fragments.
+const markdownBlocks = new Map();
+let markdownCacheBytes = 0;
+let markdownLinks = "";
 function parseMarkdown(text, options) {
   const isStreaming = Boolean(options?.streaming || options === true);
-  const html = marked.parse(text);
-  return html
+  if (!marked.lexer || !marked.parser) return renderMarkdownHTML(marked.parse(text), isStreaming);
+  const tokens = marked.lexer(text);
+  const links = JSON.stringify(tokens.links || {});
+  if (links !== markdownLinks) { markdownBlocks.clear(); markdownCacheBytes = 0; markdownLinks = links; }
+  return tokens.map(token => {
+    if (token.type === 'space' || token.type === 'def') return '';
+    const key = String(isStreaming) + token.type + '\0' + token.raw;
+    if (markdownBlocks.has(key)) return markdownBlocks.get(key);
+    const block = [token]; block.links = tokens.links;
+    let rendered;
+    if (token.type === 'code') {
+      const lang = /^[\w+-]+$/.test(token.lang || '') ? token.lang : 'text';
+      const escaped = token.text.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      rendered = renderMarkdownHTML(`<pre><code class="language-${lang}">${escaped}</code></pre>`, isStreaming, true);
+    } else {
+      const html = marked.parser(block);
+      rendered = /<style\b|<svg\b|\sstyle\s*=/i.test(html)
+        ? `<ra-html data-html-b64="${btoa(unescape(encodeURIComponent(html)))}"></ra-html>`
+        : renderMarkdownHTML(html, isStreaming);
+    }
+    const bytes = (key.length + rendered.length) * 2;
+    if (bytes < 4 * 1024 * 1024) {
+      while (markdownBlocks.size && (markdownCacheBytes + bytes > 4 * 1024 * 1024 || markdownBlocks.size >= 10000)) {
+        const [oldKey, value] = markdownBlocks.entries().next().value;
+        markdownCacheBytes -= (oldKey.length + value.length) * 2;
+        markdownBlocks.delete(oldKey);
+      }
+      markdownBlocks.set(key, rendered); markdownCacheBytes += bytes;
+    }
+    return rendered;
+  }).join('');
+}
+
+function renderMarkdownHTML(html, isStreaming, trustedCode = false) {
+  const rendered = html
     .replace(/<table>/g, '<div class="table-wrap"><table>')
     .replace(/<\/table>/g, '</table></div>')
     // <pre><code class="language-xxx">raw text</code></pre> → 用 hljs 上色 + 提升 data-lang 到 <pre> + 加複製按鈕。
@@ -580,6 +660,14 @@ function parseMarkdown(text, options) {
     })
     // agent 傳回的圖片（如截圖）先縮成縮圖，點擊由 ChatView 的 handleProseClick 開燈箱放大。
     .replace(/<img /g, '<img class="chat-img" loading="lazy" ');
+  if (trustedCode && isStreaming) return rendered; // Only escaped code and our own literal controls.
+  return DOMPurify.sanitize(rendered, {
+    USE_PROFILES: { html: true, svg: true },
+    FORBID_TAGS: ['style', 'form', 'input', 'textarea', 'select'],
+    FORBID_ATTR: ['style'],
+    ADD_ATTR: ['target'],
+    CUSTOM_ELEMENT_HANDLING: { tagNameCheck: /^ra-(?:mermaid|html)$/ },
+  });
 }
 
 /** 顯示用：permission_mode 值 → 中文標籤。包含 Claude/Cursor 與 Gemini 兩套值。 */

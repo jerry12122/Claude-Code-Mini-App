@@ -7,19 +7,27 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"testing"
+	"time"
 )
 
 // signInitData 用與 tg.Verify 相同的算法簽出 initData：
 // secret = HMAC_SHA256(key=WebAppData, msg=botToken)，hash = HMAC_SHA256(secret, data_check_string)。
-func signInitData(botToken, userJSON string) string {
+func signInitData(botToken, userJSON string, dates ...time.Time) string {
 	mac := hmac.New(sha256.New, []byte("WebAppData"))
 	mac.Write([]byte(botToken))
 	secret := mac.Sum(nil)
 	mac2 := hmac.New(sha256.New, secret)
-	mac2.Write([]byte("user=" + userJSON))
+	now := time.Now()
+	if len(dates) > 0 {
+		now = dates[0]
+	}
+	stamp := strconv.FormatInt(now.Unix(), 10)
+	mac2.Write([]byte("auth_date=" + stamp + "\nuser=" + userJSON))
 	v := url.Values{}
 	v.Set("user", userJSON)
+	v.Set("auth_date", stamp)
 	v.Set("hash", hex.EncodeToString(mac2.Sum(nil)))
 	return v.Encode()
 }

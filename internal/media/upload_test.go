@@ -2,6 +2,8 @@ package media
 
 import (
 	"bytes"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,5 +60,25 @@ func TestSaveUpload(t *testing.T) {
 	after, _ := os.ReadDir(wantDir)
 	if len(after) != len(before) {
 		t.Fatalf("被拒絕的檔案不應殘留，before=%d after=%d", len(before), len(after))
+	}
+}
+
+type failedUploadReader struct{}
+
+func (failedUploadReader) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
+func TestInterruptedUploadIsRemoved(t *testing.T) {
+	old := WorkspaceDir
+	WorkspaceDir = t.TempDir()
+	defer func() { WorkspaceDir = old }()
+	_, err := SaveUpload("session", "file.bin", io.MultiReader(strings.NewReader("partial"), failedUploadReader{}))
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("err=%v", err)
+	}
+	files, err := os.ReadDir(filepath.Join(WorkspaceDir, "uploads", "session"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 0 {
+		t.Fatalf("partial upload retained: %v", files)
 	}
 }

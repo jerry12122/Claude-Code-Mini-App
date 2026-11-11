@@ -26,6 +26,14 @@ jobs:
       - name: tag、VERSION、version.go 與 commit 必須一致
         run: bash scripts/release/check-version.sh
 
+      - name: 依賴漏洞掃描（Windows server、桌面與 Linux server）
+        timeout-minutes: 15
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          govulncheck ./cmd/server
+          govulncheck -tags production,devtools ./cmd/desktop
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 govulncheck ./cmd/server
+
       - name: 測試
         run: go test ./internal/...
 

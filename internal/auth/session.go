@@ -9,8 +9,9 @@ import (
 
 // sessionEntry 單一 Web session 的過期時間與對應的 Telegram 使用者（供通知用）。
 type sessionEntry struct {
-	exp  time.Time
-	tgID int64
+	exp     time.Time
+	tgID    int64
+	revoked chan struct{}
 }
 
 // Store 是記憶體內的 session token 儲存區。
@@ -37,7 +38,7 @@ func (s *Store) Create(tgID int64) (string, error) {
 	}
 	token := hex.EncodeToString(b)
 	s.mu.Lock()
-	s.sessions[token] = sessionEntry{exp: time.Now().Add(s.ttl), tgID: tgID}
+	s.sessions[token] = sessionEntry{exp: time.Now().Add(s.ttl), tgID: tgID, revoked: make(chan struct{})}
 	s.mu.Unlock()
 	return token, nil
 }
@@ -54,15 +55,45 @@ func (s *Store) Validate(token string) (valid bool, tgID int64) {
 		return false, 0
 	}
 	if time.Now().After(ent.exp) {
+		if ent := s.sessions[token]; ent.revoked != nil {
+			close(ent.revoked)
+		}
 		delete(s.sessions, token)
 		return false, 0
 	}
 	return true, ent.tgID
 }
 
+// Refresh extends a live session's idle deadline, never reviving an expired token.
+func (s *Store) Refresh(token string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ent, ok := s.sessions[token]
+	if !ok || !ent.exp.After(time.Now()) {
+		return false
+	}
+	ent.exp = time.Now().Add(s.ttl)
+	s.sessions[token] = ent
+	return true
+}
+
+// Lifetime returns the expiry and revocation signal for a currently valid login.
+func (s *Store) Lifetime(token string) (time.Time, <-chan struct{}, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ent, ok := s.sessions[token]
+	if !ok || !ent.exp.After(time.Now()) {
+		return time.Time{}, nil, false
+	}
+	return ent.exp, ent.revoked, true
+}
+
 // Delete 登出時移除 token。
 func (s *Store) Delete(token string) {
 	s.mu.Lock()
+	if ent := s.sessions[token]; ent.revoked != nil {
+		close(ent.revoked)
+	}
 	delete(s.sessions, token)
 	s.mu.Unlock()
 }
@@ -75,6 +106,9 @@ func (s *Store) cleanup() {
 		now := time.Now()
 		for token, ent := range s.sessions {
 			if now.After(ent.exp) {
+				if ent := s.sessions[token]; ent.revoked != nil {
+					close(ent.revoked)
+				}
 				delete(s.sessions, token)
 			}
 		}

@@ -136,7 +136,8 @@ type serverMsg struct {
 	Online       []string           `json:"online,omitempty"`    // presence：目前在線名單
 	Handoff      *manualHandoffInfo `json:"handoff,omitempty"`   // type=handoff_available：自動交接未成功時的手動接手資訊
 
-	HistoryHasMore bool `json:"history_has_more,omitempty"`
+	HistoryHasMore  bool `json:"history_has_more,omitempty"`
+	MaxMessageBytes int  `json:"max_message_bytes,omitempty"`
 
 	// Telegram 時間線（與 HTTP 分頁同一份 DTO；其他 agent 不使用）。
 	Telegram                *db.TelegramRef `json:"telegram,omitempty"`
@@ -289,6 +290,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 			syncMsg.SyncState = telegramSyncStateFn(sessionID)
 			syncMsg.TelegramScope = syncData.TelegramScope
 		}
+		syncMsg.MaxMessageBytes, _ = c.Locals("max_message_bytes").(int)
 		syncMsg.Model = sessionModelPayload(sess)
 		syncMsg.Queue, syncMsg.QueuePaused = loadQueueState(database, sessionID)
 		syncMsg.Lingering = syncData.UIState == StateIdle && taskIsActive(sessionID)
@@ -382,6 +384,8 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 					}
 					shellTaskEnd(sessionID, msgID)
 				}()
+				content := &messageBuffer{write: func(text string) error { return database.AppendMessageContent(msgID, text) }, send: broadcast}
+				defer content.Flush()
 				var cbMu sync.Mutex
 				var done atomic.Bool
 				var shellErrText string
@@ -389,22 +393,29 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				err := runShellCommand(ctx, shell.RunOptions{Command: command, WorkDir: wdir, Timeout: shellTimeoutSec}, func(e shell.Event) {
 					cbMu.Lock()
 					defer cbMu.Unlock()
+					if e.Type != shell.EventDeltaStdout && e.Type != shell.EventDeltaStderr {
+						if flushErr := content.Flush(); flushErr != nil {
+							shellErrText = flushErr.Error()
+							cancel()
+							return
+						}
+					}
 					if ctx.Err() != nil {
 						return
 					}
 					switch e.Type {
 					case shell.EventDeltaStdout:
 						chunk := appendShellDBChunk("stdout", e.Text)
-						if err := database.AppendMessageContent(msgID, chunk); err != nil {
+						if err := content.Append(chunk, serverMsg{Type: "shell_delta", Stream: "stdout", Content: e.Text}); err != nil {
 							slog.Info(fmt.Sprintf("[ws] shell append: %v", err))
+							cancel()
 						}
-						broadcast(serverMsg{Type: "shell_delta", Stream: "stdout", Content: e.Text})
 					case shell.EventDeltaStderr:
 						chunk := appendShellDBChunk("stderr", e.Text)
-						if err := database.AppendMessageContent(msgID, chunk); err != nil {
+						if err := content.Append(chunk, serverMsg{Type: "shell_delta", Stream: "stderr", Content: e.Text}); err != nil {
 							slog.Info(fmt.Sprintf("[ws] shell append: %v", err))
+							cancel()
 						}
-						broadcast(serverMsg{Type: "shell_delta", Stream: "stderr", Content: e.Text})
 					case shell.EventError:
 						shellErrText = e.Text
 						if e.Text != "" {
@@ -418,6 +429,9 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 						broadcast(serverMsg{Type: "shell_done", ExitCode: e.ExitCode})
 					}
 				})
+				if flushErr := content.Flush(); flushErr != nil {
+					err = errors.Join(err, flushErr)
+				}
 				interrupted := !done.Load()
 				if interrupted {
 					appendText := "\n[interrupted]\n"
@@ -683,6 +697,8 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				defer permCleanup()
 				defer taskEnd(sessionID, msgID)
 
+				content := &messageBuffer{write: func(text string) error { return database.AppendMessageContent(msgID, text) }, send: broadcast}
+				defer content.Flush()
 				permDenied := false
 				runFailed := false
 				succeeded := false
@@ -705,10 +721,9 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 						streamed = true
 						broadcast(serverMsg{Type: "status", Value: StateStreaming})
 					}
-					if err := database.AppendMessageContent(msgID, text); err != nil {
+					if err := errors.Join(content.Append(text, serverMsg{Type: "delta", Content: text}), content.Flush()); err != nil {
 						slog.Info(fmt.Sprintf("[ws] AppendMessageContent (notice): %v", err))
 					}
-					broadcast(serverMsg{Type: "delta", Content: text})
 				}
 
 				// 收尾決定佇列走向。等授權時不動佇列；成功才續跑；失敗／中斷暫停，避免錯誤連鎖。
@@ -734,6 +749,16 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				}
 
 				err := runner.Run(ctx, opts, func(e agent.Event) {
+					if e.Type != agent.EventDelta {
+						if flushErr := content.Flush(); flushErr != nil {
+							runFailed = true
+							errText = flushErr.Error()
+							cancel()
+							broadcast(serverMsg{Type: "error", Content: errText})
+							return
+						}
+					}
+
 					// 中止後仍處理 delta/done/error，避免進程收尾時文字被丟棄成空白訊息。
 					if ctx.Err() != nil {
 						switch e.Type {
@@ -760,10 +785,10 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 
 					case agent.EventDelta:
 						if e.Text != "" {
-							if err := database.AppendMessageContent(msgID, e.Text); err != nil {
+							if err := content.Append(e.Text, serverMsg{Type: "delta", Content: e.Text}); err != nil {
 								slog.Info(fmt.Sprintf("[ws] AppendMessageContent: %v", err))
+								cancel()
 							}
-							broadcast(serverMsg{Type: "delta", Content: e.Text})
 						}
 
 					case agent.EventSessionInit:
@@ -901,6 +926,9 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 					}
 				})
 
+				if flushErr := content.Flush(); flushErr != nil {
+					err = errors.Join(err, flushErr)
+				}
 				lingerMu.Lock()
 				runEnded = true
 				broadcast(serverMsg{Type: "lingering", Value: "off"})
@@ -1083,6 +1111,8 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 					}
 					shellTaskEnd(sessionID, msgID)
 				}()
+				content := &messageBuffer{write: func(text string) error { return database.AppendMessageContent(msgID, text) }, send: broadcast}
+				defer content.Flush()
 				var cbMu sync.Mutex
 				var done atomic.Bool
 				var shellErrText string
@@ -1090,22 +1120,29 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				err := runShellCommand(ctx, shell.RunOptions{Command: line, WorkDir: workDir, Timeout: shellTimeoutSec}, func(e shell.Event) {
 					cbMu.Lock()
 					defer cbMu.Unlock()
+					if e.Type != shell.EventDeltaStdout && e.Type != shell.EventDeltaStderr {
+						if flushErr := content.Flush(); flushErr != nil {
+							shellErrText = flushErr.Error()
+							cancel()
+							return
+						}
+					}
 					if ctx.Err() != nil {
 						return
 					}
 					switch e.Type {
 					case shell.EventDeltaStdout:
 						chunk := appendShellDBChunk("stdout", e.Text)
-						if err := database.AppendMessageContent(msgID, chunk); err != nil {
+						if err := content.Append(chunk, serverMsg{Type: "shell_delta", Stream: "stdout", Content: e.Text}); err != nil {
 							slog.Info(fmt.Sprintf("[ws] shell append: %v", err))
+							cancel()
 						}
-						broadcast(serverMsg{Type: "shell_delta", Stream: "stdout", Content: e.Text})
 					case shell.EventDeltaStderr:
 						chunk := appendShellDBChunk("stderr", e.Text)
-						if err := database.AppendMessageContent(msgID, chunk); err != nil {
+						if err := content.Append(chunk, serverMsg{Type: "shell_delta", Stream: "stderr", Content: e.Text}); err != nil {
 							slog.Info(fmt.Sprintf("[ws] shell append: %v", err))
+							cancel()
 						}
-						broadcast(serverMsg{Type: "shell_delta", Stream: "stderr", Content: e.Text})
 					case shell.EventError:
 						shellErrText = e.Text
 						if e.Text != "" {
@@ -1119,6 +1156,9 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 						broadcast(serverMsg{Type: "shell_done", ExitCode: e.ExitCode, ID: msgID})
 					}
 				})
+				if flushErr := content.Flush(); flushErr != nil {
+					err = errors.Join(err, flushErr)
+				}
 				interrupted := !done.Load()
 				if interrupted {
 					appendText := "\n[interrupted]\n"

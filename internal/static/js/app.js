@@ -94,7 +94,7 @@ function App() {
   const [mobileActivePane, setMobileActivePane] = useState('primary');
   const [creating, setCreating] = useState(false);
   const [composerPrefill, setComposerPrefill] = useState(null);
-  const [authed, setAuthed]   = useState(isTelegram);
+  const [authed, setAuthed]   = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const lastEscTimeRef = useRef(0);
 
@@ -324,7 +324,7 @@ function App() {
     });
   }, []);
   // 非 TMA 環境：mount 時試探 cookie 是否仍有效
-  const [checking, setChecking] = useState(!isTelegram);
+  const [checking, setChecking] = useState(true);
 
   const [sidebarWidthPx, setSidebarWidthPx] = useState(() =>
     typeof window !== 'undefined' ? clampSidebarWidthPx(readStoredSidebarWidthPx()) : SIDEBAR_WIDTH_DEFAULT
@@ -421,16 +421,18 @@ function App() {
   }, [tabGroups.groups]);
 
   useEffect(() => {
-    if (isTelegram) return;
-    registerSessionExpiredHandler(() => setAuthed(false));
+    registerSessionExpiredHandler(() => { setAuthed(false); setChecking(false); });
     return () => registerSessionExpiredHandler(null);
   }, []);
 
   useEffect(() => {
-    if (isTelegram) return;
+    if (isTelegram) {
+      ensureTelegramSession().then(() => setAuthed(true)).catch(() => {}).finally(() => setChecking(false));
+      return;
+    }
     apiFetch('/sessions').then((res) => {
       if (res.ok) setAuthed(true);
-    }).finally(() => setChecking(false));
+    }).catch(() => {}).finally(() => setChecking(false));
   }, []);
 
   useEffect(() => {
@@ -755,7 +757,10 @@ function App() {
     <>
       <DebugBanner />
       {!authed
-        ? <PasswordView onSuccess={() => setAuthed(true)} />
+        ? (isTelegram ? <div className="p-6 text-center text-ra-t2" role="alert">
+            <p>{telegramAuthEnded ? '登入已失效，請關閉後重新開啟 Mini App；草稿會保留。' : '暫時無法連線，請稍後重試。'}</p>
+            <button className="mt-4 rounded-lg px-4 py-2 bg-ra-raised" onClick={() => telegramAuthEnded ? tgApp.close() : location.reload()}>{telegramAuthEnded ? '關閉 Mini App' : '重試'}</button>
+          </div> : <PasswordView onSuccess={() => setAuthed(true)} />)
         : renderAuthedLayout()
       }
       <SettingsModal

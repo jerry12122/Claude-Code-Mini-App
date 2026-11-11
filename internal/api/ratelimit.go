@@ -1,6 +1,7 @@
 package api
 
 import (
+	"strconv"
 	"sync"
 	"time"
 
@@ -53,6 +54,38 @@ func (l *ipRateLimiter) allow(key string) bool {
 // JoinLimiter 回傳 join 專用的限流中介層（每個來源 IP 每分鐘最多 joinRatePerMinute 次）。
 func JoinLimiter() fiber.Handler {
 	return limitByIP(newIPRateLimiter(joinRatePerMinute, time.Minute))
+}
+
+// LoginFailureLimiter counts only failed passwords. Blocking is per source IP,
+// lasts at most a minute, and never revokes an already authenticated session.
+// ponytail: counts are process-local; use shared storage for multiple instances.
+func LoginFailureLimiter() fiber.Handler {
+	return loginFailureLimiter(newIPRateLimiter(5, time.Minute))
+}
+
+func loginFailureLimiter(l *ipRateLimiter) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		ip := auth.RealIP(c)
+		l.mu.Lock()
+		var wait time.Duration
+		if w := l.hits[ip]; w != nil && w.n >= l.max {
+			wait = l.window - l.now().Sub(w.start)
+		}
+		l.mu.Unlock()
+		if wait > 0 {
+			c.Set("Retry-After", strconv.Itoa(int((wait+time.Second-1)/time.Second)))
+			return jsonErr(c, 429, "登入失敗次數過多，請稍後再試")
+		}
+		err := c.Next()
+		if c.Response().StatusCode() == 401 {
+			l.allow(ip)
+		} else if c.Response().StatusCode() >= 200 && c.Response().StatusCode() < 300 {
+			l.mu.Lock()
+			delete(l.hits, ip)
+			l.mu.Unlock()
+		}
+		return err
+	}
 }
 
 func limitByIP(l *ipRateLimiter) fiber.Handler {

@@ -592,6 +592,8 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     const trimmed = raw.trim();
     const selected = inputMode === 'shell' ? [] : attachmentItemsRef.current;
     if ((!trimmed && selected.length === 0) || selected.some(a => a.status !== 'ready')) return;
+    const sizeError = socketPayloadError({ type: inputMode === 'shell' ? 'shell_exec' : 'input', data: expandMentionPrompt(trimmed, session, mentionChips), attachment_ids:selected.map(a=>a.attachmentId), request_id:'00000000-0000-0000-0000-000000000000' });
+    if (sizeError) { showToast(sizeError, {error:true,duration:5000}); return; }
     if (trimmed === '/reset' || trimmed === '/clear') {
       if (state !== 'IDLE' && state !== 'SHELL_IDLE') return;
       if (!flushOrToast()) return;
@@ -770,7 +772,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       if (!item.file.size) throw new Error('檔案是空的');
       const fd = new FormData();
       fd.append('file', item.file);
-      const res = await apiFetch(`/sessions/${sessionId}/uploads`, { method: 'POST', body: fd, signal: controller.signal, timeoutMs: 120000 });
+      const res = await apiFetch(`/sessions/${sessionId}/uploads`, { method: 'POST', body: fd, signal: controller.signal, timeoutMs: 0 });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '上傳失敗');
       if (!data.attachment?.id) throw new Error('附件資訊無法讀取');

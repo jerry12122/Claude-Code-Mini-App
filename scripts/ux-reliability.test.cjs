@@ -118,7 +118,7 @@ async function main() {
     isDisabled: false, inputMode: 'agent', state: 'IDLE', canQueue: false,
     attachmentItemsRef: { current: [file] }, mentionChips: [{ id: 'target' }], mentionChipsRef: { current: [{ id: 'target' }] },
     input: 'original', inputRef: { current: 'original' }, isTGChat: false, sendFollowUntilRef: { current: 0 },
-    flushOrToast: () => true, expandMentionPrompt: text => text,
+    flushOrToast: () => true, expandMentionPrompt: text => text, socketPayloadError: () => '',
     clearDraftInputForSession: id => storage.delete(id),
     setInput: text => { ctx.input = text; ctx.inputRef.current = text; drafts.set('s', { ...drafts.get('s'), text }); },
     setMentionChips: mentions => { ctx.mentionChips = mentions; ctx.mentionChipsRef.current = mentions; drafts.set('s', { ...drafts.get('s'), mentions }); },
@@ -129,6 +129,15 @@ async function main() {
   });
   ctx.sendComposerInput = record => ctx.sendPendingInput('s', record, ctx.submitInput).catch(() => {});
   vm.runInContext(handler(chat, 'handleSend', 'applySuggestion') + '\nglobalThis.handleSend = handleSend;', ctx);
+  let sizeNotice = '';
+  ctx.socketPayloadError = () => '內容過大，草稿已保留';
+  ctx.showToast = text => { sizeNotice = text; };
+  await ctx.handleSend();
+  assert.equal(ctx.input, 'original', '超限不能清掉草稿');
+  assert.equal(ctx.attachmentItemsRef.current[0], file, '超限不能清掉附件');
+  assert.equal(storage.has('s:pending'), false, '超限不能建立待送訊息');
+  assert.match(sizeNotice, /草稿已保留/);
+  ctx.socketPayloadError = () => '';
   const send = ctx.handleSend();
   assert.equal(ctx.input, '', '等待確認時已可輸入下一則');
   ctx.setInput('next message');

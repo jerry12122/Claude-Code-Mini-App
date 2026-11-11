@@ -8,7 +8,6 @@ import (
 	"crypto/subtle"
 	"fmt"
 	"log/slog"
-	"math"
 	"net"
 	"net/http"
 	"strings"
@@ -156,6 +155,7 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("web.session_ttl 格式錯誤 %q: %v", cfg.Web.SessionTTL, err)
 	}
 	sessions := auth.NewStore(sessionTTL)
+	telegramSessions := auth.NewStore(sessionTTL)
 
 	database, err := db.Open(cfg.DB.Path)
 	if err != nil {
@@ -183,13 +183,25 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 
 	app := fiber.New(fiber.Config{
-		DisableStartupMessage:   false,
-		EnableTrustedProxyCheck: true,
-		TrustedProxies:          cfg.Web.TrustedProxies,
-		// 預設 4MB；使用者上傳不限制大小，故放寬到 fasthttp 可表示的最大值（約 2GB）。
-		// ponytail: 全域放寬，只有上傳需要；若要收緊，改成只對 /sessions/:id/uploads 放寬。
-		BodyLimit: math.MaxInt32,
+		DisableStartupMessage:        false,
+		EnableTrustedProxyCheck:      true,
+		TrustedProxies:               cfg.Web.TrustedProxies,
+		BodyLimit:                    smallBodyLimit,
+		StreamRequestBody:            true,
+		ReadTimeout:                  2 * time.Minute,
+		DisablePreParseMultipartForm: true,
 	})
+
+	app.Server().HeaderReceived = requestLimits
+	app.Use(func(c *fiber.Ctx) error {
+		defer func() {
+			if c.Context().RequestBodyStream() != nil {
+				c.Context().SetConnectionClose()
+			}
+		}()
+		return c.Next()
+	})
+	app.Use(rejectCompressedBody)
 
 	// 沒帶 Cache-Control 時 Chromium 會依 Last-Modified 啟發式快取，改了前端檔案後 F5 仍吃舊的（桌面版又沒有強制重載）。
 	// no-cache = 每次向 server 驗證，沒變動回 304，不是不快取。
@@ -208,7 +220,7 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 		return c.JSON(fiber.Map{"needs_setup": false})
 	})
 
-	app.Post("/auth/login", func(c *fiber.Ctx) error {
+	app.Post("/auth/login", smallJSONBody, api.LoginFailureLimiter(), func(c *fiber.Ctx) error {
 		if cfg.NoAuth {
 			return c.Status(400).JSON(fiber.Map{"error": "no_auth 模式下不需登入"})
 		}
@@ -274,10 +286,34 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 		return c.JSON(fiber.Map{"ok": true, "token": token})
 	})
 
+	app.Post("/auth/telegram", api.JoinLimiter(), smallJSONBody, func(c *fiber.Ctx) error {
+		if cfg.NoAuth {
+			return c.JSON(fiber.Map{"token": "tg_no_auth"})
+		}
+		user, err := tg.Verify(c.Get("X-Telegram-Init-Data"), cfg.BotToken)
+		if err != nil {
+			return c.Status(401).JSON(fiber.Map{"error": "登入已失效，請重新開啟 Mini App；草稿會保留", "code": "telegram_auth_expired"})
+		}
+		allowed, err := database.IsUserAllowed(user.ID)
+		if err != nil {
+			return fiber.ErrInternalServerError
+		}
+		if !allowed {
+			return fiber.ErrForbidden
+		}
+		token, err := telegramSessions.Create(user.ID)
+		if err != nil {
+			return fiber.ErrInternalServerError
+		}
+		c.Set("Cache-Control", "no-store")
+		return c.JSON(fiber.Map{"token": "tg_" + token})
+	})
+
 	app.Post("/auth/logout", func(c *fiber.Ctx) error {
 		token := webSessionToken(c)
 		if token != "" {
 			sessions.Delete(token)
+			telegramSessions.Delete(strings.TrimPrefix(token, "tg_"))
 		}
 		c.Cookie(&fiber.Cookie{
 			Name:     "session_token",
@@ -290,12 +326,50 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 	})
 
 	authMiddleware := func(c *fiber.Ctx) error {
+		c.Locals("max_message_bytes", cfg.Server.MaxMessageBytes)
+		authorizedNext := func() error {
+			if err := readJSONBody(c, cfg.Server.MaxMessageBytes); err != nil {
+				return err
+			}
+			return c.Next()
+		}
 		if cfg.NoAuth {
 			// no_auth 下帶訪客 token 的請求仍須受角色／範圍限制，否則開發時無法驗證訪客模式。
 			if t := guestToken(c); t != "" {
 				return guestAuth(database, c, t)
 			}
-			return c.Next()
+			return authorizedNext()
+		}
+
+		// Fresh initData is exchanged once; active sessions survive its 24-hour age.
+		rawTGToken := webSessionToken(c)
+		tgToken := strings.Clone(strings.TrimPrefix(rawTGToken, "tg_"))
+		if valid, userID := telegramSessions.Validate(tgToken); valid {
+			allowed, err := database.IsUserAllowed(userID)
+			if err != nil {
+				return fiber.ErrInternalServerError
+			}
+			if !allowed {
+				telegramSessions.Delete(tgToken)
+				return fiber.ErrForbidden
+			}
+			if !telegramSessions.Refresh(tgToken) {
+				return fiber.ErrUnauthorized
+			}
+			expiry, revoked, _ := telegramSessions.Lifetime(tgToken)
+			c.Locals("tg_id", userID)
+			c.Locals("auth_expires", expiry)
+			c.Locals("auth_revoked", revoked)
+			c.Locals("auth_refresh_interval", max(time.Millisecond, min(sessionTTL/3, 30*time.Second)))
+			c.Locals("auth_refresh", func() bool {
+				allowed, err := database.IsUserAllowed(userID)
+				return err == nil && allowed && telegramSessions.Refresh(tgToken)
+			})
+			return authorizedNext()
+		}
+
+		if strings.HasPrefix(rawTGToken, "tg_") {
+			return fiber.ErrUnauthorized
 		}
 
 		// bot_token 為空時簽章金鑰是公開可算的（HMAC-SHA256(WebAppData, "")），
@@ -323,7 +397,8 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 			}
 			slog.Debug("[auth] TG 驗證通過", "tg_id", user.ID, "username", user.Username)
 			c.Locals("tg_id", user.ID)
-			return c.Next()
+			c.Locals("auth_expires", user.AuthDate.Add(tg.MaxInitDataAge))
+			return authorizedNext()
 		}
 
 		// 臨時分享的訪客（guest token）：在 TG 驗證之後、內網 IP 檢查之前；訪客來自外網，不受內網限制，
@@ -336,7 +411,7 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 			if h := c.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
 				token := strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
 				if subtle.ConstantTimeCompare([]byte(token), []byte(cfg.McpToken)) == 1 {
-					return c.Next()
+					return authorizedNext()
 				}
 			}
 		}
@@ -352,11 +427,17 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 		if !ok {
 			return c.Status(401).JSON(fiber.Map{"error": "請先登入"})
 		}
+		expiry, revoked, valid := sessions.Lifetime(token)
+		if !valid {
+			return c.SendStatus(fiber.StatusUnauthorized)
+		}
+		c.Locals("auth_expires", expiry)
+		c.Locals("auth_revoked", revoked)
 		if webTgID != 0 {
 			c.Locals("tg_id", webTgID)
 		}
 
-		return c.Next()
+		return authorizedNext()
 	}
 
 	shareH := api.NewShareHandler(database, api.ShareHooks{Kick: ws.KickShare, Online: ws.ShareOnline}, assets)
@@ -386,7 +467,7 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 	app.Delete("/shares", authMiddleware, shareH.RevokeAll)
 	app.Get("/guest/me", authMiddleware, shareH.Me)
 	app.Get("/share/:token", shareH.Page)
-	app.Post("/share/:token/join", api.JoinLimiter(), shareH.Join)
+	app.Post("/share/:token/join", api.JoinLimiter(), smallJSONBody, shareH.Join)
 
 	sth := api.NewSettingsHandler(database)
 	app.Get("/settings/appearance", authMiddleware, sth.GetAppearance)
@@ -395,7 +476,7 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 	app.Put("/settings/general", authMiddleware, sth.PutGeneral)
 
 	app.Get("/config", authMiddleware, func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"shell_enabled": cfg.Shell.Enabled, "version": version.Version, "sha": version.Revision()})
+		return c.JSON(fiber.Map{"shell_enabled": cfg.Shell.Enabled, "max_message_bytes": cfg.Server.MaxMessageBytes, "version": version.Version, "sha": version.Revision()})
 	})
 
 	oh := api.NewOpenHandler(database, cfg.Shell.Enabled)
@@ -446,17 +527,17 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 		}
 		return fiber.ErrUpgradeRequired
 	})
-	app.Get("/events", authMiddleware, fiberws.New(ws.NewEventsHandler()))
+	app.Get("/events", authMiddleware, fiberws.New(guardedSocket(ws.NewEventsHandler())))
 	app.Use("/logs/ws", func(c *fiber.Ctx) error {
 		if fiberws.IsWebSocketUpgrade(c) {
 			return c.Next()
 		}
 		return fiber.ErrUpgradeRequired
 	})
-	app.Get("/logs/ws", authMiddleware, fiberws.New(ws.NewLogStreamHandler()))
+	app.Get("/logs/ws", authMiddleware, fiberws.New(guardedSocket(ws.NewLogStreamHandler())))
 	app.Get("/logs/level", authMiddleware, api.GetLogLevel)
 	app.Put("/logs/level", authMiddleware, api.PutLogLevel)
-	app.Get("/sessions/:id/ws", authMiddleware, fiberws.New(ws.NewHandler(database, cfg.BotToken, shellOpts, quotaSvc, notifyCfg)))
+	app.Get("/sessions/:id/ws", authMiddleware, fiberws.New(guardedSocket(ws.NewHandler(database, cfg.BotToken, shellOpts, quotaSvc, notifyCfg))))
 
 	if cfg.McpToken != "" {
 		header := http.Header{"Authorization": {"Bearer " + cfg.McpToken}}

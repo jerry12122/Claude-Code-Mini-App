@@ -61,6 +61,7 @@ func (w *socketWriter) stop() {
 	if !w.stopped {
 		w.stopped = true
 		close(w.done)
+		_ = w.conn.NetConn().SetDeadline(time.Now())
 		_ = w.conn.Close()
 	}
 }

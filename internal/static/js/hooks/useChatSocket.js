@@ -200,7 +200,10 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
       if (!guestSnapshot && isTG) connectWS();
     };
 
-    const connectWS = () => {
+    const connectWS = async () => {
+      if (isTelegram) {
+        try { await ensureTelegramSession(); } catch { return; }
+      }
       if (!isCurrent()) return;
       clearReconnectTimer();
       wsStarted = true;
@@ -300,6 +303,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
         }
 
         if (msg.type === 'sync') {
+ if (msg.max_message_bytes > 0) socketMessageLimit = msg.max_message_bytes;
           receivedSync = true;
           clearTimeout(syncTimer);
           if (!isTG) setHistLoaded(true);
@@ -645,7 +649,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
         if (isGuest && (shareEndedRef.current || evt.code === 4001)) return;
         // 驗證與重連並行；HTTP 探測故障不能擋住下一次 WS 嘗試。
         scheduleReconnect();
-        if (isGuest || (!everConnected && !isTelegram)) {
+        if (isGuest || !everConnected || evt.code === 1008) {
           apiFetch(isGuest ? '/guest/me' : '/sessions').then(res => {
             if (!isCurrent() || wsRef.current !== ws) return;
             if (res.status === 401 || res.status === 403) clearReconnectTimer();
@@ -778,6 +782,10 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
   }, [session.id]);
 
   const submitInput = useCallback((data, attachmentIds, requestId = newInputRequestID()) => new Promise((resolve, reject) => {
+    if (typeof socketPayloadError === 'function') {
+      const error = socketPayloadError({ type:'input', data, attachment_ids:attachmentIds, request_id:requestId });
+      if (error) { reject(new Error(error)); return; }
+    }
     const ws = wsRef.current;
     const timer = setTimeout(() => {
       inputRequestsRef.current.delete(requestId);

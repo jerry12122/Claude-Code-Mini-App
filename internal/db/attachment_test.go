@@ -107,3 +107,50 @@ func TestAttachmentRejectsWrongSessionAndRollsBackPromotion(t *testing.T) {
 		t.Fatalf("queue lost on failure: %+v %v", items, err)
 	}
 }
+
+// Unrelated metadata must not be scanned when resolving one file or one page.
+func TestAttachmentQueriesOnlyReadRequestedRows(t *testing.T) {
+	database, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	_, err = database.Exec(`INSERT INTO attachments(id,session_id,original_name,storage_name,mime_type,size) VALUES ('good','s','good','good','text/plain',1),('unrelated','s','bad','bad','text/plain','invalid-size')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.GetAttachment("s", "good"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.GetAttachment("other", "good"); err == nil {
+		t.Fatal("cross-session file accepted")
+	}
+	if _, err := database.AddUserMessageWithAttachments("s", "file", "", []string{"good"}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := database.ListMessagesQuery(MessageQuery{SessionID: "s", Limit: 1})
+	if err != nil || len(rows) != 1 || len(rows[0].Attachments) != 1 {
+		t.Fatalf("rows=%v err=%v", rows, err)
+	}
+}
+
+func BenchmarkGetAttachment(b *testing.B) {
+	database, err := Open(":memory:")
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer database.Close()
+	_, err = database.Exec(`WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i+1 FROM n WHERE i<4999)
+ INSERT INTO attachments(id,session_id,original_name,storage_name,mime_type,size)
+ SELECT 'a'||i,'s','file','file','text/plain',1 FROM n`)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := database.GetAttachment("s", "a0"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

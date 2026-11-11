@@ -71,7 +71,8 @@ type Web struct {
 }
 
 type Server struct {
-	Port int `mapstructure:"port"`
+	Port            int `mapstructure:"port"`
+	MaxMessageBytes int `mapstructure:"max_message_bytes"`
 }
 
 type DB struct {
@@ -95,6 +96,7 @@ func Load() (*Config, error) {
 	// 預設值
 	viper.SetDefault("no_auth", false)
 	viper.SetDefault("server.port", 8080)
+	viper.SetDefault("server.max_message_bytes", 16<<20)
 	viper.SetDefault("db.path", "./claude-miniapp.db")
 	viper.SetDefault("web.session_ttl", "168h")
 	viper.SetDefault("web.trusted_proxies", []string{"127.0.0.1/32", "::1/128"})
@@ -136,5 +138,8 @@ func Load() (*Config, error) {
 		}
 	}
 
+	if cfg.Server.MaxMessageBytes < 1 || cfg.Server.MaxMessageBytes > 256<<20 {
+		return nil, errors.New("server.max_message_bytes 須介於 1 到 268435456")
+	}
 	return &cfg, nil
 }

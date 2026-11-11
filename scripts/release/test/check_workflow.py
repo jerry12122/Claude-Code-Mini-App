@@ -60,11 +60,25 @@ def main(path):
     i_test_p = index_of(lambda s: str(s.get("run", "")).strip() == "go test -tags production ./internal/...",
                         "go test -tags production ./internal/...")
     i_pack = index_of(lambda s: "package.sh dist" in str(s.get("run", "")), "package.sh dist")
+    i_scan = index_of(lambda s: "govulncheck ./cmd/server" in str(s.get("run", "")), "govulncheck")
     i_pub = index_of(lambda s: "publish.sh dist" in str(s.get("run", "")), "publish.sh dist")
 
     expect(i_checkout < i_go < i_py, "順序應為 checkout → setup-go → setup-python")
     expect(i_py < i_ver < i_test < i_test_p < i_pack < i_pub,
            "順序應為 setup-python → check-version → go test → go test -tags production → package → publish")
+    expect(i_ver < i_scan < i_pack, "漏洞掃描必須在版本檢查後、打包前")
+    if i_scan >= 0:
+        scan = steps[i_scan]
+        commands = str(scan.get("run", ""))
+        expect("go install golang.org/x/vuln/cmd/govulncheck@v1.9.0" in commands,
+               "掃描工具必須使用固定版本")
+        expect("govulncheck -tags production,devtools ./cmd/desktop" in commands,
+               "必須涵蓋 Windows 桌面正式版")
+        expect("CGO_ENABLED=0 GOOS=linux GOARCH=amd64 govulncheck ./cmd/server" in commands,
+               "必須涵蓋 Linux server")
+        expect(not scan.get("continue-on-error"), "漏洞掃描失敗必須阻擋發佈")
+        expect(not re.search(r"\|\||-json|-format|set\s+\+e", commands),
+               "不得忽略掃描退出碼或使用不會阻擋漏洞的輸出模式")
 
     if i_pub >= 0:
         env = steps[i_pub].get("env", {})

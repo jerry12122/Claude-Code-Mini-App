@@ -57,6 +57,8 @@ notify:
 
 server:
   port: 8080
+  # JSON 與 WS 訊息上限（bytes，可調整）；檔案以串流上傳，不受此限。
+  max_message_bytes: 16777216
 
 db:
   path: "./claude-miniapp.db"

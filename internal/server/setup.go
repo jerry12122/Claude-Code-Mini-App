@@ -83,6 +83,7 @@ func startSetup(ctx context.Context, port int, opts setupOptions) (*Server, erro
 		c.Set("Referrer-Policy", "no-referrer")
 		return c.Next()
 	})
+	app.Use(rejectCompressedBody)
 	app.Use(static.Handler(assets))
 	app.Get("/setup/status", setupGuard(port, token, false), func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{

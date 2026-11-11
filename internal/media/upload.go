@@ -31,7 +31,7 @@ func safeExt(origName string) string {
 // SaveUpload 把使用者上傳的檔案存到 <WorkspaceDir>/uploads/<sessionID>/<隨機名>[.ext]，回傳絕對路徑。
 // sessionID 必須來自資料庫（已驗證存在），不可直接使用請求參數。
 // 檔名一律由伺服器產生（原檔名只取淨化後的副檔名），杜絕路徑穿越。
-// 不限制檔案大小與類型；空檔案仍拒絕。
+// 不限制類型與大小；呼叫端以串流和併發上限控制資源，空檔案仍拒絕。
 func SaveUpload(sessionID, origName string, r io.Reader) (string, error) {
 	ext := safeExt(origName)
 	dir := filepath.Join(WorkspaceDir, "uploads", sessionID)

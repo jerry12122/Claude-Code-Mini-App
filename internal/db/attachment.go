@@ -25,7 +25,23 @@ func (db *DB) AddAttachment(a *Attachment) error {
 }
 
 func (db *DB) AttachmentMap(sessionID string) (map[string]Attachment, error) {
-	rows, err := db.Query(`SELECT id, original_name, storage_name, mime_type, size, created_at FROM attachments WHERE session_id = ?`, sessionID)
+	return db.attachmentMap(sessionID, nil)
+}
+
+func (db *DB) attachmentMap(sessionID string, ids []string) (map[string]Attachment, error) {
+	from := ` FROM attachments AS a`
+	args := []any{sessionID}
+	if ids != nil {
+		if len(ids) == 0 {
+			return map[string]Attachment{}, nil
+		}
+		// Start with the requested IDs, then use the attachment primary key;
+		// otherwise SQLite may scan every attachment through the session index.
+		from = ` FROM json_each(?) AS requested CROSS JOIN attachments AS a ON a.id = requested.value`
+		args = []any{attachmentIDsJSON(ids), sessionID}
+	}
+	query := `SELECT a.id, a.original_name, a.storage_name, a.mime_type, a.size, a.created_at` + from + ` WHERE a.session_id = ?`
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +59,7 @@ func (db *DB) AttachmentMap(sessionID string) (map[string]Attachment, error) {
 }
 
 func (db *DB) GetAttachment(sessionID, id string) (*Attachment, error) {
-	all, err := db.AttachmentMap(sessionID)
+	all, err := db.attachmentMap(sessionID, []string{id})
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +75,7 @@ func (db *DB) ResolveAttachments(sessionID string, ids []string) ([]Attachment, 
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	all, err := db.AttachmentMap(sessionID)
+	all, err := db.attachmentMap(sessionID, ids)
 	if err != nil {
 		return nil, err
 	}

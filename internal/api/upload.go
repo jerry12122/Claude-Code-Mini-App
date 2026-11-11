@@ -1,11 +1,15 @@
 package api
 
 import (
+	"bytes"
+	"io"
 	"mime"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -15,11 +19,12 @@ import (
 
 // UploadHandler stores private uploads and exposes authenticated metadata/content.
 type UploadHandler struct {
-	db *db.DB
+	db    *db.DB
+	slots chan struct{}
 }
 
 func NewUploadHandler(database *db.DB) *UploadHandler {
-	return &UploadHandler{db: database}
+	return &UploadHandler{db: database, slots: make(chan struct{}, 4)}
 }
 
 // Upload POST /sessions/:id/uploads，multipart 欄位 file。
@@ -28,21 +33,46 @@ func (h *UploadHandler) Upload(c *fiber.Ctx) error {
 	if err != nil {
 		return jsonErr(c, 404, "session 不存在")
 	}
-	fh, err := c.FormFile("file")
-	if err != nil {
+	select {
+	case h.slots <- struct{}{}:
+		defer func() { <-h.slots }()
+	default:
+		return jsonErr(c, 429, "目前上傳繁忙，請稍後重試")
+	}
+	kind, params, err := mime.ParseMediaType(c.Get("Content-Type"))
+	if err != nil || kind != "multipart/form-data" || params["boundary"] == "" {
+		return jsonErr(c, 400, "缺少上傳檔案")
+	}
+	var reader io.Reader = c.Context().RequestBodyStream()
+	if reader == nil {
+		reader = bytes.NewReader(c.Body())
+	}
+	reader = uploadReader{Reader: reader, touch: func() { _ = c.Context().Conn().SetReadDeadline(time.Now().Add(2 * time.Minute)) }}
+	defer c.Context().Conn().SetReadDeadline(time.Time{})
+	form := multipart.NewReader(reader, params["boundary"])
+	// Only a single file field is part of this API; bound discarded form fields.
+	var part *multipart.Part
+	for i := 0; i < 16; i++ {
+		part, err = form.NextPart()
+		if err != nil {
+			return jsonErr(c, 400, "缺少 file 欄位或上傳已中斷")
+		}
+		if part.FormName() == "file" && part.FileName() != "" {
+			break
+		}
+		n, copyErr := io.Copy(io.Discard, io.LimitReader(part, smallFormFieldLimit+1))
+		if copyErr != nil || n > smallFormFieldLimit {
+			return jsonErr(c, 400, "上傳欄位過大")
+		}
+		part = nil
+	}
+	if part == nil {
 		return jsonErr(c, 400, "缺少 file 欄位")
 	}
-	f, err := fh.Open()
+	filename := part.FileName()
+	path, err := media.SaveUpload(sess.ID, filename, part)
 	if err != nil {
-		return jsonErr(c, 400, "讀取上傳檔失敗")
-	}
-	defer f.Close()
-	path, err := media.SaveUpload(sess.ID, fh.Filename, f)
-	if err != nil {
-		if strings.HasPrefix(err.Error(), "media:") {
-			return jsonErr(c, 500, "儲存檔案失敗")
-		}
-		return jsonErr(c, 400, err.Error())
+		return jsonErr(c, 500, "儲存檔案失敗或上傳已中斷")
 	}
 	st, err := os.Stat(path)
 	if err != nil {
@@ -50,7 +80,7 @@ func (h *UploadHandler) Upload(c *fiber.Ctx) error {
 		return jsonErr(c, 500, "讀取檔案失敗")
 	}
 	// Normalize Windows and Unix client names; never use them as storage paths.
-	name := filepath.Base(strings.ReplaceAll(fh.Filename, `\`, "/"))
+	name := filepath.Base(strings.ReplaceAll(filename, `\`, "/"))
 	name = strings.Map(func(r rune) rune {
 		if r < 32 || r == 127 {
 			return -1
@@ -133,3 +163,12 @@ func (h *UploadHandler) Details(c *fiber.Ctx) error {
 	c.Set("Cache-Control", "private, no-store")
 	return c.JSON(fiber.Map{"attachment": a, "path": p})
 }
+
+const smallFormFieldLimit = 64 << 10
+
+type uploadReader struct {
+	io.Reader
+	touch func()
+}
+
+func (r uploadReader) Read(p []byte) (int, error) { r.touch(); return r.Reader.Read(p) }
