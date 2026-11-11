@@ -528,7 +528,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
     <div className="flex flex-col h-app min-w-0 overflow-hidden">
       {menuElement}
       {/* Header — 設計 1a / 2a */}
-      <div className="flex items-center justify-between px-5 pt-[18px] pb-3 shrink-0"
+      <div className="ra-session-list-header flex items-center justify-between px-5 pt-[18px] pb-3 shrink-0"
            style={{ paddingTop: 'calc(18px + env(safe-area-inset-top) + var(--tg-content-safe-top))' }}>
         <div className="flex items-center gap-2 min-w-0">
           <div className="w-6 h-6 rounded-[6px] bg-gradient-to-br from-[oklch(0.62_0.19_275)] to-[oklch(0.6_0.17_300)] flex items-center justify-center shrink-0" aria-hidden>
@@ -704,7 +704,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
       <div className="flex flex-col h-app min-w-0 overflow-hidden items-center">
         {menuElement}
         <div
-          className="pt-[18px] pb-2.5 shrink-0 flex flex-col items-center gap-2"
+          className="ra-session-list-header pt-[18px] pb-2.5 shrink-0 flex flex-col items-center gap-2"
           style={{ paddingTop: 'calc(18px + env(safe-area-inset-top) + var(--tg-content-safe-top))' }}
         >
           <button

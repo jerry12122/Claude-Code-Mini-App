@@ -1024,7 +1024,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         {isTGChat && histLoaded && tgPaging && <TelegramOlderControl paging={tgPaging} onLoad={handleLoadOlder} />}
         {!isTGChat && histLoaded && historyPaging && <TelegramOlderControl paging={historyPaging} onLoad={handleLoadOlder} />}
         {histLoaded && messages.length === 0 && !(isTGChat && tgPaging && tgPaging.needsInit && tgPaging.error) && (
-          <div className="mt-16 flex flex-col items-center gap-4 text-center">
+          <div className="ra-chat-empty mt-16 flex flex-col items-center gap-4 text-center">
             <div className="text-sm text-ra-t4">{guestReadOnly ? '目前還沒有訊息' : '輸入指令開始對話'}</div>
             {session.work_dir ? (
               <div className="max-w-full truncate ra-mono text-xs text-ra-t5" title={session.work_dir}>

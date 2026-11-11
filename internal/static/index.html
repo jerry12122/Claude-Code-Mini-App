@@ -296,6 +296,58 @@
       border-color: rgba(180, 83, 9, 0.45);
     }
     .ra-composer-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+    .ra-select-label { display: none; }
+    /* ponytail: opt in only on Telegram desktop fullscreen; other layouts keep their existing rules. */
+    @media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
+      html[data-tg-desktop-fullscreen="true"] .ra-desktop-shell {
+        box-sizing: border-box;
+        overflow: hidden;
+        padding-top: calc(max(env(safe-area-inset-top, 0px), var(--tg-safe-area-inset-top, 0px)) + var(--tg-content-safe-top));
+        padding-right: calc(var(--tg-safe-area-inset-right, 0px) + var(--tg-content-safe-area-inset-right, 0px));
+        padding-bottom: calc(var(--tg-safe-area-inset-bottom, 0px) + var(--tg-content-safe-area-inset-bottom, 0px));
+        padding-left: calc(var(--tg-safe-area-inset-left, 0px) + var(--tg-content-safe-area-inset-left, 0px));
+        background-color: oklch(var(--ra-bg) / 0.8) !important;
+      }
+      html[data-tg-desktop-fullscreen="true"] .ra-desktop-shell > aside {
+        background-color: oklch(var(--ra-sunken) / 0.96) !important;
+      }
+      html[data-tg-desktop-fullscreen="true"] .ra-desktop-shell > aside > .h-app { height: 100%; }
+      html[data-tg-desktop-fullscreen="true"] .ra-desktop-shell .ra-session-list-header { padding-top: 18px !important; }
+      html[data-tg-desktop-fullscreen="true"] .ra-desktop-shell .ra-chat-header {
+        padding-top: 0 !important;
+        background-color: oklch(var(--ra-bg) / 0.96) !important;
+      }
+      html[data-tg-desktop-fullscreen="true"] .ra-desktop-shell .ra-chat-header-desktop { padding-top: 12px; padding-bottom: 12px; }
+      html[data-tg-desktop-fullscreen="true"] .ra-desktop-shell .ra-chat-header-desktop [data-quota-usage] { font-size: 11px; }
+      html[data-tg-desktop-fullscreen="true"] .ra-desktop-shell .ra-chat-header-desktop [data-quota-usage]::before { content: '用量'; color: oklch(var(--ra-t3)); }
+      html[data-tg-desktop-fullscreen="true"] .ra-desktop-shell :is(.session-tab-bar, .ra-chat-composer, section[aria-label="即時執行狀態"]) {
+        background-color: oklch(var(--ra-bg) / 0.96) !important;
+      }
+      html[data-tg-desktop-fullscreen="true"] .ra-desktop-shell .ra-session-card.active {
+        background: oklch(var(--ra-active));
+        box-shadow: inset 3px 0 oklch(var(--ra-accent-text));
+      }
+      html[data-tg-desktop-fullscreen="true"] .ra-desktop-shell .ra-session-card.active .truncate { color: oklch(var(--ra-t1)); }
+      html[data-tg-desktop-fullscreen="true"] .ra-desktop-shell .ra-chat-empty {
+        margin-top: auto;
+        margin-bottom: 0;
+        align-self: center;
+        flex-shrink: 0;
+        max-width: 640px;
+        padding: 20px 24px;
+        border: 1px solid oklch(var(--ra-line));
+        border-radius: 14px;
+        background: oklch(var(--ra-card) / 0.96);
+      }
+      html[data-tg-desktop-fullscreen="true"] .ra-desktop-shell .ra-chat-empty :is(.text-ra-t4, .text-ra-t5) { color: oklch(var(--ra-t3)); }
+      html[data-tg-desktop-fullscreen="true"] .ra-desktop-shell .ra-composer-tools .ra-select-label {
+        display: block;
+        font-size: 11px;
+        line-height: 1.25;
+        color: oklch(var(--ra-t3));
+      }
+      html[data-tg-desktop-fullscreen="true"] .ra-desktop-shell .ra-composer-tools > div { display: flex; align-items: center; gap: 6px; }
+    }
     /* 保留 32px 點擊區，避免更多操作按鈕把會話列從 38px 撐成 48px。 */
     .ra-session-card button[aria-haspopup="menu"] { position: relative; height: 22px; min-height: 22px; line-height: 22px; }
     .ra-session-card button[aria-haspopup="menu"]::after { content: ''; position: absolute; inset: -5px 0; }

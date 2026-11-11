@@ -564,7 +564,7 @@ function App() {
     }
 
     return (
-      <div className="h-app flex bg-ra-bg min-w-0 relative">
+      <div className="ra-desktop-shell h-app flex bg-ra-bg min-w-0 relative">
         <aside
           style={{ width: sidebarCollapsed ? SIDEBAR_RAIL_WIDTH : sidebarWidthPx, flexShrink: 0 }}
           className="min-w-0 bg-ra-sunken border-r border-ra-line-soft flex flex-col"

@@ -18,6 +18,14 @@ if (isTMA) {
   };
   updateContentSafeArea();
   tgApp.onEvent('contentSafeAreaChanged', updateContentSafeArea);
+  const updateDesktopFullscreen = () => {
+    // ponytail: CSS handles width/input changes; only Telegram desktop fullscreen opts in.
+    document.documentElement.dataset.tgDesktopFullscreen = String(
+      tgApp.isFullscreen === true && ['tdesktop', 'macos', 'web', 'weba', 'webk'].includes(tgApp.platform)
+    );
+  };
+  updateDesktopFullscreen();
+  tgApp.onEvent('fullscreenChanged', updateDesktopFullscreen);
 }
 
 /** Web 登入 session token（localStorage；後端仍驗證於伺服器端 store） */

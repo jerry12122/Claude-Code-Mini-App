@@ -418,6 +418,7 @@ function PermModeSelect({ agentType, value, onChange, disabled, title, id, class
   const danger = value === 'bypassPermissions' || value === 'yolo';
   return (
     <div className={selectWrapClass(compact, className)}>
+      <span className="ra-select-label" aria-hidden="true">權限</span>
       <select
         id={selectId}
         aria-label={ariaLabel}
@@ -448,6 +449,7 @@ function ModelSelect({ agentType, value, onChange, disabled, id, className, comp
   }, [agentType]);
   return (
     <div className={selectWrapClass(compact, className)}>
+      <span className="ra-select-label" aria-hidden="true">模型</span>
       <select
         id={id || `model-select-${agentType}`}
         aria-label="Model"
@@ -470,6 +472,7 @@ function ModelSelect({ agentType, value, onChange, disabled, id, className, comp
 function EffortSelect({ value, onChange, disabled, id, className, compact }) {
   return (
     <div className={selectWrapClass(compact, className)}>
+      <span className="ra-select-label" aria-hidden="true">思考強度</span>
       <select
         id={id || 'effort-select'}
         aria-label="Effort"
