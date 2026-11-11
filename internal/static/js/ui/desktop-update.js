@@ -31,7 +31,7 @@ function desktopUpdateErrorText(code) {
     case 'checksum_mismatch': return '下載檔案校驗不符，已拒絕安裝';
     case 'download_failed': return '下載失敗，可重試';
     case 'install_not_writable': return '安裝目錄不可寫入，請改用手動方式更新';
-    case 'update_busy': return '桌面程式仍有進行中的工作，暫不能重新啟動更新（已下載的更新仍保留，完成後可再試）';
+    case 'update_busy': return '仍有進行中或待處理的工作，暫不能重新啟動更新；請依下方會話明細處理後重試（已下載的更新會保留）';
     case 'update_in_progress': return '目前有更新程序進行中，請稍後再試';
     case 'update_check_failed': return '無法確認是否仍有進行中的工作，已取消重新啟動（已下載的更新仍保留）';
     case 'helper_failed': return '套用更新的程序失敗，已保留已下載的更新，可再試一次';
@@ -45,7 +45,7 @@ function desktopUpdateBusyReasonText(reason) {
     case 'running_task': return '有任務執行中或仍在收尾';
     case 'shell_task': return '有終端機指令執行中';
     case 'pending_confirm': return '有等待授權或確認的操作';
-    case 'queued': return '有排隊中的訊息';
+    case 'queued': return '有排隊中的訊息（包含暫停佇列）';
     case 'maintenance': return '另一個更新程序進行中';
     default: return '';
   }

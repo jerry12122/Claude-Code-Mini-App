@@ -446,7 +446,7 @@ func TestDesktopUpdateFlow(t *testing.T) {
 		rig := installRig(t, m)
 		reachReady(t, m, f, latest)
 
-		rig.gate.setBusy(&WorkBusyError{Reason: "queued"})
+		rig.gate.setBusy(&WorkBusyError{Reason: "queued", Details: "game-rule：暫停佇列 1 筆"})
 		err := m.Restart(ctx)
 		if !errors.Is(err, ErrWorkBusy) {
 			t.Fatalf("Restart = %v, want ErrWorkBusy", err)
@@ -454,6 +454,9 @@ func TestDesktopUpdateFlow(t *testing.T) {
 		st := m.Status()
 		if st.State != StateReady || st.ErrorCode != CodeUpdateBusy || st.BusyReason != "queued" {
 			t.Fatalf("status = %+v, want ready + update_busy + busyReason queued", st)
+		}
+		if !strings.Contains(st.ErrorMessage, "game-rule：暫停佇列 1 筆") {
+			t.Fatalf("blocker details lost: %s", st.ErrorMessage)
 		}
 		if n := rig.restartCount(); n != 0 {
 			t.Fatalf("Restart calls = %d, want 0（忙碌時不得啟動 helper）", n)
@@ -673,8 +676,8 @@ func TestDesktopUpdateFlow(t *testing.T) {
 		}
 	})
 
-	// 以下為背景排程（假時鐘）：不等待真實 6 小時，計時器由測試手動觸發。
-	t.Run("背景排程：啟動時檢查一次，之後每 6 小時只檢查一次；不下載、不改安裝檔", func(t *testing.T) {
+	// 以下為背景排程（假時鐘）：不等待真實 1 小時，計時器由測試手動觸發。
+	t.Run("背景排程：啟動時檢查一次，之後每小時只檢查一次；不下載、不改安裝檔", func(t *testing.T) {
 		m, f, install := newFlow(t, nil)
 		f.setLatest(latest)
 		clk, _, _ := startSched(t, m)
@@ -683,8 +686,8 @@ func TestDesktopUpdateFlow(t *testing.T) {
 		if n := f.latestCallCount(); n != 1 {
 			t.Fatalf("startup checks = %d, want 1", n)
 		}
-		if got := clk.durations(); len(got) != 1 || got[0] != 6*time.Hour {
-			t.Fatalf("scheduled durations = %v, want [6h]", got)
+		if got := clk.durations(); len(got) != 1 || got[0] != time.Hour {
+			t.Fatalf("scheduled durations = %v, want [1h]", got)
 		}
 
 		tick(t, clk, timer)

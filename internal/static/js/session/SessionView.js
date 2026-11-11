@@ -1,5 +1,5 @@
 // ── Session 列表畫面 ──────────────────────────────────────────────────────────
-function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, activeSessionId = null, onCreateNew, onOpenSettings, onToggleSidebar, collapsed = false, isSplit = false, onToggleSplit = null, isWideScreen = true, onOpenOtherPane, canOpenOtherPane }) {
+function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, activeSessionId = null, onCreateNew, onOpenSettings, hasUpdate = false, onOpenUpdate, onToggleSidebar, collapsed = false, isSplit = false, onToggleSplit = null, isWideScreen = true, onOpenOtherPane, canOpenOtherPane }) {
   const [sessionMenu, setSessionMenu] = useState(null);
   const bindSessionMenu = useLongPress(setSessionMenu);
   const closeSessionMenu = useCallback(() => setSessionMenu(null), []);
@@ -524,6 +524,23 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
   ] : [];
   const menuElement = <ContextMenu menu={menuSession ? sessionMenu : null} items={menuItems} onClose={closeSessionMenu} label="會話操作" />;
 
+  const settingsEntry = (
+        <button
+          type="button"
+          onClick={hasUpdate ? onOpenUpdate : onOpenSettings}
+          aria-label={hasUpdate ? "設定（有可用更新）" : "設定"}
+          title={hasUpdate ? "設定（有可用更新）" : "設定"}
+          className={collapsed ? "relative mb-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ra-t4 hover:bg-ra-card hover:text-ra-t2" : "relative w-full flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-ra-t4 hover:bg-ra-card hover:text-ra-t2 transition-colors"}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0" aria-hidden="true">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+          {!collapsed && "設定"}
+          {hasUpdate && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-500" aria-hidden="true" />}
+        </button>
+  );
+
   const renderFullPanel = () => (
     <div className="flex flex-col h-app min-w-0 overflow-hidden">
       {menuElement}
@@ -682,17 +699,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
 
       {/* 底部設定入口（仿 Claude Desktop 左下角） */}
       <div className="shrink-0 px-3.5 py-2.5 border-t border-ra-line-soft">
-        <button
-          type="button"
-          onClick={onOpenSettings}
-          className="w-full flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-ra-t4 hover:bg-ra-card hover:text-ra-t2 transition-colors"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0" aria-hidden="true">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-          設定
-        </button>
+        {settingsEntry}
       </div>
     </div>
   );
@@ -797,6 +804,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
             </React.Fragment>
           ))}
         </div>
+        {settingsEntry}
       </div>
     );
   }

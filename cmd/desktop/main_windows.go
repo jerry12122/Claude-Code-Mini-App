@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"log/slog"
 	"net/url"
@@ -172,7 +173,7 @@ func main() {
 		window.RegisterHook(events.Windows.WebViewNavigationCompleted, func(*application.WindowEvent) {
 			window.ExecJS(desktopupdate.BridgeScript(owner))
 		})
-		// 背景檢查：啟動時一次、之後每 6 小時一次，只更新狀態，不下載、不開設定頁。
+		// 背景檢查：啟動時一次、之後每小時一次，只更新狀態，不下載、不開設定頁。
 		// 必須等應用程式開始執行後才啟動：Check 會經 application.InvokeAsync 派送狀態，
 		// 若在 app.Run 之前呼叫，Wails 主執行緒尚未就緒會 nil 指標 panic（5.1 e2e 發現）。
 		app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
@@ -216,8 +217,9 @@ func main() {
 func desktopWorkGate() (func(), error) {
 	release, err := ws.TryBeginDesktopUpdate()
 	if err != nil {
-		if reason := ws.BusyReason(err); reason != "" {
-			return nil, &desktopupdate.WorkBusyError{Reason: reason}
+		var busy *ws.BusyError
+		if errors.As(err, &busy) {
+			return nil, &desktopupdate.WorkBusyError{Reason: busy.Reason, Details: busy.Details}
 		}
 		return nil, err
 	}

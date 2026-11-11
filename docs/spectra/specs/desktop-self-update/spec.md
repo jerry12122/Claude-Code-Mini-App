@@ -15,6 +15,18 @@ The desktop SHALL provide Check for Updates in the system tray and beside the ex
 - **WHEN** the desktop user invokes Check for Updates from the tray or settings
 - **THEN** the main window shows the same update section and starts a manual check without starting a second concurrent operation
 
+#### Scenario: Indicate an available desktop update
+
+- **WHEN** the desktop has an available update
+- **THEN** the bottom-left settings entry shows a purple dot, including in the collapsed sidebar, and opens the update section when clicked without a popup or automatic download
+
+#### Scenario: Notify browser owners without installation controls
+
+- **WHEN** an authenticated owner uses a browser or Telegram
+- **THEN** the page checks public stable release metadata at startup and hourly while visible, catches up when returning to the foreground, and notifies at most once per version per day
+- **AND** a host version or revision change prompts a manual refresh without reloading the page automatically
+- **AND** version information is available without any download, install, or host restart controls; guests perform no release checks
+
 #### Scenario: Read untrusted release notes
 
 - **WHEN** release notes contain HTML or script markup
@@ -191,7 +203,7 @@ tests:
 ---
 ### Requirement: Stable release checks
 
-The desktop SHALL check the fixed public repository jerry12122/Claude-Code-Mini-App after initialization and once every six hours while running, and SHALL support manual checks. Six hours is the configured product schedule. It SHALL offer only a strictly newer stable semantic version with the exact desktop executable for the running supported platform. It MUST NOT select a draft, prerelease, same or older version, server executable, or installation ZIP. The shipped application SHALL contain no GitHub personal access token.
+The desktop SHALL check the fixed public repository jerry12122/Claude-Code-Mini-App after initialization and once every hour while running, and SHALL support manual checks. One hour is the configured product schedule. It SHALL offer only a strictly newer stable semantic version with the exact desktop executable for the running supported platform. It MUST NOT select a draft, prerelease, same or older version, server executable, or installation ZIP. The shipped application SHALL contain no GitHub personal access token.
 
 #### Scenario: Check at startup and on schedule
 
@@ -470,6 +482,7 @@ The desktop MUST require the user's restart confirmation and atomically acquire 
 
 - **WHEN** a restart is refused as busy
 - **THEN** the status carries busyReason naming the blocking category: running_task, shell_task, pending_confirm, queued, or maintenance
+- **AND** available session names, IDs, and blocking reasons are shown as text, including paused queue counts, without exposing queued prompts or shell commands or changing that work
 
 #### Scenario: Queued work blocks restart even when paused
 

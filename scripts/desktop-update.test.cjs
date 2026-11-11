@@ -132,10 +132,11 @@ function findAction(view, id) {
 {
   const v = desktopUpdateView({ state: 'ready', availableVersion: '1.0.1', errorCode: 'update_busy', busyReason: 'queued' }, '');
   assert.strictEqual(findAction(v, 'restart').disabled, false, 'restart can be retried after busy refusal');
-  assert.ok(desktopUpdateErrorText('update_busy').includes('進行中的工作'), 'update_busy explains busy work');
+  assert.ok(desktopUpdateErrorText('update_busy').includes('待處理的工作'), 'update_busy also explains work that is not running');
+  assert.ok(desktopUpdateErrorText('update_busy').includes('會話明細'), 'update_busy points to the blocking sessions');
   assert.ok(desktopUpdateErrorText('update_check_failed').length > 0, 'update_check_failed has text');
   assert.ok(desktopUpdateErrorText('helper_failed').includes('可再試'), 'helper_failed says retry is possible');
-  assert.strictEqual(desktopUpdateBusyReasonText('queued'), '有排隊中的訊息');
+  assert.strictEqual(desktopUpdateBusyReasonText('queued'), '有排隊中的訊息（包含暫停佇列）');
   assert.strictEqual(desktopUpdateBusyReasonText('running_task'), '有任務執行中或仍在收尾');
   assert.strictEqual(desktopUpdateBusyReasonText('shell_task'), '有終端機指令執行中');
   assert.strictEqual(desktopUpdateBusyReasonText('pending_confirm'), '有等待授權或確認的操作');

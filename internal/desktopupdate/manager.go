@@ -73,10 +73,13 @@ type WorkGate func() (release func(), err error)
 
 // WorkBusyError 表示工作閘門判定仍有進行中的工作；Reason 為原因分類（同 ws.BusyError）。
 type WorkBusyError struct {
-	Reason string
+	Reason  string
+	Details string
 }
 
-func (e *WorkBusyError) Error() string { return ErrWorkBusy.Error() + "（" + e.Reason + "）" }
+func (e *WorkBusyError) Error() string {
+	return ErrWorkBusy.Error() + "（" + e.Reason + "）" + e.Details
+}
 
 func (e *WorkBusyError) Unwrap() error { return ErrWorkBusy }
 

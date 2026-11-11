@@ -69,7 +69,7 @@ function DesktopUpdateSection({ status, laterVersion = '', request, later, showO
           <div className="mt-3 text-xs text-red-400">
             {desktopUpdateErrorText(st.errorCode)}
             {st.busyReason ? <div className="text-[11px] text-ra-t3 mt-0.5">原因：{desktopUpdateBusyReasonText(st.busyReason)}</div> : null}
-            {st.errorMessage ? <div className="text-[11px] text-ra-t5 mt-0.5 break-words">{st.errorMessage}</div> : null}
+            {st.errorMessage ? <div className="text-[11px] text-ra-t3 mt-0.5 break-words whitespace-pre-line">{st.errorMessage}</div> : null}
           </div>
         ) : null}
 
@@ -116,6 +116,20 @@ function DesktopUpdateSection({ status, laterVersion = '', request, later, showO
           </div>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+// Browser/Telegram deliberately have no install, download or restart controls.
+function WebUpdateSection({ status }) {
+  const st = status || {};
+  const newer = st.availableVersion;
+  return (
+    <div className="space-y-3 text-sm text-ra-t2">
+      <h3 className="font-semibold text-ra-t1">版本資訊</h3>
+      <p>主機版本 v{st.currentVersion || '—'}{newer ? ` · 最新正式版 v${newer}` : ''}</p>
+      <p>{st.reloadRequired ? '主機已更新。草稿會保留，請自行重新整理載入新版。' : newer ? '有新版可用，請由主機管理者更新程式。網頁版僅提供通知。' : '每小時檢查新版；此頁不會安裝或重新啟動主機程式。'}</p>
+      {newer && <a className="text-violet-400 underline" href={`https://github.com/jerry12122/Claude-Code-Mini-App/releases/tag/v${newer}`} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">查看正式版</a>}
     </div>
   );
 }

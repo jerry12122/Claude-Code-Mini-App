@@ -1,5 +1,10 @@
 package db
 
+import (
+	"fmt"
+	"strings"
+)
+
 // WorkReport 是「全站」（所有 session）仍在進行或待處理的工作摘要，供桌面更新閘門判斷是否忙碌。
 // 只計 DB 可見的來源；記憶體中的執行緒、授權等待由 ws 套件自行檢查。
 type WorkReport struct {
@@ -26,4 +31,45 @@ func (db *DB) PendingWork() (WorkReport, error) {
 		SessionStatusRunning, SessionStatusAwaitingInput, SessionStatusAwaitingShellConfirm,
 	).Scan(&r.QueuedMessages, &r.PendingDenials, &r.ShellPending, &r.ActiveStatus)
 	return r, err
+}
+
+// PendingWorkDetails contains labels only, never prompts or command contents.
+func (db *DB) PendingWorkDetails() ([]string, error) {
+	rows, err := db.Query(`SELECT s.id, s.name, s.status, s.queue_paused,
+		TRIM(s.pending_denials) != '', TRIM(s.shell_pending) != '', COALESCE(q.n, 0)
+		FROM sessions s LEFT JOIN (SELECT session_id, COUNT(*) n FROM queued_messages GROUP BY session_id) q ON q.session_id=s.id
+		WHERE q.n > 0 OR TRIM(s.pending_denials) != '' OR TRIM(s.shell_pending) != ''
+		OR s.status IN ('running','awaiting_input','awaiting_shell_confirm') ORDER BY s.id LIMIT 50`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var details []string
+	for rows.Next() {
+		var id, name, status string
+		var paused, permission, shell bool
+		var count int
+		if err := rows.Scan(&id, &name, &status, &paused, &permission, &shell, &count); err != nil {
+			return nil, err
+		}
+		var reasons []string
+		if count > 0 {
+			label := "佇列"
+			if paused {
+				label = "暫停佇列"
+			}
+			reasons = append(reasons, fmt.Sprintf("%s %d 筆；請至該會話處理或移除排隊訊息", label, count))
+		}
+		if permission || shell || status == SessionStatusAwaitingShellConfirm {
+			reasons = append(reasons, "等待授權／確認")
+		}
+		if status == SessionStatusAwaitingInput {
+			reasons = append(reasons, "等待回答")
+		}
+		if status == SessionStatusRunning {
+			reasons = append(reasons, "狀態記為執行中；請至該會話確認")
+		}
+		details = append(details, fmt.Sprintf("%s [%s]：%s", name, id, strings.Join(reasons, "；")))
+	}
+	return details, rows.Err()
 }

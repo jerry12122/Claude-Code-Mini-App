@@ -98,8 +98,8 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const lastEscTimeRef = useRef(0);
 
-  // 桌面更新：bridge 不存在時（瀏覽器／Telegram／訪客）不會有任何更新控制；托盤「檢查更新」經由 desktop-update-open 開啟設定的更新區。
-  const desktopUpdate = useDesktopUpdate({ onOpen: () => setSettingsOpen(true) });
+  // 桌面可更新；瀏覽器與 Telegram 只讀版本並通知。
+  const desktopUpdate = useDesktopUpdate({ enabled: authed, onOpen: () => setSettingsOpen(true) });
 
   // 衍生值維持舊介面
   const isSplit = tabGroups.groups.length > 1;
@@ -554,6 +554,8 @@ function App() {
           activeSessionId={activePane === 'secondary' ? secondarySession?.id : session?.id}
           onCreateNew={openComposer}
           onOpenSettings={() => setSettingsOpen(true)}
+          hasUpdate={desktopUpdate.hasUpdate}
+          onOpenUpdate={desktopUpdate.openUpdate}
           isSplit={isSplit}
           onToggleSplit={toggleSplit}
           isWideScreen={false}
@@ -576,6 +578,8 @@ function App() {
             activeSessionId={activePane === 'secondary' ? secondarySession?.id : session?.id}
             onCreateNew={openComposer}
             onOpenSettings={() => setSettingsOpen(true)}
+            hasUpdate={desktopUpdate.hasUpdate}
+            onOpenUpdate={desktopUpdate.openUpdate}
             onToggleSidebar={toggleSidebarCollapsed}
             collapsed={sidebarCollapsed}
             onOpenOtherPane={openInOtherPane}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -323,6 +324,15 @@ func TestDesktopUpdateAdmission(t *testing.T) {
 			}
 			return func() { _ = database.ClearQueuedMessages(sid) }
 		}},
+		{"暫停佇列（DB）", func(t *testing.T, database *db.DB, wsURL func(string) string, sid string) func() {
+			if _, err := database.EnqueueMessage(sid, "keep this queued", ""); err != nil {
+				t.Fatal(err)
+			}
+			if err := database.SetQueuePaused(sid, true); err != nil {
+				t.Fatal(err)
+			}
+			return func() { _ = database.ClearQueuedMessages(sid) }
+		}},
 		{"pending_denials（DB）", func(t *testing.T, database *db.DB, wsURL func(string) string, sid string) func() {
 			if err := database.UpdatePendingDenials(sid, `[{"tool_name":"Write"}]`); err != nil {
 				t.Fatal(err)
@@ -350,6 +360,7 @@ func TestDesktopUpdateAdmission(t *testing.T) {
 		"kiroacp 授權等待（記憶體）":   "pending_confirm",
 		"問題等待（記憶體）":           "pending_confirm",
 		"佇列中（DB）":             "queued",
+		"暫停佇列（DB）":            "queued",
 		"pending_denials（DB）": "pending_confirm",
 		"shell_pending（DB）":   "pending_confirm",
 		"DB 狀態 running（無執行緒）": "running_task",
@@ -365,6 +376,14 @@ func TestDesktopUpdateAdmission(t *testing.T) {
 			}
 			if got, want := BusyReason(err), wantBusyReason[tc.name]; got != want {
 				t.Errorf("BusyReason = %q, want %q", got, want) // Errorf：確保下方 undo 仍會清理種子狀態
+			}
+			if tc.name == "暫停佇列（DB）" {
+				if !strings.Contains(err.Error(), sid) || !strings.Contains(err.Error(), "暫停") || !strings.Contains(err.Error(), "1 筆") {
+					t.Errorf("missing actionable blocker: %v", err)
+				}
+				if queueLen(database, sid) != 1 {
+					t.Error("diagnostics changed the queue")
+				}
 			}
 			undo()
 			admWaitIdle(t)

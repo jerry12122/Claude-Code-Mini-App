@@ -3,6 +3,7 @@ package ws
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
@@ -22,10 +23,13 @@ var errUpdateInProgress = errors.New("ws: 桌面程式正在更新")
 // Reason 取值：running_task（執行中或仍在收尾）、shell_task（終端機指令執行中）、
 // pending_confirm（等待授權／確認）、queued（佇列中）、maintenance（另一個更新程序進行中）。
 type BusyError struct {
-	Reason string
+	Reason  string
+	Details string
 }
 
-func (e *BusyError) Error() string { return ErrUpdateBusy.Error() + "（" + e.Reason + "）" }
+func (e *BusyError) Error() string {
+	return ErrUpdateBusy.Error() + "（" + e.Reason + "）" + e.Details
+}
 
 func (e *BusyError) Unwrap() error { return ErrUpdateBusy }
 
@@ -132,11 +136,11 @@ func TryBeginDesktopUpdate() (func(), error) {
 		return nil, &BusyError{Reason: "maintenance"}
 	}
 	// 先看記憶體來源（能分出 shell_task／pending_confirm），再看 inflight（剩下的都算仍在執行或收尾）。
-	if reason := inMemoryBusyReason(); reason != "" {
-		return nil, &BusyError{Reason: reason}
+	if reason, sid := inMemoryBusyReason(); reason != "" {
+		return nil, updateBusyError(reason, sid)
 	}
 	if gate.inflight > 0 {
-		return nil, &BusyError{Reason: "running_task"}
+		return nil, updateBusyError("running_task", "")
 	}
 	if gate.db == nil {
 		return nil, errors.New("ws: 工作閘門尚未綁定資料庫")
@@ -146,7 +150,7 @@ func TryBeginDesktopUpdate() (func(), error) {
 		return nil, fmt.Errorf("ws: 檢查待辦工作失敗: %w", err)
 	}
 	if report.Busy() {
-		return nil, &BusyError{Reason: dbBusyReason(report)}
+		return nil, updateBusyError(dbBusyReason(report), "")
 	}
 	gate.maint = true
 	var once sync.Once
@@ -171,38 +175,81 @@ func dbBusyReason(r db.WorkReport) string {
 	}
 }
 
-// inMemoryBusyReason 檢查只存在於記憶體的忙碌來源，回傳原因分類；全部空閒回傳空字串。
+// inMemoryBusyReason 檢查記憶體的忙碌來源，回傳原因分類與會話 ID；全部空閒回傳空字串。
 // 呼叫端持有 gate.mu；這裡逐一取各自的鎖，不巢狀持有。
-func inMemoryBusyReason() string {
+func inMemoryBusyReason() (string, string) {
 	taskManager.mu.Lock()
-	n := len(taskManager.tasks)
+	var sid string
+	for id := range taskManager.tasks {
+		sid = id
+		break
+	}
 	taskManager.mu.Unlock()
-	if n > 0 {
-		return "running_task"
+	if sid != "" {
+		return "running_task", sid
 	}
 	shellTaskManager.mu.Lock()
-	n = len(shellTaskManager.tasks)
+	for id := range shellTaskManager.tasks {
+		sid = id
+		break
+	}
 	shellTaskManager.mu.Unlock()
-	if n > 0 {
-		return "shell_task"
+	if sid != "" {
+		return "shell_task", sid
 	}
 	shellPendingMu.Lock()
-	n = len(shellPending)
+	for id := range shellPending {
+		sid = id
+		break
+	}
 	shellPendingMu.Unlock()
-	if n > 0 {
-		return "pending_confirm"
+	if sid != "" {
+		return "pending_confirm", sid
 	}
 	pendingPerms.mu.Lock()
-	n = len(pendingPerms.m)
+	for id := range pendingPerms.m {
+		sid = id
+		break
+	}
 	pendingPerms.mu.Unlock()
-	if n > 0 {
-		return "pending_confirm"
+	if sid != "" {
+		return "pending_confirm", sid
 	}
 	pendingQuestions.Lock()
-	n = len(pendingQuestions.m)
-	pendingQuestions.Unlock()
-	if n > 0 {
-		return "pending_confirm"
+	for id := range pendingQuestions.m {
+		sid = id
+		break
 	}
-	return ""
+	pendingQuestions.Unlock()
+	if sid != "" {
+		return "pending_confirm", sid
+	}
+	return "", ""
+}
+
+// Called only after refusing maintenance; diagnostic failure must never admit it.
+func updateBusyError(reason, sid string) *BusyError {
+	e := &BusyError{Reason: reason}
+	var details []string
+	if sid != "" {
+		name := sid
+		if gate.db != nil {
+			if s, err := gate.db.GetSession(sid); err == nil {
+				name = s.Name + " [" + sid + "]"
+			}
+		}
+		details = append(details, name+"："+map[string]string{"running_task": "任務仍在執行或收尾", "shell_task": "終端機指令執行中", "pending_confirm": "等待授權或回答"}[reason])
+	}
+	if gate.db != nil {
+		if rows, err := gate.db.PendingWorkDetails(); err == nil {
+			details = append(details, rows...)
+		} else {
+			details = append(details, "無法讀取會話明細，請稍後重試")
+		}
+	}
+	if len(details) == 0 {
+		details = append(details, "工作仍在收尾，請稍後重試")
+	}
+	e.Details = "\n" + strings.Join(details, "\n")
+	return e
 }

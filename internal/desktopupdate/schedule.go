@@ -6,7 +6,7 @@ import (
 )
 
 // CheckInterval 是背景檢查間隔（產品常數）。啟動時另外檢查一次。
-const CheckInterval = 6 * time.Hour
+const CheckInterval = time.Hour
 
 // StartSchedule 啟動背景檢查：啟動時一次，之後每 interval 一次，且只呼叫 Check。
 // 背景檢查不下載、不開啟設定頁；錯誤只寫入 Status 供查詢。

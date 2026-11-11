@@ -324,8 +324,9 @@ function AppearanceSection({ draft, setDraft }) {
 
 function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = null }) {
   const [section, setSection] = useState('general');
-  // 桌面 bridge 存在時才顯示「更新」分類與版號旁的更新入口；瀏覽器、Telegram、訪客皆不顯示。
+  // 桌面可安裝更新；瀏覽器／Telegram 只有版本資訊。
   const updateBridge = !!(desktopUpdate && desktopUpdate.bridge);
+  const updateVisible = !!desktopUpdate;
   const updateOpenNonce = desktopUpdate ? desktopUpdate.openNonce : 0;
   const [draft, setDraft] = useState(() => readStoredAppearance());
   const [savedFlash, setSavedFlash] = useState(false);
@@ -404,7 +405,7 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
             設定
           </div>
           <div className="flex-1 px-2 space-y-0.5">
-            {(updateBridge ? [...SETTINGS_SECTIONS, { id: 'update', label: '更新' }] : SETTINGS_SECTIONS).map((s) => (
+            {(updateVisible ? [...SETTINGS_SECTIONS, { id: 'update', label: '更新' }] : SETTINGS_SECTIONS).map((s) => (
               <button
                 key={s.id}
                 type="button"
@@ -416,13 +417,14 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
                 }`}
               >
                 {s.label}
+                {s.id === 'update' && desktopUpdate?.hasUpdate && <span className="inline-block ml-2 h-2 w-2 rounded-full bg-violet-500" role="img" aria-label="有可用更新" />}
               </button>
             ))}
           </div>
           <div className="shrink-0 px-4 py-3 text-xs leading-5 font-mono text-ra-t4 select-text">
             <div>v{buildInfo?.version || '—'}</div>
             <div title={buildInfo?.sha || 'unknown'}>SHA {buildInfo?.sha?.slice(0, 7) || '—'}</div>
-            {updateBridge ? (
+            {updateVisible ? (
               <button
                 type="button"
                 onClick={() => setSection('update')}
@@ -451,6 +453,7 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
                 showOffer={desktopUpdate.showOffer}
               />
             )}
+            {section === 'update' && updateVisible && !updateBridge && <WebUpdateSection status={desktopUpdate.webStatus} />}
           </div>
           <div className="shrink-0 flex items-center justify-between gap-2 px-5 py-3 border-t border-ra-line-soft">
             {/* 還原預設／儲存只對外觀有效，日誌頁不顯示 */}
