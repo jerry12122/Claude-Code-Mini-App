@@ -131,6 +131,9 @@ func (db *DB) migrate() error {
 		return err
 	}
 	// 新增／更名欄位（已存在或來源欄位不存在時忽略錯誤）
+	if _, err := db.Exec(`ALTER TABLE sessions ADD COLUMN system_instruction TEXT NOT NULL DEFAULT ''`); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+		return err
+	}
 	tryAlter := func(q string) {
 		if _, err := db.Exec(q); err != nil {
 			msg := err.Error()

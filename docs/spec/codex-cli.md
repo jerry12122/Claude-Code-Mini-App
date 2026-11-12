@@ -1,4 +1,14 @@
-## Provider 定位
+# Codex CLI 整合規格
+
+## 本專案的會話專屬指令（2026-11-12）
+
+建立 Codex session 時，可在「專屬指令（選填）」設定角色、回覆風格與工作規則；轉發新建與接手會話也會沿用。`system_instruction` 與一般 user prompt 分開儲存，建立後固定，需調整時請複製設定另建會話。API 修剪外圍空白，上限為 16384 UTF-8 bytes，拒絕 U+0000 與非字串；PATCH 出現此欄位會在修改其他欄位之前拒絕。
+
+非空值在 `exec` 與 `exec resume` 都傳入 `-c 'developer_instructions="…"'`；字串以 JSON 編碼並額外跳脫 DEL，保留換行、引號、反斜線與 Unicode，不使用 shell 拼接。每輪傳相同值與既有 thread ID；不依賴 resume 改寫 thread 已存指令。空白值不新增 override，原有 model、effort 與 sandbox 行為維持。產生 argv 的日誌遮蔽此 override。
+
+2026-11-12 使用本機訂閱登入、codex-cli 0.163.0 與隔離工作目錄，經正式 Go runner 的新建與跨程序續接 marker 測試均通過；marker 僅存在專屬指令，user prompt 不含 marker。
+
+## Provider 定位（既有整合）
 
 Codex 的非互動模式是 `codex exec`，官方明確說這是給 script、CI、pipeline 用的，並且 `--json` 會把 stdout 變成 JSON Lines 事件流。 
 因此在你的系統裡，Codex 至少應拆成兩種可選 transport：**CLI subprocess transport**（先做這個）與 **app-server protocol transport**（後續若你要更原生的雙向通訊再做）。 

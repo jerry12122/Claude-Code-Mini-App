@@ -15,13 +15,14 @@ var ErrHandoff = errors.New("agent: session 無法繼續，需換新會話接手
 // ExtraArgs 用來傳遞工具專屬的參數（例如 Claude 的 permission_mode、allowed_tools），
 // 以避免把工具專屬欄位直接放在 RunOptions 上。
 type RunOptions struct {
-	Prompt    string
-	SessionID string // 空字串表示新 session
-	WorkDir   string
-	ExtraArgs map[string]string
+	Prompt            string
+	SystemInstruction string // Creation-only session instruction; never part of Prompt.
+	SessionID         string // 空字串表示新 session
+	WorkDir           string
+	ExtraArgs         map[string]string
 	// CliExtraArgs 為使用者自訂的額外 argv（每個元素對應一個命令列引數），由 Session 持久化；僅 Claude runner 會附加。
 	CliExtraArgs []string
-	// RequestPermission 為互動式授權回呼（目前僅 kiroacp ACP 使用）。
+	// RequestPermission 為互動式授權回呼（kiroacp 與有專屬指令的 Antigravity ACP 使用）。
 	// 當 runner 在回合中途收到工具授權請求時同步呼叫，會阻塞直到使用者決定或 ctx 取消。
 	// 回傳選定的 optionID；空字串代表拒絕／取消。nil 表示呼叫端不支援互動授權。
 	RequestPermission func(ctx context.Context, req PermissionRequest) string

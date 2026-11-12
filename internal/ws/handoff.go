@@ -32,16 +32,17 @@ const handoffMarker = "[miniapp 自動交接]"
 // manualHandoffInfo 是「自動交接未成功，提供手動建立接手會話」的結構化資料，
 // 透過 WS 的 serverMsg.Handoff 送到前端；前端只讀欄位，不解析任何中文顯示字串或錯誤訊息來判斷故障。
 type manualHandoffInfo struct {
-	OldSessionID   string   `json:"old_session_id"`
-	OldName        string   `json:"old_name"`
-	OldWorkDir     string   `json:"old_work_dir"`
-	AgentType      string   `json:"agent_type"`
-	PermissionMode string   `json:"permission_mode"`
-	Model          string   `json:"model"`
-	Effort         string   `json:"effort"`
-	CliExtraArgs   []string `json:"cli_extra_args"`
-	LastPrompt     string   `json:"last_prompt"`
-	Reason         string   `json:"reason"`
+	OldSessionID      string   `json:"old_session_id"`
+	OldName           string   `json:"old_name"`
+	OldWorkDir        string   `json:"old_work_dir"`
+	AgentType         string   `json:"agent_type"`
+	PermissionMode    string   `json:"permission_mode"`
+	Model             string   `json:"model"`
+	Effort            string   `json:"effort"`
+	CliExtraArgs      []string `json:"cli_extra_args"`
+	LastPrompt        string   `json:"last_prompt"`
+	SystemInstruction string   `json:"system_instruction,omitempty"`
+	Reason            string   `json:"reason"`
 	// MCPEnabled：MCP 未啟用時前端改帶入既有聊天歷史（有限筆數），而不是提示呼叫 get_messages。
 	MCPEnabled bool `json:"mcp_enabled"`
 }
@@ -53,17 +54,18 @@ func newManualHandoffInfo(old *db.Session, lastPrompt string, cause error) manua
 	enabled := handoffCfg.start != nil
 	handoffCfg.mu.Unlock()
 	return manualHandoffInfo{
-		OldSessionID:   old.ID,
-		OldName:        old.Name,
-		OldWorkDir:     old.WorkDir,
-		AgentType:      old.AgentType,
-		PermissionMode: old.PermissionMode,
-		Model:          old.Model,
-		Effort:         old.Effort,
-		CliExtraArgs:   old.CliExtraArgs,
-		LastPrompt:     lastPrompt,
-		Reason:         cause.Error(),
-		MCPEnabled:     enabled,
+		OldSessionID:      old.ID,
+		OldName:           old.Name,
+		OldWorkDir:        old.WorkDir,
+		AgentType:         old.AgentType,
+		PermissionMode:    old.PermissionMode,
+		Model:             old.Model,
+		Effort:            old.Effort,
+		CliExtraArgs:      old.CliExtraArgs,
+		LastPrompt:        lastPrompt,
+		SystemInstruction: old.SystemInstruction,
+		Reason:            cause.Error(),
+		MCPEnabled:        enabled,
 	}
 }
 
@@ -84,7 +86,7 @@ func startHandoff(database *db.DB, old *db.Session, lastPrompt string, cause err
 	if name == "" {
 		name = old.ID[:8]
 	}
-	ns, err := database.CreateSession(name+"（接手）", "由 "+old.ID+" 自動交接", old.WorkDir, old.PermissionMode, old.AgentType, old.CliExtraArgs, "agent")
+	ns, err := database.CreateSessionWithInstruction(name+"（接手）", "由 "+old.ID+" 自動交接", old.WorkDir, old.PermissionMode, old.AgentType, old.CliExtraArgs, "agent", "", old.SystemInstruction)
 	if err != nil {
 		return nil, fmt.Errorf("建立接手會話: %w", err)
 	}

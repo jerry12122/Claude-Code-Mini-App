@@ -9,6 +9,10 @@ function agentTypeForCreate(agentType) {
   return agentType === 'kiro' ? 'kiroacp' : (agentType || 'claude');
 }
 
+function supportsSessionInstruction(agentType) {
+  return ['claude', 'codex', 'antigravity'].includes(agentType);
+}
+
 function useNewSessionForm(defaults = {}) {
   const [name, setName]         = useState(defaults.name || '');
   const [workDir, setWorkDir]   = useState(defaults.workDir || '');
@@ -17,6 +21,10 @@ function useNewSessionForm(defaults = {}) {
   const [cliExtra, setCliExtra] = useState(defaults.cliExtra || '');
   const [model, setModel]       = useState(defaults.model || '');
   const [effort, setEffort]     = useState(defaults.effort || '');
+  const [systemInstruction, setSystemInstruction] = useState(
+    supportsSessionInstruction(agentTypeForCreate(defaults.agent)) ? (defaults.systemInstruction || '') : ''
+  );
+  const supportsInstruction = supportsSessionInstruction(agent);
 
   /** 切換 agent 時，權限模式要跟著正規化（例如切到 codex 就不能是 acceptEdits）；
    * model／自訂 CLI 引數／effort 是各供應商專屬格式或不支援（如 Cursor 無 effort），
@@ -29,6 +37,7 @@ function useNewSessionForm(defaults = {}) {
       setEffort('');
     }
     setAgentRaw(a);
+    if (!supportsSessionInstruction(a)) setSystemInstruction('');
     setMode((prev) => normalizePermMode(a, prev));
   };
 
@@ -41,6 +50,7 @@ function useNewSessionForm(defaults = {}) {
     setCliExtra('');
     setModel('');
     setEffort('');
+    setSystemInstruction('');
   };
 
   /** 依既有 session 的設定回填表單（ForwardModal「複製自」用） */
@@ -53,11 +63,12 @@ function useNewSessionForm(defaults = {}) {
     setModel(extractModelFromCliArgs(parts));
     setCliExtra(cliArgsWithoutModel(parts).join('\n'));
     setEffort(a === 'cursor' ? '' : (s.effort || ''));
+    setSystemInstruction(supportsSessionInstruction(a) ? (s.system_instruction || '') : '');
   };
 
   const buildCreatePayload = (extra = {}) => {
     const cliMerged = mergeModelIntoCliExtraLines(cliExtra, model);
-    return {
+    const payload = {
       name: name.trim(),
       work_dir: workDir.trim(),
       permission_mode: mode,
@@ -66,6 +77,12 @@ function useNewSessionForm(defaults = {}) {
       effort: agent === 'cursor' ? '' : effort,
       ...extra,
     };
+    if (supportsInstruction && (!payload.input_mode || payload.input_mode === 'agent') && systemInstruction.trim()) {
+      payload.system_instruction = systemInstruction.trim();
+    } else {
+      delete payload.system_instruction;
+    }
+    return payload;
   };
 
   return {
@@ -76,6 +93,7 @@ function useNewSessionForm(defaults = {}) {
     cliExtra, setCliExtra,
     model, setModel,
     effort, setEffort,
+    systemInstruction, setSystemInstruction, supportsInstruction,
     reset,
     applyFromSession,
     buildCreatePayload,

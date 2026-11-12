@@ -32,6 +32,9 @@ func (r *Runner) Name() string { return agent.TypeAntigravity }
 
 // Run 實作 agent.Runner。預設使用 stream-json 模式。
 func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventCallback) error {
+	if opts.SystemInstruction != "" {
+		return r.runACP(ctx, opts, cb)
+	}
 	if os.Getenv("CC_AGY_FORCE_PRINT_TEXT") == "1" {
 		return r.runPrintText(ctx, opts, cb)
 	}

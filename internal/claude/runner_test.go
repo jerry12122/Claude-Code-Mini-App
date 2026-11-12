@@ -1,12 +1,89 @@
 package claude
 
 import (
+	"bytes"
+	"context"
+	"log/slog"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/agent"
 )
+
+func TestBuildClaudeArgsSystemInstruction(t *testing.T) {
+	t.Parallel()
+	const instruction = "Use \"quotes\".\nKeep C:\\work\\檔案 and 日本語."
+	for _, sessionID := range []string{"", "saved-session"} {
+		t.Run("session="+sessionID, func(t *testing.T) {
+			t.Parallel()
+			opts := agent.RunOptions{
+				SessionID:         sessionID,
+				Prompt:            "user prompt stays separate",
+				SystemInstruction: instruction,
+				CliExtraArgs:      []string{"--system-prompt-snapshot", "on"},
+				ExtraArgs: map[string]string{
+					agent.ArgPermissionMode:   "acceptEdits",
+					agent.ArgAllowedTools:     "Read,Edit",
+					agent.ArgModel:            "sonnet",
+					agent.ArgEffort:           "high",
+					agent.ArgPermPromptConfig: "C:\\bridge config.json",
+				},
+			}
+			want := []string{
+				"--system-prompt-snapshot", "on",
+				"-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
+			}
+			if sessionID != "" {
+				want = append(want, "--resume", "saved-session")
+			}
+			want = append(want,
+				"--permission-mode", "acceptEdits",
+				"--allowedTools", "Read", "--allowedTools", "Edit",
+				"--model", "sonnet", "--effort", "high",
+				"--mcp-config", "C:\\bridge config.json", "--permission-prompt-tool", agent.PermPromptFlag,
+				"--append-system-prompt", instruction,
+			)
+			if got := buildClaudeArgs(opts); !slices.Equal(got, want) {
+				t.Fatalf("buildClaudeArgs() = %#v\nwant %#v", got, want)
+			}
+			if opts.Prompt != "user prompt stays separate" {
+				t.Fatalf("user prompt changed: %q", opts.Prompt)
+			}
+		})
+	}
+}
+
+func TestRunSystemInstructionRedacted(t *testing.T) {
+	var logs bytes.Buffer
+	oldLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(oldLogger) })
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Inspect startup logging without launching a provider process.
+	const instruction = "private-instruction-marker"
+	err := (&Runner{}).Run(ctx, agent.RunOptions{SystemInstruction: instruction}, func(agent.Event) {})
+	if err == nil {
+		t.Fatal("canceled run unexpectedly succeeded")
+	}
+	if strings.Contains(logs.String(), instruction) {
+		t.Fatalf("generated argv logs contain instruction: %s", logs.String())
+	}
+	if !strings.Contains(logs.String(), "--append-system-prompt [redacted]") {
+		t.Fatalf("generated argv logs missing redaction marker: %s", logs.String())
+	}
+}
+
+func TestClaudeArgsForLogPreservesArgv(t *testing.T) {
+	t.Parallel()
+	args := []string{"-p", "--append-system-prompt", "private instruction", "--model", "sonnet"}
+	if got := claudeArgsForLog(args); got != "-p --append-system-prompt [redacted] --model sonnet" {
+		t.Fatalf("unexpected logged argv: %q", got)
+	}
+	if !slices.Equal(args, []string{"-p", "--append-system-prompt", "private instruction", "--model", "sonnet"}) {
+		t.Fatalf("logging changed process argv: %#v", args)
+	}
+}
 
 func TestDispatch_streamTextDeltaThenAssistantSkipped(t *testing.T) {
 	t.Parallel()

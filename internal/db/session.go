@@ -17,12 +17,13 @@ const (
 )
 
 type Session struct {
-	ID             string `json:"id"`
-	AgentType      string `json:"agent_type"`
-	AgentSessionID string `json:"agent_session_id"`
-	Name           string `json:"name"`
-	Description    string `json:"description"`
-	WorkDir        string `json:"work_dir"`
+	ID                string `json:"id"`
+	AgentType         string `json:"agent_type"`
+	AgentSessionID    string `json:"agent_session_id"`
+	Name              string `json:"name"`
+	Description       string `json:"description"`
+	SystemInstruction string `json:"system_instruction"`
+	WorkDir           string `json:"work_dir"`
 	// GitBranch 非 DB 欄位，僅於 API 序列化時由後端填入（目前分支名稱）。
 	GitBranch      string   `json:"git_branch,omitempty"`
 	PermissionMode string   `json:"permission_mode"`
@@ -58,6 +59,15 @@ type Session struct {
 }
 
 func (db *DB) CreateSession(name, description, workDir, permissionMode, agentType string, cliExtraArgs []string, inputMode string, disguiseAgent ...string) (*Session, error) {
+	disguise := ""
+	if len(disguiseAgent) > 0 {
+		disguise = disguiseAgent[0]
+	}
+	return db.CreateSessionWithInstruction(name, description, workDir, permissionMode, agentType, cliExtraArgs, inputMode, disguise, "")
+}
+
+// CreateSessionWithInstruction stores creation-only instructions in the same insert as the session.
+func (db *DB) CreateSessionWithInstruction(name, description, workDir, permissionMode, agentType string, cliExtraArgs []string, inputMode, disguiseAgent, instruction string) (*Session, error) {
 	id := uuid.New().String()
 	workDir = strings.TrimSpace(workDir)
 	if permissionMode == "" {
@@ -83,13 +93,10 @@ func (db *DB) CreateSession(name, description, workDir, permissionMode, agentTyp
 		}
 		extraJSON = string(b)
 	}
-	disguise := ""
-	if len(disguiseAgent) > 0 {
-		disguise = strings.TrimSpace(disguiseAgent[0])
-	}
+	disguise := strings.TrimSpace(disguiseAgent)
 	_, err := db.Exec(
-		`INSERT INTO sessions (id, name, description, work_dir, permission_mode, agent_type, cli_extra_args, input_mode, disguise_agent, last_read_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-		id, name, description, workDir, permissionMode, agentType, extraJSON, inputMode, disguise,
+		`INSERT INTO sessions (id, name, description, work_dir, permission_mode, agent_type, cli_extra_args, input_mode, disguise_agent, system_instruction, last_read_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+		id, name, description, workDir, permissionMode, agentType, extraJSON, inputMode, disguise, strings.TrimSpace(instruction),
 	)
 	if err != nil {
 		return nil, err
@@ -99,7 +106,7 @@ func (db *DB) CreateSession(name, description, workDir, permissionMode, agentTyp
 
 func (db *DB) GetSession(id string) (*Session, error) {
 	row := db.QueryRow(
-		`SELECT s.id, s.agent_type, s.agent_session_id, s.name, s.description, s.work_dir, s.permission_mode, s.allowed_tools, s.pending_denials, s.last_active, s.status, s.cli_extra_args, s.input_mode, s.shell_pending, s.active_model, s.active_model_source, s.active_model_at, s.model, s.effort, s.last_read_at, s.disguise_agent, s.last_error_text, s.last_error_at, s.pinned,
+		`SELECT s.id, s.agent_type, s.agent_session_id, s.name, s.description, s.work_dir, s.permission_mode, s.allowed_tools, s.pending_denials, s.last_active, s.status, s.cli_extra_args, s.input_mode, s.shell_pending, s.active_model, s.active_model_source, s.active_model_at, s.model, s.effort, s.last_read_at, s.disguise_agent, s.last_error_text, s.last_error_at, s.pinned, s.system_instruction,
 		       (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.created_at > s.last_read_at AND m.role != 'user' AND s.agent_type != 'telegram') AS unread_count
 		 FROM sessions s WHERE s.id = ?`, id,
 	)
@@ -108,7 +115,7 @@ func (db *DB) GetSession(id string) (*Session, error) {
 
 func (db *DB) ListSessions() ([]*Session, error) {
 	rows, err := db.Query(
-		`SELECT s.id, s.agent_type, s.agent_session_id, s.name, s.description, s.work_dir, s.permission_mode, s.allowed_tools, s.pending_denials, s.last_active, s.status, s.cli_extra_args, s.input_mode, s.shell_pending, s.active_model, s.active_model_source, s.active_model_at, s.model, s.effort, s.last_read_at, s.disguise_agent, s.last_error_text, s.last_error_at, s.pinned,
+		`SELECT s.id, s.agent_type, s.agent_session_id, s.name, s.description, s.work_dir, s.permission_mode, s.allowed_tools, s.pending_denials, s.last_active, s.status, s.cli_extra_args, s.input_mode, s.shell_pending, s.active_model, s.active_model_source, s.active_model_at, s.model, s.effort, s.last_read_at, s.disguise_agent, s.last_error_text, s.last_error_at, s.pinned, s.system_instruction,
 		       (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.created_at > s.last_read_at AND m.role != 'user' AND s.agent_type != 'telegram') AS unread_count
 		 FROM sessions s ORDER BY s.last_active DESC`,
 	)
@@ -329,7 +336,7 @@ func scanSession(s scanner) (*Session, error) {
 	err := s.Scan(
 		&sess.ID, &sess.AgentType, &sess.AgentSessionID, &sess.Name, &sess.Description,
 		&sess.WorkDir, &sess.PermissionMode, &allowedTools, &sess.PendingDenials, &sess.LastActive, &sess.Status, &extraJSON, &sess.InputMode, &sess.ShellPending,
-		&sess.ActiveModel, &sess.ActiveModelSource, &sess.ActiveModelAt, &sess.Model, &sess.Effort, &sess.LastReadAt, &sess.DisguiseAgent, &sess.LastErrorText, &sess.LastErrorAt, &sess.Pinned,
+		&sess.ActiveModel, &sess.ActiveModelSource, &sess.ActiveModelAt, &sess.Model, &sess.Effort, &sess.LastReadAt, &sess.DisguiseAgent, &sess.LastErrorText, &sess.LastErrorAt, &sess.Pinned, &sess.SystemInstruction,
 		&sess.UnreadCount,
 	)
 	if err != nil {

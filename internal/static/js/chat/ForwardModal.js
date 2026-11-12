@@ -220,6 +220,7 @@ function ForwardModal({
                   >
                     <option value="claude">Claude</option>
                     <option value="cursor">Cursor</option>
+                    <option value="antigravity">Antigravity</option>
                     <option value="kiroacp">Kiro ACP</option>
                     <option value="codex">Codex</option>
                   </select>
@@ -282,6 +283,20 @@ function ForwardModal({
                     className="w-full bg-slate-900/80 border border-slate-600 rounded-lg px-2 py-2 text-xs text-slate-100"
                   />
                 </div>
+                {newForm.supportsInstruction && (
+                  <div className="space-y-1">
+                    <label htmlFor="forward-new-instruction" className="text-xs text-slate-400">專屬指令（選填）</label>
+                    <textarea
+                      id="forward-new-instruction"
+                      aria-describedby="forward-new-instruction-help"
+                      value={newForm.systemInstruction}
+                      onChange={(e) => newForm.setSystemInstruction(e.target.value)}
+                      rows={3}
+                      className="w-full bg-slate-900/80 border border-slate-600 rounded-lg px-2 py-2 text-sm text-slate-100 focus:outline-none focus:border-cyan-500/45"
+                    />
+                    <p id="forward-new-instruction-help" className="text-xs text-slate-400">設定角色、回覆風格、工作規則。建立後固定，調整請另建會話。</p>
+                  </div>
+                )}
               </div>
             )}
 

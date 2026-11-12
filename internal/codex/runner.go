@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -214,6 +215,13 @@ func (r *Runner) dispatch(ev *StreamEvent, cb agent.EventCallback, st *dispatchS
 }
 
 func buildArgs(opts agent.RunOptions) []string {
+	var instructionArgs []string
+	if opts.SystemInstruction != "" {
+		// A string always marshals successfully. Escape DEL as well: JSON allows
+		// it literally, but TOML basic strings require its Unicode escape.
+		quoted, _ := json.Marshal(opts.SystemInstruction)
+		instructionArgs = []string{"-c", "developer_instructions=" + strings.ReplaceAll(string(quoted), "\x7f", `\u007f`)}
+	}
 	if opts.SessionID != "" {
 		args := []string{
 			"exec", "resume", opts.SessionID,
@@ -228,6 +236,7 @@ func buildArgs(opts agent.RunOptions) []string {
 				args = append(args, "-c", "model_reasoning_effort="+effort)
 			}
 		}
+		args = append(args, instructionArgs...)
 		args = append(args, opts.Prompt)
 		return args
 	}
@@ -245,6 +254,7 @@ func buildArgs(opts agent.RunOptions) []string {
 			args = append(args, "-c", "model_reasoning_effort="+effort)
 		}
 	}
+	args = append(args, instructionArgs...)
 	args = append(args, opts.Prompt)
 	return args
 }
@@ -279,6 +289,11 @@ func classifyRunnerError(stderr string, waitErr error) error {
 func redactArgs(args []string) []string {
 	out := make([]string, len(args))
 	copy(out, args)
+	for i, arg := range out {
+		if i > 0 && out[i-1] == "-c" && strings.HasPrefix(arg, "developer_instructions=") {
+			out[i] = "developer_instructions=[REDACTED]"
+		}
+	}
 	return out
 }
 

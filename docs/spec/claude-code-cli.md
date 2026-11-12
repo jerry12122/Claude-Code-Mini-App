@@ -1,3 +1,11 @@
+## 本專案的會話專屬指令（2026-11-12）
+
+建立 Claude session 時，可在「專屬指令（選填）」設定角色、回覆風格與工作規則，轉發新建與接手也會沿用。指令與第一則訊息分開，建立後固定；調整請另建會話。`system_instruction` 修剪外圍空白，最多 16384 UTF-8 bytes，拒絕 U+0000 與非字串；PATCH 出現此欄位會在其他欄位寫入前拒絕。
+
+Go runner 將非空指令作為單一 `--append-system-prompt` 值傳入，新建與 `--resume` 都使用相同原文。保留內建 system prompt、使用者的 snapshot 設定、權限與 MCP bridge；user prompt 仍由 stdin 傳入。省略或空白不加旗標。建立時若同時使用自訂 `--system-prompt`、`--system-prompt-file`、`--append-system-prompt`、`--append-system-prompt-file`（含等號形式），API 回 400 請使用者擇一；空白指令沿用既有 CLI 參數行為。產生 argv 的日誌遮蔽指令內容。
+
+2026-11-12 使用本機訂閱登入、Claude Code 2.1.322 與隔離工作目錄，經正式 Go runner 的新建與跨程序續接 marker 測試均通過；marker 僅存在專屬指令，user prompt 不含 marker。
+
 > ## Documentation Index
 
 > Fetch the complete documentation index at: https://code.claude.com/docs/llms.txt

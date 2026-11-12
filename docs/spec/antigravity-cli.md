@@ -15,7 +15,7 @@
 | 項目 | 規格 |
 |---|---|
 | 類型 | Local subprocess（`agy`，用後即棄） |
-| 通訊格式 | `--output-format stream-json`（NDJSON 串流） |
+| 通訊格式 | 空白指令沿用 `--output-format stream-json`；有專屬指令時使用 `agy acp` |
 | Prompt | **stdin pipe**（避開 Windows argv 截斷，支援多行輸入） |
 | Session 延續 | `--conversation <session_id>` 跨輪延續對話歷史 |
 | 權限模式 | 支援 `--mode accept-edits`、`--mode plan` 與 `--dangerously-skip-permissions` |
@@ -97,4 +97,20 @@ agy --output-format stream-json \
 | `CC_AGY_BIN` | 覆寫 agy 執行檔路徑 |
 | `CC_AGY_FORCE_PRINT_TEXT=1` | 強制降級為純文字 print 模式（後備方案） |
 
-舊 `CC_AGY_STREAM_JSON` 不再控制 runner；未強制純文字時預設使用串流。
+舊 `CC_AGY_STREAM_JSON` 不再控制 runner；空白指令且未強制純文字時預設使用串流。
+
+## 建立時的會話專屬指令（2026-11-12）
+
+建立 Antigravity session 時可填「專屬指令（選填）」，建立後固定，調整請另建會話。`system_instruction` 與 user prompt 分開儲存；API 修剪外圍空白，最多 16384 UTF-8 bytes，不接受 U+0000。省略或空白沿用既有 CLI／print 選路；非空值優先使用 `agy acp`，即使設定 `CC_AGY_FORCE_PRINT_TEXT=1` 也不降級丟掉指令。
+
+ACP 使用已快取的本機登入，不開瀏覽器認證、不建立自訂 agent 或規則檔。`initialize` 必須宣告 `agentCapabilities._meta.antigravity.systemPrompt.append=true`，續接還需要 `loadSession=true`。新建與續接的 `session/new`／`session/load` params 皆包含：
+
+```json
+{"cwd":"<absolute-work-dir>","mcpServers":[],"_meta":{"antigravity":{"systemPrompt":{"append":"<saved-instruction>"}}}}
+```
+
+`session/load` 另帶既有 `sessionId`；`session/prompt` 僅傳本輪 user 文字。保留原生 MCP 與預設客製設定；載入歷史不重播成本輪回答。文字、思考與工具事件轉成共用 runner 事件，成功回應與程序回收後只送一次完成事件。
+
+模型優先使用宣告的 config option，否則使用宣告的 model ID；effort 對應 `thought_level`。`default`／`acceptEdits`／`plan` 對應宣告的 `default`／`accept-edits`／`plan` 模式；只有明確的 bypass 設定才加 `--dangerously-skip-permissions`。工具授權走既有使用者決策回呼，無回呼時取消。缺能力、不支援設定、登入／RPC／EOF／逾時或子程序錯誤均回報失敗，沒有 legacy 後備。取消先送 `session/cancel` 再回收程序樹；設定請求上限 15 秒，本輪 prompt 上限 30 分鐘，程序回收有有限等待。
+
+ACP 不記錄原始 payload 或 stderr，錯誤保留 RPC code 與登入／更新提示。2026-11-12 本機 agy 1.5.6 經正式 Go runner 的 new／跨程序 load marker 測試通過；marker 只在專屬指令內，未使用自訂 agent 檔。設定 RPC 的 plan、model、thought level 也經本機確認。

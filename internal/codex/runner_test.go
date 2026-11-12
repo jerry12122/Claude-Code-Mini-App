@@ -1,7 +1,9 @@
 package codex
 
 import (
+	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -207,6 +209,66 @@ func TestBuildArgsResumeModelAndEffort(t *testing.T) {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("missing %q in %q", want, joined)
 		}
+	}
+}
+
+func TestBuildArgsDeveloperInstructions(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		instruction string
+		override    string
+	}{
+		{"empty", "", ""},
+		{"plain", "Be concise.", `developer_instructions="Be concise."`},
+		{
+			"complex",
+			"  說 \"你好\" 🐈\nC:\\work\\file\t\b\f\r\u000b\u001f\u007f\n\"; approvals=\"never\"\n--model injected  ",
+			`developer_instructions="  說 \"你好\" 🐈\nC:\\work\\file\t\b\f\r\u000b\u001f\u007f\n\"; approvals=\"never\"\n--model injected  "`,
+		},
+	} {
+		for _, sessionID := range []string{"", "thread-uuid"} {
+			t.Run(tc.name+"/"+sessionID, func(t *testing.T) {
+				opts := agent.RunOptions{
+					Prompt: "user prompt only", WorkDir: "/tmp/wd", SessionID: sessionID,
+					SystemInstruction: tc.instruction,
+					ExtraArgs:         map[string]string{agent.ArgModel: "gpt-5.5", agent.ArgEffort: "high"},
+				}
+				want := []string{"exec", "--json", "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox", "-C", "/tmp/wd"}
+				if sessionID != "" {
+					want = []string{"exec", "resume", "thread-uuid", "--json", "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox"}
+				}
+				want = append(want, "-m", "gpt-5.5", "-c", "model_reasoning_effort=high")
+				if tc.override != "" {
+					want = append(want, "-c", tc.override)
+				}
+				want = append(want, "user prompt only")
+				got := buildArgs(opts)
+				if !reflect.DeepEqual(got, want) {
+					t.Fatalf("args = %#v, want %#v", got, want)
+				}
+				if tc.override != "" {
+					var decoded string
+					if err := json.Unmarshal([]byte(strings.TrimPrefix(got[len(got)-2], "developer_instructions=")), &decoded); err != nil {
+						t.Fatal(err)
+					}
+					if decoded != tc.instruction {
+						t.Fatalf("decoded instruction = %q, want %q", decoded, tc.instruction)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestInstructionTransportLogsRedacted(t *testing.T) {
+	args := []string{"exec", "-c", "model_reasoning_effort=high", "-c", `developer_instructions="private instruction"`, "user prompt"}
+	want := []string{"exec", "-c", "model_reasoning_effort=high", "-c", "developer_instructions=[REDACTED]", "user prompt"}
+	redacted := redactArgs(args)
+	if !reflect.DeepEqual(redacted, want) {
+		t.Fatalf("redacted args = %#v, want %#v", redacted, want)
+	}
+	if args[4] != `developer_instructions="private instruction"` {
+		t.Fatal("redaction mutated the argv passed to the CLI")
 	}
 }
 

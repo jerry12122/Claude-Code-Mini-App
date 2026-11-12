@@ -75,7 +75,22 @@ func buildClaudeArgs(opts agent.RunOptions) []string {
 			args = append(args, "--mcp-config", p, "--permission-prompt-tool", agent.PermPromptFlag)
 		}
 	}
+	if opts.SystemInstruction != "" {
+		args = append(args, "--append-system-prompt", opts.SystemInstruction)
+	}
 	return args
+}
+
+// claudeArgsForLog hides instruction bodies without changing the process argv.
+func claudeArgsForLog(args []string) string {
+	redacted := append([]string(nil), args...)
+	for i := 0; i < len(redacted); i++ {
+		if redacted[i] == "--append-system-prompt" && i+1 < len(redacted) {
+			redacted[i+1] = "[redacted]"
+			i++
+		}
+	}
+	return strings.Join(redacted, " ")
 }
 
 // permPromptToolTimeoutMs：權限詢問等使用者回答的上限（30 分鐘）。
@@ -102,7 +117,7 @@ func claudeEnv(base []string, permPrompt bool) []string {
 func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventCallback) error {
 	start := time.Now()
 	args := buildClaudeArgs(opts)
-	slog.Info(fmt.Sprintf("[claude] 執行指令: claude %s (prompt len=%d)", strings.Join(args, " "), len(opts.Prompt)))
+	slog.Info(fmt.Sprintf("[claude] 執行指令: claude %s (prompt len=%d)", claudeArgsForLog(args), len(opts.Prompt)))
 	if opts.WorkDir != "" {
 		slog.Info(fmt.Sprintf("[claude] 工作目錄: %s", opts.WorkDir))
 	}

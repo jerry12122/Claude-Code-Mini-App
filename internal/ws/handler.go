@@ -220,7 +220,14 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 
 		writer := newSocketWriter(c)
 		defer writer.Close()
-		send := writer.Send
+		send := func(msg serverMsg) bool {
+			if isGuest && msg.Handoff != nil {
+				handoff := *msg.Handoff
+				handoff.SystemInstruction = ""
+				msg.Handoff = &handoff
+			}
+			return writer.Send(msg)
+		}
 
 		unsub := hub.Subscribe(sessionID, send)
 		defer unsub()
@@ -543,12 +550,13 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 			}
 
 			opts := agent.RunOptions{
-				Prompt:       prompt,
-				SessionID:    agSid,
-				WorkDir:      wdir,
-				ExtraArgs:    extra,
-				CliExtraArgs: cliExtra,
-				OnStart:      func(pid int) { taskSetPid(sessionID, msgID, pid) },
+				Prompt:            prompt,
+				SystemInstruction: s.SystemInstruction,
+				SessionID:         agSid,
+				WorkDir:           wdir,
+				ExtraArgs:         extra,
+				CliExtraArgs:      cliExtra,
+				OnStart:           func(pid int) { taskSetPid(sessionID, msgID, pid) },
 			}
 
 			// 等授權一定要有人處理：由 MCP（mcp_token）發起的 run 沒有 tg_id，退回白名單唯一使用者；訪客不退回。
@@ -589,8 +597,8 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				return allow
 			}
 
-			// kiroacp 互動式授權：runner 中途收到工具授權請求時同步呼叫。
-			if agentType == agent.TypeKiroACP {
+			// ACP 互動式授權：有專屬指令的 Antigravity 與 kiroacp 共用既有決策流程。
+			if agentType == agent.TypeKiroACP || (agentType == agent.TypeAntigravity && s.SystemInstruction != "") {
 				opts.RequestPermission = func(rctx context.Context, req agent.PermissionRequest) string {
 					title := strings.TrimSpace(req.Title)
 					if title == "" {
@@ -610,7 +618,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 							}
 						}
 					}
-					if allow {
+					if allow && agentType == agent.TypeKiroACP {
 						for _, o := range req.Options {
 							if !strings.HasPrefix(o.Kind, "reject") {
 								return o.OptionID

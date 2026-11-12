@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -149,18 +150,29 @@ func (h *SessionHandler) ListWorkDirs(c *fiber.Ctx) error {
 
 func (h *SessionHandler) Create(c *fiber.Ctx) error {
 	var body struct {
-		Name           string   `json:"name"`
-		Description    string   `json:"description"`
-		WorkDir        string   `json:"work_dir"`
-		PermissionMode string   `json:"permission_mode"`
-		AgentType      string   `json:"agent_type"`
-		CliExtraArgs   []string `json:"cli_extra_args"`
-		InputMode      string   `json:"input_mode"`
+		Name              string          `json:"name"`
+		Description       string          `json:"description"`
+		WorkDir           string          `json:"work_dir"`
+		PermissionMode    string          `json:"permission_mode"`
+		AgentType         string          `json:"agent_type"`
+		CliExtraArgs      []string        `json:"cli_extra_args"`
+		InputMode         string          `json:"input_mode"`
+		SystemInstruction json.RawMessage `json:"system_instruction"`
 		// Effort：選填，空字串＝不指定交給 CLI 用預設。沿用既有 set_effort 的自由字串，不另驗證合法值。
 		Effort string `json:"effort"`
 	}
 	if err := c.BodyParser(&body); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		return c.Status(400).JSON(fiber.Map{"error": "無效的 session 建立資料"})
+	}
+	instruction := ""
+	if body.SystemInstruction != nil {
+		if string(body.SystemInstruction) == "null" || json.Unmarshal(body.SystemInstruction, &instruction) != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "system_instruction 必須是字串"})
+		}
+	}
+	instruction = strings.TrimSpace(instruction)
+	if len(instruction) > 16384 || strings.ContainsRune(instruction, 0) {
+		return c.Status(400).JSON(fiber.Map{"error": "system_instruction 最多 16384 UTF-8 bytes，且不可包含 U+0000"})
 	}
 
 	// 密技暗號偵測：若 WorkDir 以 "tg://" 開頭（或 Name、Description 以 "tg://" 開頭），
@@ -221,9 +233,23 @@ func (h *SessionHandler) Create(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
-	s, err := h.db.CreateSession(body.Name, body.Description, body.WorkDir, body.PermissionMode, body.AgentType, cliExtra, body.InputMode, disguiseAgent)
+	if instruction != "" {
+		if body.InputMode == "shell" || (body.AgentType != agent.TypeClaude && body.AgentType != agent.TypeCodex && body.AgentType != agent.TypeAntigravity) {
+			return c.Status(400).JSON(fiber.Map{"error": "system_instruction 僅支援 Claude、Codex、Antigravity 的 agent 模式"})
+		}
+		if body.AgentType == agent.TypeClaude {
+			for _, arg := range cliExtra {
+				flag, _, _ := strings.Cut(arg, "=")
+				switch flag {
+				case "--system-prompt", "--system-prompt-file", "--append-system-prompt", "--append-system-prompt-file":
+					return c.Status(400).JSON(fiber.Map{"error": "專屬指令與 CLI system prompt 參數請擇一使用"})
+				}
+			}
+		}
+	}
+	s, err := h.db.CreateSessionWithInstruction(body.Name, body.Description, body.WorkDir, body.PermissionMode, body.AgentType, cliExtra, body.InputMode, disguiseAgent, instruction)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		return c.Status(500).JSON(fiber.Map{"error": "無法儲存 session"})
 	}
 	if strings.TrimSpace(body.Effort) != "" {
 		if err := h.db.UpdateEffort(s.ID, body.Effort); err != nil {
@@ -247,13 +273,17 @@ func (h *SessionHandler) Create(c *fiber.Ctx) error {
 func (h *SessionHandler) Patch(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var body struct {
-		Name         *string   `json:"name"`
-		CliExtraArgs *[]string `json:"cli_extra_args"`
-		MarkRead     *bool     `json:"mark_read"`
-		Pinned       *bool     `json:"pinned"`
+		Name              *string         `json:"name"`
+		CliExtraArgs      *[]string       `json:"cli_extra_args"`
+		MarkRead          *bool           `json:"mark_read"`
+		Pinned            *bool           `json:"pinned"`
+		SystemInstruction json.RawMessage `json:"system_instruction"`
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
+	if body.SystemInstruction != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "專屬指令建立後固定，調整請另建會話"})
 	}
 	if body.Name == nil && body.CliExtraArgs == nil && body.MarkRead == nil && body.Pinned == nil {
 		return c.Status(400).JSON(fiber.Map{"error": "name、cli_extra_args、mark_read 或 pinned 至少指定一項"})

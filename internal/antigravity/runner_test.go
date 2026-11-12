@@ -14,6 +14,10 @@ import (
 
 // 測試執行檔扮演 agy，不需要安裝或登入真實 CLI。
 func TestMain(m *testing.M) {
+	if mode := os.Getenv("FAKE_AGY_ACP"); mode != "" {
+		fakeACPProcess(mode)
+		os.Exit(0)
+	}
 	if mode := os.Getenv("FAKE_AGY_PRINT"); mode != "" {
 		fmt.Fprint(os.Stderr, "fake diagnostic")
 		switch mode {
@@ -24,6 +28,8 @@ func TestMain(m *testing.M) {
 			fmt.Fprint(os.Stdout, os.Getenv("FAKE_AGY_MODELS"))
 		case "text":
 			fmt.Fprint(os.Stdout, "hello\n")
+		case "stream":
+			fmt.Fprintln(os.Stdout, `{"event":"result","result":{"status":"SUCCESS","response":"hello"}}`)
 		case "whitespace":
 			fmt.Fprint(os.Stdout, " \n\t")
 		case "failure":

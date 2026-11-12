@@ -123,6 +123,21 @@ function NewSessionComposer({ prefill, onCreated, onCancel }) {
           className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-violet-600"
         />
 
+        {newForm.supportsInstruction && (
+          <div className="space-y-1.5">
+            <label htmlFor="new-session-instruction" className="text-xs text-ra-t2">專屬指令（選填）</label>
+            <textarea
+              id="new-session-instruction"
+              aria-describedby="new-session-instruction-help"
+              value={newForm.systemInstruction}
+              onChange={(e) => newForm.setSystemInstruction(e.target.value)}
+              rows={3}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-violet-600"
+            />
+            <p id="new-session-instruction-help" className="text-xs text-ra-t4">設定角色、回覆風格、工作規則。建立後固定，調整請另建會話。</p>
+          </div>
+        )}
+
         {/* 中央輸入：第一則訊息（chat-input 風格，選填） */}
         <div className="rounded-2xl border border-ra-line bg-ra-card px-4 py-3 focus-within:border-violet-600 transition-colors">
           <textarea

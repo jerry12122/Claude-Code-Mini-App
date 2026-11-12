@@ -878,6 +878,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       model,
       cliExtra: cliArgsWithoutModel(cliArgs).join('\n'),
       effort: h.effort || '',
+      systemInstruction: h.system_instruction || '',
       message: buildHandoffDraftMessage(h, messages),
     });
   };
