@@ -13,6 +13,7 @@ const source = fs.readFileSync(mermaidBlockPath, 'utf8');
 // Mock DOM environment for custom elements
 class MockElement {
   constructor() {
+    this.isConnected = true;
     this.attributes = {};
     this.children = [];
     this.classList = {

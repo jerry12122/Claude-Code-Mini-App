@@ -2,28 +2,29 @@
 (function() {
   const MERMAID_FONT = 'Manrope, JetBrains Mono, sans-serif';
 
+  // Mermaid's color parser needs hex colors; CSS oklch() aborts initialization.
   const MERMAID_DARK_THEME_VARIABLES = {
     darkMode: true,
-    background: 'oklch(0.16 0.02 264)',
-    primaryColor: 'oklch(0.62 0.19 275)',
-    primaryTextColor: 'oklch(0.94 0.01 264)',
-    primaryBorderColor: 'oklch(0.35 0.02 264)',
-    lineColor: 'oklch(0.62 0.19 275)',
-    secondaryColor: 'oklch(0.24 0.02 264)',
-    tertiaryColor: 'oklch(0.19 0.02 264)',
+    background: '#090d16',
+    primaryColor: '#6875f6',
+    primaryTextColor: '#e8ebf2',
+    primaryBorderColor: '#353b45',
+    lineColor: '#6875f6',
+    secondaryColor: '#1a1f29',
+    tertiaryColor: '#0f141d',
     fontFamily: MERMAID_FONT,
     fontSize: '13px',
   };
 
   const MERMAID_LIGHT_THEME_VARIABLES = {
     darkMode: false,
-    background: 'oklch(0.97 0.006 264)',
-    primaryColor: 'oklch(0.62 0.19 275)',
-    primaryTextColor: 'oklch(0.20 0.01 264)',
-    primaryBorderColor: 'oklch(0.88 0.01 264)',
-    lineColor: 'oklch(0.62 0.19 275)',
-    secondaryColor: 'oklch(0.93 0.006 264)',
-    tertiaryColor: 'oklch(0.90 0.01 264)',
+    background: '#f3f5f9',
+    primaryColor: '#6875f6',
+    primaryTextColor: '#14161b',
+    primaryBorderColor: '#d4d7de',
+    lineColor: '#6875f6',
+    secondaryColor: '#e6e8ec',
+    tertiaryColor: '#dbdee5',
     fontFamily: MERMAID_FONT,
     fontSize: '13px',
   };
@@ -220,7 +221,7 @@
     }
 
     async renderDiagram() {
-      if (this._rendered || this._rendering) return;
+      if (!this.isConnected || this._rendered || this._rendering) return;
       this._renderDOM();
       this._updateRawCode();
       if (!this._rawCode || !this._rawCode.trim()) return;
@@ -232,8 +233,11 @@
       this._rendering = true;
       try {
         const mermaid = await ensureMermaid();
+        if (!this.isConnected) return;
         const id = `mermaid-svg-${Date.now()}-${++mermaidCounter}`;
-        const { svg } = await mermaid.render(id, this._rawCode.trim());
+        // ponytail: scope Mermaid's temporary/error SVG to this message, not body.
+        const { svg } = await mermaid.render(id, this._rawCode.trim(), this._diagramEl);
+        if (!this.isConnected) return;
         this._svgContent = svg;
         this._hasError = false;
         this._rendered = true;
@@ -247,6 +251,8 @@
         }
         this.toggleView('diagram');
       } catch (err) {
+        if (this._diagramEl) this._diagramEl.innerHTML = '';
+        if (!this.isConnected) return;
         this._hasError = true;
         this._rendered = true;
         if (this._errorBarEl) {

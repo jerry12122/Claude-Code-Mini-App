@@ -4,6 +4,12 @@
 
 發版流程：更新 `VERSION`、`internal/version/version.go`、README 版本徽章與本檔 → commit → 打 `vX.Y.Z` tag 並 push，GitHub Actions 會自動建置並發佈 Release（說明文字取自本檔對應段落）。Release 說明依序為：更新內容 → 下載 → 桌面版更新方法 → 首次設定。
 
+## [0.18.7] - 2026-11-12
+
+### 修正
+- 修正 Mermaid 主題色造成圖表初始化失敗的問題
+- 修正生成流程圖後切換分頁，頁面底部殘留 Mermaid 錯誤圖的問題；保留語法錯誤時的原始碼提示
+
 ## [0.18.6] - 2026-11-11
 
 ### 改善
