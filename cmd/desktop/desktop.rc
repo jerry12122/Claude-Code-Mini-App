@@ -1,0 +1,2 @@
+// Wails uses icon resource ID 3; Windows also reads this icon when the EXE is pinned.
+3 ICON "../../internal/static/favicon.ico"

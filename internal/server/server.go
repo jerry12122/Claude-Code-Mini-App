@@ -479,7 +479,7 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 		return c.JSON(fiber.Map{"shell_enabled": cfg.Shell.Enabled, "max_message_bytes": cfg.Server.MaxMessageBytes, "version": version.Version, "sha": version.Revision()})
 	})
 
-	oh := api.NewOpenHandler(database, cfg.Shell.Enabled)
+	oh := api.NewOpenHandler(database)
 	app.Post("/sessions/:id/open-vscode", authMiddleware, oh.OpenVSCode)
 	app.Post("/sessions/:id/open-folder", authMiddleware, oh.OpenFolder)
 

@@ -2,6 +2,9 @@
 
 package main
 
+// Windows 釘選圖示必須嵌入 EXE；favicon.ico 變更後執行 go generate ./cmd/desktop。
+//go:generate windres --input desktop.rc --output desktop_windows_amd64.syso --output-format coff --target pe-x86-64
+
 import (
 	"context"
 	"errors"

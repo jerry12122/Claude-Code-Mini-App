@@ -735,15 +735,6 @@ function fetchServerConfig() {
   return _serverConfigPromise;
 }
 
-/** 回傳 { shellEnabled }；初始 false，fetch 完成後更新。 */
-function useServerConfig() {
-  const [shellEnabled, setShellEnabled] = useState(false);
-  useEffect(() => {
-    fetchServerConfig().then((cfg) => setShellEnabled(!!(cfg && cfg.shell_enabled)));
-  }, []);
-  return { shellEnabled };
-}
-
 function formatKiroCreditUsed(displayText) {
   const pct = String(displayText).match(/Credits\s+([\d.]+)\s*%/);
   const frac = String(displayText).match(/\(([\d.]+)\s*\/\s*([\d.]+)\)/);

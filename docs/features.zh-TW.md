@@ -32,7 +32,7 @@
   佇列工具沿用 MCP 驗證：`get_queue({"session_id":"…"})` 依 FIFO 回傳 `{"queue":[{"id":123,"content":"…","created_at":"…"}],"queue_paused":false}`（空佇列為 `queue: []`），項目也可能含 `author`、`attachments`。`delete_queue_message({"session_id":"…","message_id":123})` 只刪除該 session 的待執行項目並推播最新佇列，回傳 `{"ok":true}`；項目已不存在時仍成功。兩者皆拒絕空白或不存在的 session，刪除另拒絕非正整數 ID。不會中斷執行中的任務或恢復暫停的佇列。任務失敗會暫停佇列，暫停期間用 `send_message` 送出的訊息只會排在佇列尾端；`resume_queue({"session_id":"…"})` 以與 UI 繼續按鈕相同的行為解除暫停（session 閒置就開始執行第一則，忙碌則等目前任務結束後接著跑），回傳 `{"ok":true}`，佇列為空或未暫停時無副作用。`list_sessions` 另外為每個 session 回報 `queue_paused`、`queue_length`，以及最近一次 run 失敗的 `last_error`／`last_error_at`（ISO8601 UTC，無失敗時省略，下一次成功執行會清除）；帶 `failed_after`（ISO8601）可只列出最近失敗時間晚於該時間的 session。
 
 - **驗證** — Telegram `initData` + 白名單；可選內網密碼登入。`web.trusted_proxies` 預設只信任同機 loopback 代理的 IP 標頭；其他代理須設定精確 CIDR，空清單則停用標頭解析
-- **選用 Shell** — 於 `work_dir` 執行指令（預設關閉）；開啟後會在會話 header 顯示「開啟 VSCode／開啟目錄」按鈕（僅桌面版）
+- **選用 Shell** — 於 `work_dir` 執行指令（預設關閉）；桌面版以本機位址（`127.0.0.1`、`localhost`、`[::1]`）存取時，會話 header 預設顯示「開啟 VSCode／開啟目錄」按鈕，不受 Shell 開關控制
 - **版本資訊** — 設定頁顯示應用程式版本與建置所依據的 Git commit
 - **日誌檢視** — 設定 → 日誌即時串流伺服器日誌（等級篩選、搜尋、暫停、複製；可在執行期切換 Debug）。桌面版沒有 console 時很好用；只顯示本次啟動後的日誌，完整紀錄仍在 `logs/server.log`
 

@@ -64,7 +64,7 @@ db:
   path: "./claude-miniapp.db"
 
 # 直連 Shell：在 Session 的 work_dir 執行使用者輸入的指令（等同 RCE，預設關閉）。
-# 同時控制桌面版 header「開啟 VSCode／開啟目錄」按鈕（與 shell 共用開關）。
+# 桌面版 header「開啟 VSCode／開啟目錄」按鈕僅限本機位址存取，不受此開關控制。
 # shell:
 #   enabled: true
 #   timeout: 60s

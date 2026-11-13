@@ -3,12 +3,14 @@ package api
 import (
 	"encoding/json"
 	"io"
+	"net"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
@@ -35,17 +37,8 @@ func readErr(t *testing.T, body io.Reader) string {
 	return payload.Error
 }
 
-func TestResolveWorkDir_Disabled(t *testing.T) {
-	h := NewOpenHandler(nil, false)
-	_, status, msg := h.resolveWorkDir("any")
-	if status != 403 || msg == "" {
-		t.Fatalf("status=%d msg=%q", status, msg)
-	}
-}
-
 func TestResolveWorkDir_MissingSession(t *testing.T) {
-	h := NewOpenHandler(testDB(t), true)
-	_, status, _ := h.resolveWorkDir("missing")
+	_, status, _ := sessionWorkDir(testDB(t), "missing")
 	if status != 404 {
 		t.Fatalf("status=%d", status)
 	}
@@ -53,13 +46,12 @@ func TestResolveWorkDir_MissingSession(t *testing.T) {
 
 func TestResolveWorkDir_EmptyAndInvalid(t *testing.T) {
 	database := testDB(t)
-	h := NewOpenHandler(database, true)
 
 	empty, err := database.CreateSession("empty", "", "  ", "default", "claude", nil, "agent")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, status, _ := h.resolveWorkDir(empty.ID); status != 400 {
+	if _, status, _ := sessionWorkDir(database, empty.ID); status != 400 {
 		t.Fatalf("空白 work_dir status=%d", status)
 	}
 
@@ -67,7 +59,7 @@ func TestResolveWorkDir_EmptyAndInvalid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, status, _ := h.resolveWorkDir(missing.ID); status != 400 {
+	if _, status, _ := sessionWorkDir(database, missing.ID); status != 400 {
 		t.Fatalf("不存在的目錄 status=%d", status)
 	}
 
@@ -79,7 +71,7 @@ func TestResolveWorkDir_EmptyAndInvalid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, status, _ := h.resolveWorkDir(asFile.ID); status != 400 {
+	if _, status, _ := sessionWorkDir(database, asFile.ID); status != 400 {
 		t.Fatalf("檔案當目錄 status=%d", status)
 	}
 
@@ -88,7 +80,7 @@ func TestResolveWorkDir_EmptyAndInvalid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, status, msg := h.resolveWorkDir(okSess.ID)
+	got, status, msg := sessionWorkDir(database, okSess.ID)
 	if status != 0 {
 		t.Fatalf("有效目錄 status=%d msg=%q", status, msg)
 	}
@@ -98,25 +90,65 @@ func TestResolveWorkDir_EmptyAndInvalid(t *testing.T) {
 	}
 }
 
-func TestOpenVSCode_DisabledReturnsJSON(t *testing.T) {
-	app := fiber.New()
-	h := NewOpenHandler(nil, false)
+func TestOpenHostAccess(t *testing.T) {
+	app := fiber.New(fiber.Config{
+		EnableTrustedProxyCheck: true,
+		TrustedProxies:          []string{"127.0.0.1/32", "::1/128"},
+	})
+	h := NewOpenHandler(testDB(t))
 	app.Post("/sessions/:id/open-vscode", h.OpenVSCode)
-
-	req := httptest.NewRequest("POST", "/sessions/x/open-vscode", nil)
-	resp, err := app.Test(req)
+	app.Post("/sessions/:id/open-folder", h.OpenFolder)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 403 {
-		t.Fatalf("status=%d", resp.StatusCode)
-	}
-	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "application/json") {
-		t.Fatalf("Content-Type=%q", ct)
-	}
-	if errMsg := readErr(t, resp.Body); errMsg == "" {
-		t.Fatal("應回傳 error 欄位")
+	go func() { _ = app.Listener(ln) }()
+	t.Cleanup(func() { _ = app.Shutdown() })
+	client := &http.Client{Timeout: 5 * time.Second}
+	for _, path := range []string{"open-vscode", "open-folder"} {
+		for _, tt := range []struct {
+			host, forwardedHost, forwardedIP string
+			want                             int
+		}{
+			{"127.0.0.1:8080", "", "", 404}, // 通過本機檢查後才會找不到 session；不啟動外部程式。
+			{"localhost:8080", "", "", 404},
+			{"[::1]:8080", "", "", 404},
+			{"127.0.0.1", "", "", 404},
+			{"10.0.1.200:8080", "", "", 403},
+			{"attacker.example:8080", "", "", 403},
+			{"10.0.1.200:8080", "127.0.0.1:8080", "127.0.0.1", 403},
+			{"127.0.0.1:8080", "", "10.0.1.20", 403},
+		} {
+			req, err := http.NewRequest("POST", "http://"+ln.Addr().String()+"/sessions/missing/"+path, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Host = tt.host
+			req.Header.Set("X-Forwarded-Host", tt.forwardedHost)
+			req.Header.Set("X-Forwarded-For", tt.forwardedIP)
+			resp, err := client.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			errMsg := readErr(t, resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode != tt.want || errMsg == "" {
+				t.Fatalf("%s %+v: status=%d error=%q", path, tt, resp.StatusCode, errMsg)
+			}
+		}
+
+		// app.Test 的實際來源是 0.0.0.0；偽造 loopback 標頭不能讓遠端請求通過。
+		req := httptest.NewRequest("POST", "/sessions/missing/"+path, nil)
+		req.Host = "127.0.0.1:8080"
+		req.Header.Set("X-Forwarded-For", "127.0.0.1")
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != 403 {
+			t.Fatalf("%s: forwarded header bypassed local access: %d", path, resp.StatusCode)
+		}
 	}
 }
 

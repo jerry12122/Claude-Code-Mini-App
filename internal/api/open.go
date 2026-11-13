@@ -1,6 +1,7 @@
 package api
 
 import (
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -8,32 +9,44 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/auth"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/proc"
 )
 
-// OpenHandler 提供「在伺服器主機開啟 VSCode／檔案總管」，與 shell.enabled 共用同一開關
-// （語義相同：允許伺服器端啟動本機程序），指令與參數皆固定，不接受使用者輸入拼接。
+// OpenHandler 提供「在伺服器主機開啟 VSCode／檔案總管」，僅允許本機存取。
+// 指令與參數皆固定，不接受使用者輸入拼接；不受 shell.enabled 控制。
 type OpenHandler struct {
-	db      *db.DB
-	enabled bool
+	db *db.DB
 }
 
-func NewOpenHandler(database *db.DB, shellEnabled bool) *OpenHandler {
-	return &OpenHandler{db: database, enabled: shellEnabled}
+func NewOpenHandler(database *db.DB) *OpenHandler {
+	return &OpenHandler{db: database}
 }
 
 func jsonErr(c *fiber.Ctx, status int, msg string) error {
 	return c.Status(status).JSON(fiber.Map{"error": msg})
 }
 
-// resolveWorkDir 取得 session 的 work_dir，並確認功能已啟用、目錄存在。
-// 失敗時回傳 HTTP 狀態與錯誤訊息（status != 0）。
-func (h *OpenHandler) resolveWorkDir(sessionID string) (string, int, string) {
-	if !h.enabled {
-		return "", 403, "shell.enabled 未開啟，無法使用此功能"
+// hostOpenAllowed 同時檢查實際連線、可信代理解析的來源與原始 Host，避免轉發標頭或 DNS rebinding 繞過本機限制。
+func hostOpenAllowed(c *fiber.Ctx) bool {
+	if !c.Context().RemoteIP().IsLoopback() || !net.ParseIP(auth.RealIP(c)).IsLoopback() {
+		return false
 	}
-	return sessionWorkDir(h.db, sessionID)
+	host := strings.ToLower(string(c.Request().Host()))
+	if name, _, err := net.SplitHostPort(host); err == nil {
+		host = name
+	}
+	return host == "127.0.0.1" || host == "localhost" || host == "::1" || host == "[::1]"
+}
+
+// resolveWorkDir 取得 session 的 work_dir，並確認為本機請求、目錄存在。
+// 失敗時回傳 HTTP 狀態與錯誤訊息（status != 0）。
+func (h *OpenHandler) resolveWorkDir(c *fiber.Ctx) (string, int, string) {
+	if !hostOpenAllowed(c) {
+		return "", 403, "僅允許透過本機位址開啟 VSCode 或目錄"
+	}
+	return sessionWorkDir(h.db, c.Params("id"))
 }
 
 // sessionWorkDir 取得 session 的 work_dir 絕對路徑並確認目錄存在；失敗時 status != 0。
@@ -105,7 +118,7 @@ func vscodeNoAdminCommand(workDir string) *exec.Cmd {
 // 改用 vscode:// URI + explorer.exe 以一般使用者權限啟動，避免 VSCode 因權限不一致
 // 跳出「Another instance of Code is already running as administrator」錯誤。
 func (h *OpenHandler) OpenVSCode(c *fiber.Ctx) error {
-	workDir, status, msg := h.resolveWorkDir(c.Params("id"))
+	workDir, status, msg := h.resolveWorkDir(c)
 	if status != 0 {
 		return jsonErr(c, status, msg)
 	}
@@ -123,7 +136,7 @@ func (h *OpenHandler) OpenVSCode(c *fiber.Ctx) error {
 
 // OpenFolder POST /sessions/:id/open-folder — 在伺服器主機開啟 work_dir 所在的檔案總管。
 func (h *OpenHandler) OpenFolder(c *fiber.Ctx) error {
-	workDir, status, msg := h.resolveWorkDir(c.Params("id"))
+	workDir, status, msg := h.resolveWorkDir(c)
 	if status != 0 {
 		return jsonErr(c, status, msg)
 	}

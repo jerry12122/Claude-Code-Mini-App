@@ -38,7 +38,7 @@ function SlashCommandMenu({ items, activeIndex, onSelect }) {
 
 // ── 聊天畫面 ─────────────────────────────────────────────────────────────────
 
-/** 「開啟 VSCode」「開啟目錄」icon button：呼叫伺服器端在本機開啟，僅 shell.enabled 且有 work_dir 時顯示。 */
+/** 「開啟 VSCode」「開啟目錄」icon button：僅本機位址且有 work_dir 時顯示，不受 shell.enabled 控制。 */
 function OpenInHostButton({ sessionId, kind }) {
   const [busy, setBusy] = useState(false);
   const isVscode = kind === 'vscode';
@@ -133,8 +133,7 @@ function ChatSessionHeader({
 }) {
   const isGuest = !!guest;
   const displayAgent = sessionDisplayAgent(session) || agentType;
-  const { shellEnabled } = useServerConfig();
-  const showOpenButtons = !isGuest && shellEnabled && !!(session.work_dir && String(session.work_dir).trim());
+  const showOpenButtons = !isGuest && ['127.0.0.1', 'localhost', '[::1]'].includes(window.location.hostname) && !!(session.work_dir && String(session.work_dir).trim());
   const repoLabel = workDirGroupShortLabel(session.work_dir);
   const modelLabel = (sessionModel && typeof sessionModel === 'object')
     ? (sessionModel.display_text || '')
