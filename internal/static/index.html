@@ -5,11 +5,18 @@
   <script src="./js/wails-runtime-ready.js"></script>
   <script src="./js/devtool-easter-egg.js"></script>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+  <meta name="robots" content="noindex, nofollow, noarchive" />
+  <meta name="theme-color" content="#0c0a09" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Claude Code" />
   <!-- 選用：反代下 API 與自動推算不一致時設 content="/部署前綴"（無則由目前 index.html 目錄自動推算） -->
   <!-- <meta name="cc-api-base" content="" /> -->
   <title>Claude Code · Remote Agent</title>
   <link rel="icon" href="./favicon.ico" type="image/x-icon" />
+  <link rel="apple-touch-icon" href="./favicon.ico" />
+  <link rel="manifest" href="./manifest.webmanifest" />
   <link href="./js/vendor/fonts.css" rel="stylesheet" />
   <script src="./js/vendor/telegram-web-app.js"></script>
   <script src="./js/vendor/tailwind.js"></script>
@@ -560,6 +567,13 @@
 <script type="text/babel" data-presets="react-classic" src="./js/setup/setupForm.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/setup/SetupWizard.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/app.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('./sw.js').catch(function () {});
+    });
+  }
+</script>
 
 <div id="root" class="h-app"></div>
 </body>

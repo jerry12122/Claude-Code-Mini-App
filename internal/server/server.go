@@ -205,9 +205,19 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 	// 沒帶 Cache-Control 時 Chromium 會依 Last-Modified 啟發式快取，改了前端檔案後 F5 仍吃舊的（桌面版又沒有強制重載）。
 	// no-cache = 每次向 server 驗證，沒變動回 304，不是不快取。
+	// 全域注入防爬蟲與安全標頭，防止公網被搜尋引擎或自動化工具收錄與探測。
 	app.Use(func(c *fiber.Ctx) error {
 		c.Set("Cache-Control", "no-cache")
+		c.Set("X-Robots-Tag", "noindex, nofollow, noarchive, nosnippet")
+		c.Set("X-Content-Type-Options", "nosniff")
+		c.Set("Referrer-Policy", "no-referrer")
 		return c.Next()
+	})
+
+	// 爬蟲排除協議：全面禁止檢索
+	app.Get("/robots.txt", func(c *fiber.Ctx) error {
+		c.Set(fiber.HeaderContentType, "text/plain; charset=utf-8")
+		return c.SendString("User-agent: *\nDisallow: /\n")
 	})
 	// 首頁、JS、favicon 與分享頁都來自同一個前端資源來源（static.Assets）。
 	assets := static.Assets

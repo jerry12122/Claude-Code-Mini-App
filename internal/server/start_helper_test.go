@@ -49,6 +49,28 @@ func startTestServer(t *testing.T, configYAML string) string {
 			t.Errorf("清理暫存目錄: %v", err)
 		}
 	})
+	// 若存在上一層的 static 目錄（開發測試環境），複製到暫存目錄供 static.Handler 讀取
+	staticSrc := filepath.Join("..", "static")
+	if info, err := os.Stat(staticSrc); err == nil && info.IsDir() {
+		staticDst := filepath.Join(dir, "internal", "static")
+		_ = os.MkdirAll(staticDst, 0755)
+		_ = filepath.Walk(staticSrc, func(srcPath string, f os.FileInfo, err error) error {
+			if err != nil || f.IsDir() {
+				if err == nil && f.IsDir() {
+					rel, _ := filepath.Rel(staticSrc, srcPath)
+					_ = os.MkdirAll(filepath.Join(staticDst, rel), 0755)
+				}
+				return nil
+			}
+			rel, _ := filepath.Rel(staticSrc, srcPath)
+			data, err := os.ReadFile(srcPath)
+			if err == nil {
+				_ = os.WriteFile(filepath.Join(staticDst, rel), data, 0644)
+			}
+			return nil
+		})
+	}
+
 	t.Chdir(dir)
 	if err := os.WriteFile("config.yaml", []byte(body), 0600); err != nil {
 		t.Fatal(err)

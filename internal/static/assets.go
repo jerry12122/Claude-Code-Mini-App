@@ -21,7 +21,7 @@ func IsPublic(name string) bool {
 		return false
 	}
 	switch {
-	case name == "index.html", name == "favicon.ico":
+	case name == "index.html", name == "favicon.ico", name == "robots.txt", name == "manifest.webmanifest", name == "sw.js":
 		return true
 	case strings.HasPrefix(name, "js/"):
 		return true
@@ -169,6 +169,10 @@ func contentType(name string) string {
 		return "font/woff2"
 	case ".ico":
 		return "image/x-icon"
+	case ".txt":
+		return "text/plain; charset=utf-8"
+	case ".webmanifest":
+		return "application/manifest+json"
 	}
 	return "application/octet-stream"
 }
