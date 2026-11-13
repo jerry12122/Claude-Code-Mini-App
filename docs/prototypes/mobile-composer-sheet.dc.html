@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="zh-Hant" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>手機輸入區 · 互動預覽</title>
+<style>
+  * { box-sizing: border-box; }
+  html:has(dialog[open]) { overflow: hidden; }
+  :root { color-scheme: dark; --bg: oklch(.15 .02 264); --sunken: oklch(.13 .02 264); --card: oklch(.18 .02 264); --raised: oklch(.25 .02 264); --line: oklch(.29 .02 264); --text: oklch(.94 .01 264); --secondary: oklch(.72 .01 264); --muted: oklch(.62 .01 264); --accent: oklch(.85 .08 275); --button: oklch(.62 .19 275); --warn: oklch(.82 .13 70); }
+  :root[data-theme="light"] { color-scheme: light; --bg: oklch(.97 .006 264); --sunken: oklch(.95 .006 264); --card: #fff; --raised: oklch(.93 .006 264); --line: oklch(.88 .01 264); --text: oklch(.20 .01 264); --secondary: oklch(.36 .01 264); --muted: oklch(.44 .01 264); --accent: oklch(.42 .17 280); --warn: oklch(.5 .13 70); }
+  body { margin: 0; color: var(--text); background: var(--sunken); font: 14px/1.7 "Segoe UI", "Microsoft JhengHei", system-ui, sans-serif; }
+  button, input, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; border: 0; background: none; }
+  button:disabled { cursor: default; opacity: .4; }
+  button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+  .icons { position: absolute; width: 0; height: 0; overflow: hidden; }
+  .review { display: flex; justify-content: space-between; align-items: center; gap: 16px; max-width: 1020px; margin: auto; padding: 24px 32px; }
+  .review strong { font-size: 15px; font-weight: 600; }
+  .review span { color: var(--muted); font-size: 12px; margin-left: 12px; }
+  .theme { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 9px; white-space: nowrap; }
+  .stage { display: flex; align-items: center; justify-content: center; gap: 76px; padding: 16px 28px 40px; }
+  .notes { max-width: 250px; }
+  .notes h1 { font-size: 28px; font-weight: 600; line-height: 1.4; letter-spacing: -.7px; margin: 0 0 18px; }
+  .notes p { color: var(--secondary); margin: 0 0 22px; }
+  .notes ol { padding-left: 20px; margin: 0; color: var(--secondary); }
+  .notes li { padding: 6px 0 6px 5px; }
+  .notes small { display: block; margin-top: 30px; color: var(--muted); font-size: 12px; }
+  .phone { position: relative; width: 390px; height: min(780px, calc(100dvh - 134px)); min-height: 480px; flex-shrink: 0; display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--line); border-radius: 28px; overflow: hidden; box-shadow: 0 20px 70px #00000024; }
+  .phone[data-tools-open="true"]::after { content: ""; position: absolute; inset: 0; background: #00000066; z-index: 5; }
+  .chat-header { display: flex; gap: 10px; align-items: center; padding: 17px 14px 13px; border-bottom: 1px solid var(--line); }
+  .icon-button { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; flex-shrink: 0; }
+  .icon-button:hover { background: var(--raised); }
+  .identity { min-width: 0; flex: 1; }
+  .identity strong { display: block; font-weight: 600; font-size: 14px; }
+  .identity small { display: block; color: var(--muted); font-size: 11px; }
+  .idle { display: flex; align-items: center; gap: 5px; color: var(--secondary); font-size: 11px; white-space: nowrap; padding-right: 5px; }
+  .idle::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: oklch(.7 .15 155); }
+  .timeline { flex: 1; min-height: 0; overflow-y: auto; padding: 25px 20px; scrollbar-width: thin; }
+  .date { font-size: 11px; text-align: center; color: var(--muted); margin-bottom: 26px; }
+  .user { background: var(--raised); padding: 12px 15px; border-radius: 16px 16px 4px 16px; margin: 0 0 25px 34px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .author { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; margin: 0 0 10px; }
+  .agent-mark { width: 22px; height: 22px; display: inline-grid; place-items: center; border-radius: 6px; background: var(--raised); color: var(--accent); font-size: 14px; }
+  .answer p { margin: 0 0 14px; }
+  .answer ul { padding-left: 19px; margin: 0 0 18px; }
+  .answer li { padding: 3px 0; }
+  .message-meta { color: var(--muted); font-size: 10px; margin-top: 20px; }
+  .composer { padding: 12px 12px max(14px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+  .input-shell { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 5px; }
+  .input-shell:focus-within { border-color: var(--accent); }
+  .input-row { display: flex; align-items: end; gap: 3px; }
+  #plus { color: var(--secondary); }
+  #draft { flex: 1; min-width: 0; height: 44px; min-height: 44px; max-height: min(160px, 30svh); padding: 10px 5px; font-size: 16px; line-height: 24px; resize: none; background: transparent; border: 0; border-radius: 4px; scrollbar-width: thin; }
+  #draft::placeholder { color: var(--muted); font-size: 14px; }
+  #send { background: var(--button); color: #fff; border-radius: 13px; }
+  #send:not(:disabled):hover { filter: brightness(1.1); }
+  .composer-caption { display: flex; justify-content: space-between; align-items: center; padding: 7px 6px 0; color: var(--muted); font-size: 10px; gap: 8px; }
+  .composer-caption span:last-child { white-space: nowrap; }
+  #chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 7px; }
+  #chips:empty { display: none; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 4px 5px 4px 8px; border: 1px solid var(--line); border-radius: 9px; font-size: 11px; }
+  .chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 175px; }
+  .chip > svg { width: 15px; height: 15px; color: var(--accent); }
+  .chip img { width: 27px; height: 27px; object-fit: cover; border-radius: 4px; }
+  .chip button { min-width: 32px; min-height: 32px; display: grid; place-items: center; border-radius: 6px; }
+  .chip button svg { width: 14px; height: 14px; }
+  dialog { position: fixed; inset: auto; left: var(--sheet-left); bottom: var(--sheet-bottom); width: var(--sheet-width); max-width: none; max-height: var(--sheet-height); margin: 0; padding: 0; color: var(--text); background: var(--card); border: 1px solid var(--line); border-bottom: 0; border-radius: 24px 24px 27px 27px; box-shadow: 0 -12px 40px #00000010; overflow: hidden; }
+  dialog::backdrop { background: transparent; }
+  dialog[open] { display: flex; flex-direction: column; animation: sheet-in .18s ease-out; }
+  dialog { min-height: min(420px, var(--sheet-height)); }
+  .sheet-heading { display: flex; align-items: center; gap: 2px; min-width: 0; }
+  .sheet-heading:has(#back:not([hidden])) { margin-left: -12px; }
+  .sheet-header { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 13px 12px 5px 20px; }
+  .sheet-header h2 { font-size: 16px; font-weight: 600; margin: 0; }
+  .sheet-header button { color: var(--secondary); }
+  .sheet-body { overflow-y: auto; overscroll-behavior: contain; padding: 4px 16px max(18px, env(safe-area-inset-bottom)); scrollbar-width: thin; }
+  .attach { display: flex; align-items: center; text-align: left; gap: 13px; width: 100%; min-height: 68px; padding: 12px; background: var(--raised); border-radius: 13px; margin: 4px 0 14px; }
+  .attach > svg { color: var(--accent); width: 22px; height: 22px; }
+  .attach span { flex: 1; }
+  .attach strong { display: block; font-size: 14px; font-weight: 500; }
+  .attach small { display: block; color: var(--secondary); font-size: 11px; margin-top: 1px; }
+  .attach .chevron { color: var(--muted); width: 16px; height: 16px; }
+  .settings { border-top: 1px solid var(--line); }
+  .setting { display: flex; width: 100%; text-align: left; min-height: 56px; gap: 12px; align-items: center; padding: 5px 8px; border-bottom: 1px solid var(--line); border-radius: 0; }
+  .setting:hover { background: var(--raised); }
+  .setting > svg { width: 18px; height: 18px; color: var(--secondary); }
+  .setting > span { font-size: 13px; flex-shrink: 0; }
+  .setting .value { margin-left: auto; min-width: 0; flex-shrink: 1; text-align: right; color: var(--secondary); overflow-wrap: anywhere; }
+  .setting .chevron { width: 15px; height: 15px; color: var(--muted); }
+  .setting.danger .value { color: var(--warn); }
+  fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+  .choice { position: relative; display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 14px 12px; border-radius: 11px; cursor: pointer; }
+  .choice + .choice { margin-top: 4px; }
+  .choice:hover, .choice:has(input:checked) { background: var(--raised); }
+  .choice:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .choice-text { flex: 1; min-width: 0; font-size: 15px; }
+  .choice small { display: block; margin-top: 3px; color: var(--secondary); font-size: 12px; }
+  .choice input { position: absolute; inset: 0; margin: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+  .choice > svg { color: var(--accent); visibility: hidden; }
+  .choice:has(input:checked) > svg { visibility: visible; }
+  .choice.danger .choice-text, .choice.danger > svg { color: var(--warn); }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .sheet-footnote { font-size: 11px; color: var(--muted); margin: 13px 8px 0; }
+  [hidden] { display: none !important; }
+  @keyframes sheet-in { from { transform: translateY(24px); opacity: .4; } to { transform: translateY(0); opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { dialog[open] { animation: none; } }
+  @media (max-width: 700px) { .notes { display: none; } .review { padding: 14px 20px; } .review span { display: none; } .stage { padding: 8px 12px 18px; } .phone { height: calc(100dvh - 100px); } }
+  @media (max-width: 440px) { .review { padding: 9px 12px; } .review strong { font-size: 12px; } .theme { border: 0; padding: 5px 8px; font-size: 12px; } .theme svg { width: 16px; height: 16px; } .stage { padding: 0; } .phone { width: 100%; height: calc(100dvh - 52px); min-height: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; } dialog { border-radius: 24px 24px 0 0; } }
+</style>
+</head>
+<body>
+<svg class="icons" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5m-7 7 7-7 7 7"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><path d="m21 11-9 9a6 6 0 0 1-8-8l9-9a4 4 0 0 1 6 6l-9 9a2 2 0 0 1-3-3l9-9"/></symbol>
+  <symbol id="i-model" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></symbol>
+  <symbol id="i-think" viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/></symbol>
+  <symbol id="i-mode" viewBox="0 0 24 24"><path d="m4 7 5 5-5 5m9 0h7"/></symbol>
+  <symbol id="i-theme" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></symbol>
+</defs></svg>
+<header class="review"><div><strong>手機輸入區預覽</strong><span>可操作 mock</span></div><button class="theme" id="theme" type="button"><svg aria-hidden="true"><use href="#i-theme"/></svg><span id="theme-label" style="margin:0;color:inherit;font-size:inherit;display:inline">切換淺色</span></button></header>
+<main class="stage">
+  <aside class="notes"><h1>聊天留在前面，<br>工具放進「＋」。</h1><p>沿用 Agent Console 的配色，試看看底部面板的操作與空間感。</p><ol><li>點輸入列左側的「＋」</li><li>選附件，或調整模型與權限</li><li>關閉面板，繼續編輯草稿</li></ol><small>這是獨立預覽。附件只在本機顯示；送出只加入預覽對話。</small></aside>
+  <section class="phone" id="phone" aria-label="手機聊天預覽">
+    <header class="chat-header"><svg aria-hidden="true" style="margin:0 5px"><use href="#i-mode"/></svg><div class="identity"><strong>claude-miniapp</strong><small>Claude · 手機介面調整</small></div><span class="idle">閒置</span></header>
+    <div class="timeline" id="timeline" role="log" aria-label="預覽對話"><div class="date">今天</div><div class="user">手機版的工具列可以再精簡一點嗎？<br>我想保留更多空間看對話。</div><div class="answer"><div class="author"><span class="agent-mark" aria-hidden="true">✳</span>Claude</div><p>可以把附件和設定整理進「＋」的底部面板。</p><ul><li>輸入列只留下常用動作。</li><li>加入附件、切換模型時再開工具。</li><li>面板關閉後，草稿和附件都會保留。</li></ul><p>你可以直接試試下方的輸入區。</p><div class="message-meta">16:11</div></div></div>
+    <form class="composer" id="composer"><div class="input-shell"><div id="chips" aria-label="已選附件"></div><div class="input-row"><button class="icon-button" id="plus" type="button" aria-label="開啟聊天工具" aria-haspopup="dialog" aria-expanded="false" aria-controls="tools"><svg aria-hidden="true"><use href="#i-plus"/></svg></button><textarea id="draft" rows="1" aria-label="訊息或指令" placeholder="輸入指令…"></textarea><button class="icon-button" id="send" type="submit" aria-label="送出預覽訊息" disabled><svg aria-hidden="true"><use href="#i-up"/></svg></button></div></div><div class="composer-caption"><span id="selection-summary">Claude · 預設模型</span><span id="notice" role="status">本機互動預覽</span></div></form>
+    <input id="files" type="file" multiple hidden>
+  </section>
+</main>
+<dialog id="tools" aria-labelledby="tools-title">
+  <header class="sheet-header"><div class="sheet-heading"><button class="icon-button" id="back" type="button" aria-label="返回聊天工具" hidden><svg aria-hidden="true"><use href="#i-back"/></svg></button><h2 id="tools-title">聊天工具</h2></div><button class="icon-button" id="close" type="button" aria-label="關閉聊天工具" autofocus><svg aria-hidden="true"><use href="#i-close"/></svg></button></header>
+  <div class="sheet-body">
+    <div id="tools-home">
+      <button class="attach" id="attach" type="button"><svg aria-hidden="true"><use href="#i-clip"/></svg><span><strong>加入圖片或檔案</strong><small>選取後回到訊息草稿</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+      <div class="settings">
+        <button class="setting" id="mode" type="button" aria-label="輸入模式" aria-describedby="mode-value"><svg aria-hidden="true"><use href="#i-mode"/></svg><span>輸入模式</span><span class="value" id="mode-value">Claude</span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+        <button class="setting agent-setting" id="model" type="button" aria-label="模型" aria-describedby="model-value"><svg aria-hidden="true"><use href="#i-model"/></svg><span>模型</span><span class="value" id="model-value">預設模型</span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+        <button class="setting agent-setting" id="effort" type="button" aria-label="思考強度" aria-describedby="effort-value"><svg aria-hidden="true"><use href="#i-think"/></svg><span>思考強度</span><span class="value" id="effort-value">預設</span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+        <button class="setting agent-setting" id="permission" type="button" aria-label="權限" aria-describedby="permission-value"><svg aria-hidden="true"><use href="#i-shield"/></svg><span>權限</span><span class="value" id="permission-value">標準</span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+      </div>
+      <p class="sheet-footnote">模型、思考強度與權限將於下次送出套用。</p>
+    </div>
+    <fieldset id="choice-page" hidden><legend class="sr-only" id="choice-title">選擇設定</legend><div id="choices"></div></fieldset>
+  </div>
+</dialog>
+<script>
+  const $ = id => document.getElementById(id);
+  const phone = $('phone'), sheet = $('tools'), draft = $('draft'), picker = $('files');
+  let attachments = [], nextId = 0;
+  const settings = { mode: 'agent', model: '', effort: '預設', permission: 'default' };
+  const options = {
+    mode: [['agent', 'Claude'], ['shell', 'Shell']],
+    model: [['', '預設模型'], ['Sonnet', 'Sonnet'], ['Opus', 'Opus'], ['Haiku', 'Haiku']],
+    effort: [['預設', '預設'], ['低', '低'], ['中', '中'], ['高', '高']],
+    permission: [['default', '標準', '需要核准時詢問'], ['acceptEdits', '允許編輯', '允許直接修改檔案'], ['bypass', '略過權限確認', '略過核准提示，請確認操作風險']],
+  };
+  let activeSetting = null;
+  const icon = name => { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('aria-hidden', 'true'); const use = document.createElementNS(svg.namespaceURI, 'use'); use.setAttribute('href', '#i-' + name); svg.append(use); return svg; };
+  function positionSheet() { const rect = phone.getBoundingClientRect(); for (const [name, value] of Object.entries({ left: rect.left, bottom: Math.max(0, innerHeight - rect.bottom), width: rect.width, height: Math.min(rect.height * .7, (window.visualViewport?.height || innerHeight) - 16) })) sheet.style.setProperty('--sheet-' + name, value + 'px'); }
+  function closeTools() {
+    if (!sheet.open) return;
+    sheet.close();
+    phone.dataset.toolsOpen = 'false';
+    $('plus').setAttribute('aria-expanded', 'false');
+    $('plus').focus({ preventScroll: true });
+  }
+  $('plus').onclick = () => { if (sheet.open) return; showHome(false); phone.dataset.toolsOpen = 'true'; $('plus').setAttribute('aria-expanded', 'true'); sheet.showModal(); positionSheet(); };
+  $('close').onclick = closeTools;
+  sheet.addEventListener('click', event => { if (event.target !== sheet) return; const rect = sheet.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) closeTools(); });
+  sheet.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); if (activeSetting) showHome(); else closeTools(); } });
+  sheet.addEventListener('cancel', event => { event.preventDefault(); if (activeSetting) showHome(); else closeTools(); });
+  window.addEventListener('resize', positionSheet);
+  window.addEventListener('scroll', positionSheet, { passive: true });
+  window.visualViewport?.addEventListener('resize', positionSheet);
+  $('theme').onclick = () => { const light = document.documentElement.dataset.theme !== 'light'; document.documentElement.dataset.theme = light ? 'light' : 'dark'; $('theme-label').textContent = light ? '切換深色' : '切換淺色'; };
+  function resizeDraft() { draft.style.height = 'auto'; draft.style.height = Math.max(44, Math.min(draft.scrollHeight, parseFloat(getComputedStyle(draft).maxHeight))) + 'px'; $('send').disabled = !draft.value.trim() && (!attachments.length || settings.mode === 'shell'); }
+  draft.addEventListener('input', resizeDraft);
+  function renderAttachments() {
+    $('chips').replaceChildren();
+    for (const item of attachments) { const chip = document.createElement('div'); chip.className = 'chip'; if (item.url) { const img = document.createElement('img'); img.src = item.url; img.alt = ''; chip.append(img); } else chip.append(icon('file')); const name = document.createElement('span'); name.textContent = item.file.name; chip.append(name); const remove = document.createElement('button'); remove.type = 'button'; remove.setAttribute('aria-label', '移除 ' + item.file.name); remove.append(icon('close')); remove.onclick = () => { if (item.url) URL.revokeObjectURL(item.url); attachments = attachments.filter(value => value.id !== item.id); renderAttachments(); ($('chips').querySelector('button') || $('plus')).focus({ preventScroll: true }); if (!attachments.length) $('notice').textContent = '本機互動預覽'; }; chip.append(remove); $('chips').append(chip); }
+    $('chips').hidden = settings.mode === 'shell'; resizeDraft();
+  }
+  $('attach').onclick = () => picker.click();
+  picker.addEventListener('change', () => { const files = Array.from(picker.files || []); picker.value = ''; if (!files.length || settings.mode === 'shell') return; attachments.push(...files.map(file => ({ id: nextId++, file, url: file.type.startsWith('image/') ? URL.createObjectURL(file) : '' }))); renderAttachments(); closeTools(); $('notice').textContent = '附件已選取，尚未上傳'; });
+  function updateSettings() { const shell = settings.mode === 'shell'; $('attach').hidden = shell; document.querySelectorAll('.agent-setting').forEach(row => row.hidden = shell); document.querySelector('.sheet-footnote').hidden = shell; $('permission').classList.toggle('danger', settings.permission === 'bypass'); for (const key of Object.keys(settings)) $(key + '-value').textContent = options[key].find(option => option[0] === settings[key])[1]; $('selection-summary').textContent = shell ? 'Shell' : 'Claude · ' + (settings.model || '預設模型'); draft.placeholder = shell ? '輸入 Shell 指令…' : '輸入指令…'; renderAttachments(); }
+  function showHome(restoreFocus = true) { const origin = activeSetting; activeSetting = null; $('tools-home').hidden = false; $('choice-page').hidden = true; $('back').hidden = true; $('tools-title').textContent = '聊天工具'; if (restoreFocus && origin) $(origin).focus({ preventScroll: true }); }
+  function showChoices(key) {
+    activeSetting = key; $('tools-home').hidden = true; $('choice-page').hidden = false; $('back').hidden = false; const title = '選擇' + $(key).getAttribute('aria-label'); $('tools-title').textContent = title; $('choice-title').textContent = title; $('choices').replaceChildren();
+    for (const [value, text, detail] of options[key]) { const row = document.createElement('label'); row.className = 'choice' + (key === 'permission' && value === 'bypass' ? ' danger' : ''); const caption = document.createElement('span'); caption.className = 'choice-text'; caption.textContent = text; if (detail) { const small = document.createElement('small'); small.textContent = detail; caption.append(small); } const input = document.createElement('input'); input.type = 'radio'; input.name = 'tool-choice'; input.value = value; input.checked = settings[key] === value; row.append(caption, input, icon('check')); input.onchange = () => { settings[key] = value; updateSettings(); showHome(); }; input.onclick = () => { if (settings[key] === value) showHome(); }; $('choices').append(row); }
+    $('choices').querySelector('input:checked').focus({ preventScroll: true }); document.querySelector('.sheet-body').scrollTop = 0;
+  }
+  $('back').onclick = () => showHome();
+  for (const key of Object.keys(settings)) $(key).onclick = () => showChoices(key);
+  $('composer').onsubmit = event => { event.preventDefault(); if ($('send').disabled) return; const shell = settings.mode === 'shell'; const message = document.createElement('div'); message.className = 'user'; message.textContent = draft.value.trim(); if (!shell && attachments.length) { const files = document.createElement('div'); files.style.fontSize = '12px'; files.textContent = attachments.map(item => '📎 ' + item.file.name).join('\n'); message.append(files); } $('timeline').append(message); draft.value = ''; if (!shell) { attachments.forEach(item => { if (item.url) URL.revokeObjectURL(item.url); }); attachments = []; } renderAttachments(); $('timeline').scrollTop = $('timeline').scrollHeight; $('notice').textContent = '已加入預覽對話'; };
+  // ponytail: preview-only state stays in memory; no upload, persistence, or backend.
+</script>
+</body>
+</html>
