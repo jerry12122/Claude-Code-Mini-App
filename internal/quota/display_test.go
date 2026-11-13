@@ -50,41 +50,49 @@ func TestFormatKiroDisplay(t *testing.T) {
 }
 
 func TestFormatCodexDisplay(t *testing.T) {
-	now := time.Unix(1790700000, 0)
-	info := usage.FromCodexRolloutLine([]byte(sampleCodexRolloutLine), now)
-	got := FormatDisplay("codex", info)
-	if got != "5h 2% · Week 13%" {
+	info, err := usage.FromCodexRateLimitsJSON([]byte(sampleCodexRateLimitsJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := FormatDisplay("codex", info); got != "5h 2% · Week 13%" {
 		t.Fatalf("got %q", got)
 	}
 }
 
-// codex-cli 0.159.2 實測 rollout token_count 行（週用量改為 13 以驗證非零）。
-const sampleCodexRolloutLine = `{"timestamp":"2026-09-30T06:44:51.387Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":38134}},"rate_limits":{"limit_id":"codex","primary":{"used_percent":2.0,"window_minutes":300,"resets_at":1790767809},"secondary":{"used_percent":13,"window_minutes":10080,"resets_at":1791354609},"credits":{"has_credits":false},"plan_type":"plus"}}}`
+const sampleCodexRateLimitsJSON = `{"rateLimits":{"limitId":"codex","primary":{"usedPercent":2,"windowDurationMins":300,"resetsAt":1790767809},"secondary":{"usedPercent":13,"windowDurationMins":10080,"resetsAt":1791354609},"planType":"plus"}}`
+
+func quotaTestWindow(kind string, percent float64, reset string) usage.QuotaWindow {
+	return usage.QuotaWindow{Kind: kind, Percent: &percent, ResetsAt: reset}
+}
 
 func TestFormatAntigravityDisplay(t *testing.T) {
 	now := time.Date(2026, 10, 12, 3, 30, 0, 0, time.UTC)
-	raw := "Gemini Models\tWeekly Limit Remaining\t84%\t2026-10-14T08:22:23Z\n" +
-		"Gemini Models\tFive Hour Limit Remaining\t98%\t2026-10-12T06:52:28Z\n"
-	info := usage.FromAgyUsageText(raw)
-	got := FormatDisplayAt("antigravity", info, now)
-	if got != "Gemini 5h 2% · Resets in 3 hr 22 min · Gemini Week 16%" {
+	info := &usage.QuotaInfo{Windows: []usage.QuotaWindow{
+		quotaTestWindow("weekly", 16, "2026-10-14T08:22:23Z"),
+		quotaTestWindow("session", 2, "2026-10-12T06:52:28Z"),
+	}}
+	if got := FormatDisplayAt("antigravity", info, now); got != "Gemini 5h 2% · Resets in 3 hr 22 min · Gemini Week 16%" {
 		t.Fatalf("got %q", got)
 	}
 }
 
 func TestFormatAntigravityQuotaGroups(t *testing.T) {
 	now := time.Date(2026, 10, 12, 3, 30, 0, 0, time.UTC)
-	gemini := "Gemini Models\tWeekly Limit Remaining\t100%\nGemini Models\tFive Hour Limit Remaining\t100%\n"
-	claude := "Claude and GPT models\tWeekly Limit Remaining\t0%\nClaude and GPT models\tFive Hour Limit Remaining\t0%\t2026-10-12T06:52:28Z\n"
-	for _, tc := range []struct{ name, raw, want string }{
-		{"both", gemini + claude, "Gemini 5h 0% · Gemini Week 0% · Claude/GPT 5h 100% · Resets in 3 hr 22 min · Claude/GPT Week 100%"},
+	gemini := []usage.QuotaWindow{quotaTestWindow("weekly", 0, ""), quotaTestWindow("session", 0, "")}
+	claude := []usage.QuotaWindow{quotaTestWindow("weekly_claude", 100, ""), quotaTestWindow("session_claude", 100, "2026-10-12T06:52:28Z")}
+	for _, tc := range []struct {
+		name    string
+		windows []usage.QuotaWindow
+		want    string
+	}{
+		{"both", append(append([]usage.QuotaWindow{}, gemini...), claude...), "Gemini 5h 0% · Gemini Week 0% · Claude/GPT 5h 100% · Resets in 3 hr 22 min · Claude/GPT Week 100%"},
 		{"gemini", gemini, "Gemini 5h 0% · Gemini Week 0%"},
 		{"claude", claude, "Claude/GPT 5h 100% · Resets in 3 hr 22 min · Claude/GPT Week 100%"},
-		{"weekly-only", "Claude and GPT models\tWeekly Limit Remaining\t84%\n", "Claude/GPT Week 16%"},
-		{"empty", "", "—"},
+		{"weekly-only", []usage.QuotaWindow{quotaTestWindow("weekly_claude", 16, "")}, "Claude/GPT Week 16%"},
+		{"empty", nil, "—"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := FormatDisplayAt("antigravity", usage.FromAgyUsageText(tc.raw), now)
+			got := FormatDisplayAt("antigravity", &usage.QuotaInfo{Windows: tc.windows}, now)
 			if got != tc.want {
 				t.Fatalf("got %q; want %q", got, tc.want)
 			}

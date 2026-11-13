@@ -1,10 +1,10 @@
 package usage
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 const sampleClaudeUsageText = `You are currently using your subscription to power your Claude Code usage
@@ -29,25 +29,29 @@ func TestFromClaudeUsageText(t *testing.T) {
 	}
 }
 
-func TestFromAgyUsageText(t *testing.T) {
-	raw := "Gemini Models\tWeekly Limit Remaining\t84%\t2026-10-14T08:22:23Z\n" +
-		"Gemini Models\tFive Hour Limit Remaining\t98%\t2026-10-12T06:52:28Z\n" +
-		"Claude and GPT models\tWeekly Limit Remaining\t100%\t2026-10-19T01:57:08Z\n" +
-		"Claude and GPT models\tFive Hour Limit Remaining\t100%\t2026-10-12T06:57:08Z\n"
-	q := FromAgyUsageText(raw)
-	if len(q.Windows) != 4 {
-		t.Fatalf("expected 4 windows, got %d", len(q.Windows))
+func TestFromAgyUsageJSON(t *testing.T) {
+	raw := `{"status":"SUCCESS","command":{"name":"usage","data":{"groups":[{"name":"renamed group","buckets":[{"id":"gemini-weekly","remaining_fraction":0.27464595437049866,"reset_time":"2026-11-14T00:35:19Z"},{"id":"gemini-5h","remaining_fraction":0.9193424582481384},{"id":"3p-weekly","remaining_fraction":1},{"id":"3p-5h","remaining_fraction":0},{"id":"new-unknown-bucket"}]}]}}}`
+	q, err := FromAgyUsageJSON([]byte(raw))
+	if err != nil || len(q.Windows) != 4 {
+		t.Fatalf("q=%+v err=%v", q, err)
 	}
-	// Gemini Weekly: 84% remaining -> 16% used
-	if *q.Windows[0].Percent != 16 {
-		t.Fatalf("gemini weekly: got %v, expected 16", *q.Windows[0].Percent)
+	if q.Windows[0].Kind != "weekly" || math.Abs(*q.Windows[0].Percent-72.53540456295013) > 1e-9 || q.Windows[0].ResetsAt != "2026-11-14T00:35:19Z" {
+		t.Fatalf("weekly: %+v", q.Windows[0])
 	}
-	// Gemini 5h: 98% remaining -> 2% used
-	if *q.Windows[1].Percent != 2 {
-		t.Fatalf("gemini 5h: got %v, expected 2", *q.Windows[1].Percent)
+	if q.Windows[1].Kind != "session" || q.Windows[2].Kind != "weekly_claude" || *q.Windows[2].Percent != 0 || q.Windows[3].Kind != "session_claude" || *q.Windows[3].Percent != 100 {
+		t.Fatalf("windows: %+v", q.Windows)
 	}
-	if q.Windows[1].Kind != "session" {
-		t.Fatalf("expected session kind, got %s", q.Windows[1].Kind)
+	for _, raw := range []string{
+		`not json`, `null`, `{"status":"ERROR"}`,
+		`{"status":"SUCCESS","usage":{"input_tokens":12}}`,
+		`{"status":"SUCCESS","command":{"name":"usage","data":{"groups":[]}}}`,
+		`{"status":"SUCCESS","command":{"name":"usage","data":{"groups":[{"buckets":[{"id":"gemini-5h"}]}]}}}`,
+		`{"status":"SUCCESS","command":{"name":"usage","data":{"groups":[{"buckets":[{"id":"gemini-5h","remaining_fraction":-0.1}]}]}}}`,
+		`{"status":"SUCCESS","command":{"name":"usage","data":{"groups":[{"buckets":[{"id":"gemini-5h","remaining_fraction":1.1}]}]}}}`,
+	} {
+		if _, err := FromAgyUsageJSON([]byte(raw)); err == nil {
+			t.Fatalf("accepted invalid quota: %s", raw)
+		}
 	}
 }
 
@@ -90,28 +94,31 @@ func TestFromKiroUsageText(t *testing.T) {
 	}
 }
 
-func TestFromCodexRolloutLine(t *testing.T) {
-	line := []byte(`{"type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":40,"window_minutes":300,"resets_at":2000},"secondary":{"used_percent":9,"window_minutes":10080,"resets_at":9000},"plan_type":"plus"}}}`)
-
-	q := FromCodexRolloutLine(line, time.Unix(1000, 0))
-	if q == nil || len(q.Windows) != 2 || q.Plan != "plus" {
-		t.Fatalf("q=%+v", q)
+func TestFromCodexRateLimitsJSON(t *testing.T) {
+	raw := `{"rateLimits":{"limitId":"other","primary":{"usedPercent":99,"windowDurationMins":300}},"rateLimitsByLimitId":{"codex":{"limitId":"codex","planType":"plus","primary":{"usedPercent":9,"windowDurationMins":10080,"resetsAt":9000},"secondary":{"usedPercent":0,"windowDurationMins":300,"resetsAt":2000}}}}`
+	q, err := FromCodexRateLimitsJSON([]byte(raw))
+	if err != nil || q.Plan != "plus" || len(q.Windows) != 2 {
+		t.Fatalf("q=%+v err=%v", q, err)
 	}
-	if q.Windows[0].Kind != "session" || *q.Windows[0].Percent != 40 {
-		t.Fatalf("session: %+v", q.Windows[0])
+	// Classify by duration, preserve explicit zero, never infer zero from old reset dates.
+	if q.Windows[0].Kind != "weekly" || *q.Windows[0].Percent != 9 || q.Windows[1].Kind != "session" || *q.Windows[1].Percent != 0 || q.Windows[1].ResetsAt != "1970-01-01T00:33:20Z" {
+		t.Fatalf("windows: %+v", q.Windows)
 	}
-	if q.Windows[1].Kind != "weekly" || *q.Windows[1].Percent != 9 {
-		t.Fatalf("weekly: %+v", q.Windows[1])
+	q, err = FromCodexRateLimitsJSON([]byte(`{"rateLimits":{"primary":{"usedPercent":42,"windowDurationMins":300,"resetsAt":1}}}`))
+	if err != nil || *q.Windows[0].Percent != 42 {
+		t.Fatalf("legacy single bucket: q=%+v err=%v", q, err)
 	}
-
-	// 5h 窗已過 resets_at → 0%；週窗未過維持原值。
-	q = FromCodexRolloutLine(line, time.Unix(3000, 0))
-	if *q.Windows[0].Percent != 0 || *q.Windows[1].Percent != 9 {
-		t.Fatalf("after reset: %+v", q.Windows)
-	}
-
-	if FromCodexRolloutLine([]byte(`{"type":"event_msg","payload":{"type":"token_count","rate_limits":null}}`), time.Now()) != nil {
-		t.Fatal("null rate_limits should be nil")
+	for _, raw := range []string{
+		`not json`, `null`, `{}`, `{"rateLimits":{}}`,
+		`{"rateLimits":{"primary":{"windowDurationMins":300}}}`,
+		`{"rateLimits":{"primary":{"usedPercent":2}}}`,
+		`{"rateLimits":{"primary":{"usedPercent":-2,"windowDurationMins":300}}}`,
+		`{"rateLimits":{"limitId":"codex_other","primary":{"usedPercent":2,"windowDurationMins":300}}}`,
+		`{"rateLimitsByLimitId":{"codex":null}}`,
+	} {
+		if _, err := FromCodexRateLimitsJSON([]byte(raw)); err == nil {
+			t.Fatalf("accepted invalid quota: %s", raw)
+		}
 	}
 }
 

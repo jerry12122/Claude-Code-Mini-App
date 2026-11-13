@@ -22,7 +22,16 @@
 | 模型設定 | `--model <name>`（可選用 `gemini-3.8-flash-high` 等） |
 | 推理強度 | `--effort <level>`，沿用會話設定 |
 | 工作目錄 | 設定子進程 `cmd.Dir`，並以 `--add-dir <work_dir>` 加入工作區 |
-| 配額用量 | `agy -p /usage` 解析 TSV，分別顯示 Gemini 與 Claude/GPT 的 5 小時與每週額度 |
+| 配額用量 | `agy -p /usage --output-format json`，讀取原生 bucket，分別顯示 Gemini 與 Claude/GPT 的 5 小時與每週額度 |
+
+## 帳戶額度（2026-11-13）
+
+正式 Go fetcher 已以 agy 1.5.8 實讀成功。檢查 `status == SUCCESS` 與 `command.name == usage`，讀取 `command.data.groups[].buckets[]`，不將單回合 `.usage` token 統計當成帳戶額度。
+
+- 以 `gemini-5h` / `gemini-weekly` / `3p-5h` / `3p-weekly` ID 對應現有四個 window key，不依賴顯示文案。
+- 已使用百分比 = `100 - remaining_fraction * 100`，保留小數；重設時間沿用 `reset_time`。
+- 缺少成功 envelope、已知 buckets 或合法 remaining fraction 時回傳錯誤，既有 quota service 保留上次成功快照，不回退 TSV。
+- 查詢上限 30 秒，取消時終止子進程樹；沿用 `CC_AGY_BIN` 覆寫與既有快取、前端。
 
 ## 啟動命令範本
 

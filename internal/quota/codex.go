@@ -1,100 +1,105 @@
 package quota
 
 import (
-	"bufio"
-	"bytes"
 	"context"
-	"io/fs"
-	"os"
-	"path/filepath"
-	"sort"
-	"strings"
+	"encoding/json"
+	"fmt"
+	"os/exec"
 	"time"
 
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/agent"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/proc"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/usage"
 )
 
-// CodexFetcher 讀 codex 每回合寫進本機 rollout 檔的 rate_limits（token_count 事件），
-// 不呼叫模型、不耗額度。實測 codex-cli 0.159.2。
+// CodexFetcher queries account limits without starting a thread or model turn.
 type CodexFetcher struct{}
 
 func (f *CodexFetcher) Provider() string { return agent.TypeCodex }
 
-func (f *CodexFetcher) Fetch(_ context.Context) (Snapshot, error) {
-	return codexSnapshot(latestCodexRateLimits(codexSessionsDir(), time.Now())), nil
-}
-
-func codexSnapshot(info *usage.QuotaInfo) Snapshot {
-	if info == nil {
-		info = &usage.QuotaInfo{Provider: agent.TypeCodex, Source: "codex rollout"}
-	}
-	return snapshotFromInfo(agent.TypeCodex, info)
-}
-
-func codexSessionsDir() string {
-	if h := strings.TrimSpace(os.Getenv("CODEX_HOME")); h != "" {
-		return filepath.Join(h, "sessions")
-	}
-	home, err := os.UserHomeDir()
+func (f *CodexFetcher) Fetch(ctx context.Context) (Snapshot, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	info, err := readCodexQuota(exec.CommandContext(ctx, "codex", "app-server"))
 	if err != nil {
-		return ""
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		}
+		return Snapshot{Provider: agent.TypeCodex, DisplayText: "—"}, fmt.Errorf("codex quota: %w", err)
 	}
-	return filepath.Join(home, ".codex", "sessions")
+	return snapshotFromInfo(agent.TypeCodex, info), nil
 }
 
-// latestCodexRateLimits 依 mtime 由新到舊找第一個帶 rate_limits 的 rollout 檔。
-// 必須全樹依 mtime 排序：resume 舊 thread 會寫回它建立當天的日期目錄，不能只看今天。
-// ponytail: 每次 fetch 全樹 WalkDir，檔案數達數萬才需要改成只掃最近 N 天＋快取。
-func latestCodexRateLimits(root string, now time.Time) *usage.QuotaInfo {
-	if root == "" {
-		return nil
-	}
-	type rollout struct {
-		path string
-		mod  time.Time
-	}
-	var files []rollout
-	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(d.Name(), ".jsonl") {
-			return nil
-		}
-		if info, err := d.Info(); err == nil {
-			files = append(files, rollout{p, info.ModTime()})
-		}
-		return nil
-	})
-	sort.Slice(files, func(i, j int) bool { return files[i].mod.After(files[j].mod) })
-	for _, f := range files {
-		if q := lastRateLimitsInFile(f.path, now); q != nil {
-			return q
-		}
-	}
-	return nil
-}
-
-// lastRateLimitsInFile 回傳檔案中最後一筆 rate_limits；用 ReadBytes 不受單行長度限制（工具輸出可能很大）。
-// ponytail: 單行記憶體上限＝該行長度（最壞＝整檔）；檔案由本機 codex 產生，視為可信，未設硬上限。
-func lastRateLimitsInFile(path string, now time.Time) *usage.QuotaInfo {
-	fh, err := os.Open(path)
+func readCodexQuota(cmd *exec.Cmd) (*usage.QuotaInfo, error) {
+	cmd.SysProcAttr = proc.SysProcAttr()
+	cmd.WaitDelay = 2 * time.Second
+	cmd.Cancel = func() error { return proc.KillTree(cmd.Process.Pid) }
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	defer fh.Close()
-	var last *usage.QuotaInfo
-	br := bufio.NewReader(fh)
-	marker := []byte(`"rate_limits"`)
-	for {
-		line, err := br.ReadBytes('\n')
-		if bytes.Contains(line, marker) {
-			// codex 可能正在寫入，最後一行不完整時解析失敗會被略過。
-			if q := usage.FromCodexRolloutLine(line, now); q != nil {
-				last = q
+	defer stdout.Close()
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		_ = stdin.Close()
+		return nil, err
+	}
+	defer func() {
+		_ = stdin.Close()
+		// ponytail: two RPCs per refresh; stop the process tree instead of keeping a server alive.
+		_ = cmd.Cancel()
+		_ = cmd.Wait()
+	}()
+	enc, dec := json.NewEncoder(stdin), json.NewDecoder(stdout)
+	call := func(id int, method string, params any) (json.RawMessage, error) {
+		if err := enc.Encode(map[string]any{"id": id, "method": method, "params": params}); err != nil {
+			return nil, err
+		}
+		for {
+			var response struct {
+				ID     *int            `json:"id"`
+				Method string          `json:"method"`
+				Result json.RawMessage `json:"result"`
+				Error  *struct {
+					Code    int    `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
 			}
-		}
-		if err != nil {
-			break
+			if err := dec.Decode(&response); err != nil {
+				return nil, fmt.Errorf("%s: %w", method, err)
+			}
+			if response.Method != "" {
+				if response.ID != nil {
+					return nil, fmt.Errorf("unexpected server request: %s", response.Method)
+				}
+				continue
+			}
+			if response.ID == nil || *response.ID != id {
+				continue
+			}
+			if response.Error != nil {
+				return nil, fmt.Errorf("%s: RPC %d: %s", method, response.Error.Code, response.Error.Message)
+			}
+			if len(response.Result) == 0 || string(response.Result) == "null" {
+				return nil, fmt.Errorf("%s: missing result", method)
+			}
+			return response.Result, nil
 		}
 	}
-	return last
+	if _, err := call(1, "initialize", map[string]any{
+		"clientInfo": map[string]string{"name": "claude-miniapp-quota", "version": "1"},
+	}); err != nil {
+		return nil, err
+	}
+	if err := enc.Encode(map[string]any{"method": "initialized", "params": map[string]any{}}); err != nil {
+		return nil, err
+	}
+	raw, err := call(2, "account/rateLimits/read", map[string]any{})
+	if err != nil {
+		return nil, err
+	}
+	return usage.FromCodexRateLimitsJSON(raw)
 }

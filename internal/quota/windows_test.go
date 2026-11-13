@@ -31,15 +31,18 @@ func checkWindows(t *testing.T, got []Window, want []wantWindow) {
 
 // 五個 runner 各一份 QuotaInfo：key 依 info.Windows 原順序、percent 與 display_text 不變。
 func TestSnapshotFromInfoWindows(t *testing.T) {
-	now := time.Unix(1790700000, 0)
 	cursorInfo, err := usage.FromCursorPeriodUsageJSON([]byte(`{"planUsage":{"autoPercentUsed":8,"apiPercentUsed":100,"totalPercentUsed":30}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	agy := "Gemini Models\tWeekly Limit Remaining\t84%\t2026-10-14T08:22:23Z\n" +
-		"Gemini Models\tFive Hour Limit Remaining\t98%\t2026-10-12T06:52:28Z\n" +
-		"Claude and GPT models\tWeekly Limit Remaining\t0%\n" +
-		"Claude and GPT models\tFive Hour Limit Remaining\t50%\t2026-10-12T06:52:28Z\n"
+	codexInfo, err := usage.FromCodexRateLimitsJSON([]byte(sampleCodexRateLimitsJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	agyInfo, err := usage.FromAgyUsageJSON([]byte(`{"status":"SUCCESS","command":{"name":"usage","data":{"groups":[{"buckets":[{"id":"gemini-weekly","remaining_fraction":0.84},{"id":"gemini-5h","remaining_fraction":0.98},{"id":"3p-weekly","remaining_fraction":0},{"id":"3p-5h","remaining_fraction":0.5}]}]}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	cases := []struct {
 		provider string
@@ -49,13 +52,13 @@ func TestSnapshotFromInfoWindows(t *testing.T) {
 	}{
 		{"claude", usage.FromClaudeUsageText("Current session: 16% used · resets Jun 30, 3:10pm (Asia/Taipei)\nCurrent week (all models): 9% used · resets Jul 3, 9:59pm (Asia/Taipei)"),
 			[]wantWindow{{"session", 16}, {"weekly", 9}}, ""},
-		{"codex", usage.FromCodexRolloutLine([]byte(sampleCodexRolloutLine), now),
+		{"codex", codexInfo,
 			[]wantWindow{{"session", 2}, {"weekly", 13}}, "plus"},
 		{"cursor", cursorInfo,
 			[]wantWindow{{"billing_auto", 8}, {"billing_api", 100}, {"billing_total", 30}}, ""},
 		{"kiro", usage.FromKiroUsageText("KIRO FREE\nCredits (4.52 of 50)\n9%\n"),
 			[]wantWindow{{"credits", 9}}, "FREE"},
-		{"antigravity", usage.FromAgyUsageText(agy),
+		{"antigravity", agyInfo,
 			[]wantWindow{{"weekly", 16}, {"session", 2}, {"weekly_claude", 100}, {"session_claude", 50}}, ""},
 	}
 	for _, tc := range cases {

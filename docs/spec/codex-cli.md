@@ -11,7 +11,7 @@
 ## Provider 定位（既有整合）
 
 Codex 的非互動模式是 `codex exec`，官方明確說這是給 script、CI、pipeline 用的，並且 `--json` 會把 stdout 變成 JSON Lines 事件流。 
-因此在你的系統裡，Codex 至少應拆成兩種可選 transport：**CLI subprocess transport**（先做這個）與 **app-server protocol transport**（後續若你要更原生的雙向通訊再做）。 
+聊天仍使用 `codex exec --json`；帳戶額度自 2026-11-13 起獨立透過 `codex app-server` 原生協議查詢。
 
 ## 實測整合結論（codex-cli 0.159.2，2026-09-30；初版 0.142.5 / 2026-07-06）
 
@@ -36,7 +36,7 @@ codex exec resume <thread_id> --json --skip-git-repo-check --dangerously-bypass-
 | 逐字 delta | — | **無**；`item.completed (agent_message)` 一次送出；工具呼叫前後各一段，runner 以空行分段 |
 | `command_execution` item | — | 帶 `command` / `aggregated_output` / `exit_code` / `status` |
 | `turn.completed.usage` | — | 新增 `cache_write_input_tokens` |
-| Quota | `/status` TUI | 模型本身**拿不到**用量（問它只會回 unavailable 且耗額度）；改讀本機 rollout 檔，見下 |
+| Quota | `/status` TUI | 模型本身**拿不到**用量；目前改用 `account/rateLimits/read`，見下（2026-11-13 更新） |
 
 ### 錯誤事件序列（無效 model，exit 1）
 
@@ -51,21 +51,22 @@ turn.failed     {error: {message: "<同上 JSON 字串>"}}
 - `message` 是整包 API 錯誤 JSON 字串，需解出內層 `error.message`（`codex.ErrorMessage`）。
 - `error` 可能是可恢復的（例如重連），runner 只在 `turn.failed` 或未收到 `turn.completed` 時才回報，且每回合只回報一次。
 
-### Quota 來源：rollout 檔 rate_limits
+### Quota 來源：app-server account/rateLimits/read
 
-每回合 codex 會在 `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-<ts>-<thread_id>.jsonl`（預設 `~/.codex`）寫入 `type=event_msg`、`payload.type=token_count` 的行：
+2026-11-13 使用 codex-cli 0.163.0，正式 Go fetcher 實讀成功，不建立 thread、不執行模型回合。每次刷新啟動短命 `codex app-server`，透過 stdin/stdout 依序完成：
 
 ```json
-"rate_limits": {
-  "primary":   {"used_percent": 2.0, "window_minutes": 300,   "resets_at": 1790767809},
-  "secondary": {"used_percent": 0.0, "window_minutes": 10080, "resets_at": 1791354609},
-  "plan_type": "plus"
-}
+{"id":1,"method":"initialize","params":{"clientInfo":{"name":"claude-miniapp-quota","version":"1"}}}
+{"method":"initialized","params":{}}
+{"id":2,"method":"account/rateLimits/read","params":{}}
 ```
 
-- `internal/quota/codex.go` 依 mtime 取最新含 rate_limits 的檔（resume 舊 thread 會寫回原日期目錄，須全樹依 mtime 排序）。
-- 依 `window_minutes` 分類 5h / 週窗；`resets_at` 已過視為 0%。
-- 失敗回合（如無效 model）的 rollout 檔不含 rate_limits，會被略過。
+- `initialize` 成功後才送 `initialized` 與讀取請求；忽略通知，依 request ID 配對，RPC error / EOF / 空資料會回傳錯誤。
+- 優先讀取 `rateLimitsByLimitId.codex`，否則使用 `rateLimits`，不把其他產品 bucket 當成 Codex。
+- `usedPercent` 保留伺服器數值，以 `windowDurationMins` 分類 5h / 週窗；Unix 秒 `resetsAt` 轉 RFC3339。
+- 不再掃描 rollout，也不由歷史 reset 時間推估 0%。查詢失敗由既有 quota service 保留上次成功快照。
+- 查詢上限 30 秒；完成、取消或失敗後終止子進程樹並回收。沿用既有五分鐘 TTL 與手動刷新冷卻。
+- [官方 app-server 文件](https://learn.chatgpt.com/docs/app-server)。本機未驗證的舊 CLI 若不支援此方法，會顯示抓取錯誤。
 
 ### POC 樣本
 

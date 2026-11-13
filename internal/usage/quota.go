@@ -55,60 +55,58 @@ func FromClaudeUsageText(text string) *QuotaInfo {
 	return out
 }
 
-// FromAgyUsageText 解析 `agy -p "/usage"` 的 TSV 輸出。
-func FromAgyUsageText(text string) *QuotaInfo {
-	out := &QuotaInfo{Provider: "antigravity", Source: "agy -p /usage text"}
-	lines := strings.Split(text, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		parts := strings.Split(line, "\t")
-		if len(parts) < 3 {
-			continue
-		}
-		group := strings.TrimSpace(parts[0])     // e.g. "Gemini Models" or "Claude and GPT models"
-		limitType := strings.TrimSpace(parts[1]) // e.g. "Weekly Limit Remaining" or "Five Hour Limit Remaining"
-		pctStr := strings.TrimSpace(parts[2])    // e.g. "84%"
-		resetTime := ""
-		if len(parts) >= 4 {
-			resetTime = strings.TrimSpace(parts[3])
-		}
-
-		pctNum := parseFloat(strings.TrimSuffix(pctStr, "%"))
-		// agy 回報的是 "Remaining" 百分比，系統慣例為已使用（Used）百分比
-		usedPct := min(100, max(0, 100-pctNum))
-
-		kind := "custom"
-		label := group
-		isGemini := strings.Contains(strings.ToLower(group), "gemini")
-		if strings.Contains(strings.ToLower(limitType), "five hour") || strings.Contains(strings.ToLower(limitType), "5 hour") {
-			if isGemini {
-				kind = "session"
-				label = "Gemini 5h"
-			} else {
-				kind = "session_claude"
-				label = "Claude/GPT 5h"
-			}
-		} else if strings.Contains(strings.ToLower(limitType), "weekly") {
-			if isGemini {
-				kind = "weekly"
-				label = "Gemini Week"
-			} else {
-				kind = "weekly_claude"
-				label = "Claude/GPT Week"
-			}
-		}
-
-		out.Windows = append(out.Windows, QuotaWindow{
-			Kind:     kind,
-			Label:    label,
-			Percent:  floatPtr(usedPct),
-			ResetsAt: resetTime,
-		})
+// FromAgyUsageJSON parses the native /usage command data, not per-turn token usage.
+func FromAgyUsageJSON(raw []byte) (*QuotaInfo, error) {
+	var body struct {
+		Status  string `json:"status"`
+		Command struct {
+			Name string `json:"name"`
+			Data struct {
+				Groups []struct {
+					Buckets []struct {
+						ID        string   `json:"id"`
+						Remaining *float64 `json:"remaining_fraction"`
+						ResetTime string   `json:"reset_time"`
+					} `json:"buckets"`
+				} `json:"groups"`
+			} `json:"data"`
+		} `json:"command"`
 	}
-	return out
+	if err := json.Unmarshal(raw, &body); err != nil {
+		return nil, fmt.Errorf("antigravity quota: %w", err)
+	}
+	if body.Status != "SUCCESS" || body.Command.Name != "usage" {
+		return nil, fmt.Errorf("antigravity quota: missing successful usage command")
+	}
+	out := &QuotaInfo{Provider: "antigravity", Source: "agy -p /usage --output-format json"}
+	for _, group := range body.Command.Data.Groups {
+		for _, bucket := range group.Buckets {
+			var kind, label string
+			switch bucket.ID {
+			case "gemini-5h":
+				kind, label = "session", "Gemini 5h"
+			case "gemini-weekly":
+				kind, label = "weekly", "Gemini Week"
+			case "3p-5h":
+				kind, label = "session_claude", "Claude/GPT 5h"
+			case "3p-weekly":
+				kind, label = "weekly_claude", "Claude/GPT Week"
+			default:
+				continue
+			}
+			if bucket.Remaining == nil || *bucket.Remaining < 0 || *bucket.Remaining > 1 {
+				return nil, fmt.Errorf("antigravity quota: invalid remaining fraction for %s", bucket.ID)
+			}
+			out.Windows = append(out.Windows, QuotaWindow{
+				Kind: kind, Label: label, Percent: floatPtr(100 - *bucket.Remaining*100),
+				ResetsAt: bucket.ResetTime,
+			})
+		}
+	}
+	if len(out.Windows) == 0 {
+		return nil, fmt.Errorf("antigravity quota: no known quota buckets")
+	}
+	return out, nil
 }
 
 type claudeOAuthUsage struct {
@@ -222,55 +220,55 @@ func FromKiroUsageText(text string) *QuotaInfo {
 	return out
 }
 
-type codexRateWindow struct {
-	UsedPercent   float64 `json:"used_percent"`
-	WindowMinutes int     `json:"window_minutes"`
-	ResetsAt      int64   `json:"resets_at"` // unix 秒
-}
-
-// FromCodexRolloutLine 解析 codex rollout 檔（~/.codex/sessions/**/rollout-*.jsonl）
-// 中 token_count 事件的 payload.rate_limits；該行無 rate_limits 時回 nil。
-// codex 只在有回合時寫檔，窗口 resets_at 已過代表該窗已重置，視為 0%。
-func FromCodexRolloutLine(line []byte, now time.Time) *QuotaInfo {
-	var rec struct {
-		Payload struct {
-			RateLimits *struct {
-				Primary   *codexRateWindow `json:"primary"`
-				Secondary *codexRateWindow `json:"secondary"`
-				PlanType  string           `json:"plan_type"`
-			} `json:"rate_limits"`
-		} `json:"payload"`
+// FromCodexRateLimitsJSON parses account/rateLimits/read's result.
+func FromCodexRateLimitsJSON(raw []byte) (*QuotaInfo, error) {
+	type rateWindow struct {
+		UsedPercent   *float64 `json:"usedPercent"`
+		WindowMinutes int      `json:"windowDurationMins"`
+		ResetsAt      int64    `json:"resetsAt"`
 	}
-	if json.Unmarshal(line, &rec) != nil || rec.Payload.RateLimits == nil {
-		return nil
+	type rateLimits struct {
+		LimitID   string      `json:"limitId"`
+		Primary   *rateWindow `json:"primary"`
+		Secondary *rateWindow `json:"secondary"`
+		PlanType  string      `json:"planType"`
 	}
-	rl := rec.Payload.RateLimits
-	out := &QuotaInfo{Provider: "codex", Plan: rl.PlanType, Source: "codex rollout rate_limits"}
-	for _, w := range []*codexRateWindow{rl.Primary, rl.Secondary} {
-		if w == nil {
+	var body struct {
+		RateLimits *rateLimits            `json:"rateLimits"`
+		ByLimitID  map[string]*rateLimits `json:"rateLimitsByLimitId"`
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		return nil, fmt.Errorf("codex quota: %w", err)
+	}
+	limits := body.RateLimits
+	if codex, ok := body.ByLimitID["codex"]; ok {
+		limits = codex
+	}
+	if limits == nil || (limits.LimitID != "" && limits.LimitID != "codex") {
+		return nil, fmt.Errorf("codex quota: no codex rate limits")
+	}
+	out := &QuotaInfo{Provider: "codex", Plan: limits.PlanType, Source: "codex app-server account/rateLimits/read"}
+	for _, window := range []*rateWindow{limits.Primary, limits.Secondary} {
+		if window == nil {
 			continue
 		}
-		// 依窗口長度分類而非 primary/secondary 位置，避免方案調整窗口時對錯。
+		if window.UsedPercent == nil || *window.UsedPercent < 0 || window.WindowMinutes <= 0 || window.ResetsAt < 0 {
+			return nil, fmt.Errorf("codex quota: invalid quota window")
+		}
 		kind := "session"
-		if w.WindowMinutes >= 7*24*60 {
+		if window.WindowMinutes >= 7*24*60 {
 			kind = "weekly"
 		}
-		pct := w.UsedPercent
-		qw := QuotaWindow{Kind: kind, Label: fmt.Sprintf("%d min", w.WindowMinutes)}
-		if w.ResetsAt > 0 {
-			reset := time.Unix(w.ResetsAt, 0)
-			if !now.Before(reset) {
-				pct = 0
-			}
-			qw.ResetsAt = reset.Format(time.RFC3339)
+		qw := QuotaWindow{Kind: kind, Label: fmt.Sprintf("%d min", window.WindowMinutes), Percent: window.UsedPercent}
+		if window.ResetsAt > 0 {
+			qw.ResetsAt = time.Unix(window.ResetsAt, 0).UTC().Format(time.RFC3339)
 		}
-		qw.Percent = floatPtr(pct)
 		out.Windows = append(out.Windows, qw)
 	}
 	if len(out.Windows) == 0 {
-		return nil
+		return nil, fmt.Errorf("codex quota: no quota windows")
 	}
-	return out
+	return out, nil
 }
 
 func floatPtr(f float64) *float64 { return &f }
