@@ -895,11 +895,6 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 							if err := database.UpdateSessionStatus(sessionID, db.SessionStatusIdle); err != nil {
 								slog.Info(fmt.Sprintf("[ws] UpdateSessionStatus idle: %v", err))
 							}
-							// 這個 WS 連線正在跑此 session（使用者正在看），完成時順手標已讀，
-							// 避免 last_active 更新後被自己的任務完成誤判成未讀。
-							if err := database.MarkSessionRead(sessionID); err != nil {
-								slog.Info(fmt.Sprintf("[ws] MarkSessionRead: %v", err))
-							}
 							broadcast(serverMsg{Type: "status", Value: idleUIStatus(database, sessionID)})
 							// 延遲一下再通知：一般情況程序毫秒內就退出，不需閃一下中斷鈕。
 							time.AfterFunc(lingerNoticeDelay, func() {

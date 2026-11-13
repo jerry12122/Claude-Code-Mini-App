@@ -276,6 +276,7 @@ func (h *SessionHandler) Patch(c *fiber.Ctx) error {
 		Name              *string         `json:"name"`
 		CliExtraArgs      *[]string       `json:"cli_extra_args"`
 		MarkRead          *bool           `json:"mark_read"`
+		ReadMessageIDs    *[]int64        `json:"read_message_ids"`
 		Pinned            *bool           `json:"pinned"`
 		SystemInstruction json.RawMessage `json:"system_instruction"`
 	}
@@ -284,6 +285,16 @@ func (h *SessionHandler) Patch(c *fiber.Ctx) error {
 	}
 	if body.SystemInstruction != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "專屬指令建立後固定，調整請另建會話"})
+	}
+	if body.ReadMessageIDs != nil {
+		if body.MarkRead == nil || !*body.MarkRead || len(*body.ReadMessageIDs) == 0 || len(*body.ReadMessageIDs) > 1000 {
+			return c.Status(400).JSON(fiber.Map{"error": "read_message_ids 需搭配 mark_read 並包含 1 到 1000 個訊息 ID"})
+		}
+		for _, id := range *body.ReadMessageIDs {
+			if id <= 0 {
+				return c.Status(400).JSON(fiber.Map{"error": "訊息 ID 必須為正整數"})
+			}
+		}
 	}
 	if body.Name == nil && body.CliExtraArgs == nil && body.MarkRead == nil && body.Pinned == nil {
 		return c.Status(400).JSON(fiber.Map{"error": "name、cli_extra_args、mark_read 或 pinned 至少指定一項"})
@@ -307,7 +318,11 @@ func (h *SessionHandler) Patch(c *fiber.Ctx) error {
 		}
 	}
 	if body.MarkRead != nil && *body.MarkRead {
-		if err := h.db.MarkSessionRead(id); err != nil {
+		var ids []int64
+		if body.ReadMessageIDs != nil {
+			ids = *body.ReadMessageIDs
+		}
+		if err := h.db.MarkSessionRead(id, ids...); err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 		}
 	}

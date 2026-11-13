@@ -71,6 +71,16 @@ const enterStart = sessionSource.indexOf('  const handleEnter =');
 vm.runInContext(sessionSource.slice(enterStart, sessionSource.indexOf('  const listStatus =', enterStart)) + '\nthis.enter = handleEnter;', sidebarContext);
 sidebarContext.enter({ id: 'secondary-hidden' });
 assert.deepEqual(sidebarActions, [['open', 'secondary-hidden'], ['reveal', 'secondary-hidden']], 'reveal only after selecting the actual session/pane');
+sidebarContext.isUnread = () => true;
+sidebarContext.formatSqliteNow = () => 'now';
+sidebarContext.setSessions = () => { throw new Error('Navigation alone must not acknowledge unread results'); };
+assert.doesNotThrow(() => sidebarContext.enter({ id: 'unread' }), 'wait for the visible chat to acknowledge loaded results');
+sidebarContext.sessions = [{ id: 'current', unread_count: 1 }];
+sidebarContext.activeSessionId = 'current';
+sidebarContext.useMemo = fn => fn();
+const countStart = sessionSource.indexOf('  const unreadCount =');
+vm.runInContext(sessionSource.slice(countStart, sessionSource.indexOf('  const hasUnread', countStart)) + '\nthis.count = unreadCount;', sidebarContext);
+assert.equal(sidebarContext.count, 1, 'an active chat can still have unread results while the app is in the background');
 
 const shared = fs.readFileSync(path.join(root, 'js/ui/ui-atoms.js'), 'utf8');
 const quotaContext = vm.createContext({});

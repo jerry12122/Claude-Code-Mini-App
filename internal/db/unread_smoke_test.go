@@ -2,6 +2,207 @@ package db
 
 import "testing"
 
+func TestUnreadCompletedAfterReadingPending(t *testing.T) {
+	database, err := Open(t.TempDir() + "/completion.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	s, err := database.CreateSession("completion", "", "", "default", "claude", nil, "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := database.CreatePendingMessage(s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.MarkSessionRead(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.AppendMessageContent(id, "finished after you left"); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.FinalizeMessage(id); err != nil {
+		t.Fatal(err)
+	}
+	got, err := database.GetSession(s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UnreadCount != 1 {
+		t.Fatalf("completion after reading pending must be unread, got %d", got.UnreadCount)
+	}
+}
+
+func TestUnreadPendingAndSameSecondIncoming(t *testing.T) {
+	database, err := Open(t.TempDir() + "/pending.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	s, err := database.CreateSession("pending", "", "", "default", "claude", nil, "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`UPDATE sessions SET last_read_at = '2000-01-01 00:00:00' WHERE id = ?`, s.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CreatePendingMessage(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := database.GetSession(s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UnreadCount != 0 {
+		t.Fatalf("unfinished reply must not count, got %d", got.UnreadCount)
+	}
+	if err := database.MarkSessionRead(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.AddMessage(s.ID, "claude", "instant incoming", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`UPDATE messages SET created_at = (SELECT last_read_at FROM sessions WHERE id = ?) WHERE session_id = ? AND status = 'done'`, s.ID, s.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err = database.GetSession(s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UnreadCount != 1 {
+		t.Fatalf("same-second incoming must be unread, got %d", got.UnreadCount)
+	}
+}
+
+func TestUnreadMigrationAndReadReceiptsPersist(t *testing.T) {
+	path := t.TempDir() + "/migration.db"
+	database, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if database != nil {
+			database.Close()
+		}
+	}()
+	s, err := database.CreateSession("legacy", "", "", "default", "claude", nil, "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tg, err := database.CreateSession("telegram", "", "", "default", "telegram", nil, "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{s.ID, tg.ID} {
+		if _, err := database.Exec(`UPDATE sessions SET last_read_at = '2021-01-01 00:00:00' WHERE id = ?`, id); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := database.Exec(`INSERT INTO messages (session_id, role, content, status, created_at) VALUES
+			(?, 'claude', 'old read', 'done', '2020-01-01 00:00:00'),
+			(?, 'claude', 'old unread', 'done', '2022-01-01 00:00:00')`, id, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pending, err := database.CreatePendingMessage(s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Rebuild the exact pre-migration state, including a pending reply created before the read time.
+	if _, err := database.Exec(`UPDATE messages SET created_at = '2020-01-01 00:00:00' WHERE id = ?`, pending); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`ALTER TABLE messages DROP COLUMN is_read`); err != nil {
+		t.Fatal(err)
+	}
+	database.Close()
+	database, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string]int{s.ID: 2, tg.ID: 0} {
+		// Restart finalizes the old pending reply as interrupted, which also requires reading.
+		got, err := database.GetSession(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.UnreadCount != want {
+			t.Fatalf("migrated unread=%d want=%d", got.UnreadCount, want)
+		}
+	}
+	changes := 0
+	database.OnSessionChange = func() { changes++ }
+	if err := database.MarkSessionRead(s.ID, pending); err != nil {
+		t.Fatal(err)
+	}
+	if changes != 1 {
+		t.Fatalf("read receipt must refresh the sidebar, got %d notifications", changes)
+	}
+	database.Close()
+	database, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := database.GetSession(s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UnreadCount != 1 {
+		t.Fatalf("reopening must retain acknowledged/unseen results, got %d", got.UnreadCount)
+	}
+}
+
+func TestReadAllLeavesRunningResultsUnreadAndRollsBackFailure(t *testing.T) {
+	database, err := Open(t.TempDir() + "/read-all.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	s, err := database.CreateSession("read-all", "", "", "default", "claude", nil, "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.AddMessage(s.ID, "claude", "completed", ""); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := database.CreatePendingMessage(s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`UPDATE sessions SET last_read_at = '2000-01-01 00:00:00' WHERE id = ?`, s.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`CREATE TRIGGER fail_read BEFORE UPDATE OF is_read ON messages BEGIN SELECT RAISE(ABORT, 'read failed'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.MarkSessionRead(s.ID); err == nil {
+		t.Fatal("receipt failure must be returned")
+	}
+	got, err := database.GetSession(s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LastReadAt != "2000-01-01 00:00:00" || got.UnreadCount != 1 {
+		t.Fatalf("failed read must roll back: %+v", got)
+	}
+	if _, err := database.Exec(`DROP TRIGGER fail_read`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.MarkAllSessionsRead(); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.FinalizeMessage(pending); err != nil {
+		t.Fatal(err)
+	}
+	got, err = database.GetSession(s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UnreadCount != 1 {
+		t.Fatalf("read all must not acknowledge a future completion, got %d", got.UnreadCount)
+	}
+}
+
 func TestMarkSessionRead_DoesNotTouchLastActive(t *testing.T) {
 	path := t.TempDir() + "/smoke.db"
 	database, err := Open(path)

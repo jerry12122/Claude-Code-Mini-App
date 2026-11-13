@@ -128,6 +128,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   // Claude / Cursor / Antigravity 皆支援 mode 切換（Codex / Telegram 暫無對應概念）
   const showPermModeSelect = agentType !== 'codex' && agentType !== 'kiro' && agentType !== 'telegram';
   const showEffortSelect = agentType !== 'cursor' && agentType !== 'telegram';
+  const chatScrollRef = useRef(null);
   const {
     messages,
     state,
@@ -155,7 +156,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     commitPermMode,
     online,
     shareEnded,
-  } = useChatSocket({ session, agentType, showPermModeSelect, showEffortSelect, guest, onHandoffChange });
+  } = useChatSocket({ session, agentType, showPermModeSelect, showEffortSelect, guest, onHandoffChange, isFocused, scrollRef: chatScrollRef });
 
   // ── 分享聊天室 ──
   // guest 為 null＝擁有者；否則是訪客（viewer 唯讀、editor 可輸入、snapshot 只能看歷史）。
@@ -204,7 +205,6 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const chatRootRef = useRef(null);
   const dragDepthRef = useRef(0);
   const bottomRef = useRef(null);
-  const chatScrollRef = useRef(null);
   const chatNearBottomRef = useRef(true);
   const [showJumpLatest, setShowJumpLatest] = useState(false);
   const [showAllMessages, setShowAllMessages] = useState(false);

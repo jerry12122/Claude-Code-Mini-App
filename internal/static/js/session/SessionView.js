@@ -368,8 +368,8 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
   };
 
   const unreadCount = useMemo(
-    () => (Array.isArray(sessions) ? sessions : []).filter((s) => activeSessionId !== s.id && isUnread(s)).length,
-    [sessions, activeSessionId]
+    () => (Array.isArray(sessions) ? sessions : []).filter(isUnread).length,
+    [sessions]
   );
   const hasUnread = unreadCount > 0;
 
@@ -388,13 +388,8 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
     });
   };
 
-  // 進入 session 前先 optimistic 標已讀（點了就消掉）；真正的 mark_read 由
-  // useChatSocket.js 的 WS onopen 背景送出，失敗或被下次 poll 覆蓋都沒差。
+  // 已讀由前景 ChatView 確認已載入的完成結果後回報。
   const handleEnter = (s, targetPane = null) => {
-    if (isUnread(s)) {
-      const nowStr = formatSqliteNow();
-      setSessions((prev) => prev.map((row) => (row.id === s.id ? { ...row, last_read_at: nowStr, unread_count: 0 } : row)));
-    }
     onEnter(s, targetPane);
     if (isWideScreen) revealSessionTab(s.id);
   };
@@ -416,7 +411,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
     const extraArgN = Array.isArray(s.cli_extra_args) ? s.cli_extra_args.length : 0;
     const displayAgent = sessionDisplayAgent(s);
     const agentLabel = AGENT_LABEL[displayAgent] || displayAgent || 'claude';
-    const unread = !active && isUnread(s);
+    const unread = isUnread(s);
     const unreadCountNum = typeof s.unread_count === 'number' ? s.unread_count : 1;
     const unreadBadgeText = unreadCountNum > 99 ? '99+' : String(unreadCountNum > 0 ? unreadCountNum : 1);
     const statusClass = sessionStatusDotClass(s);
@@ -752,7 +747,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
               </span>
               {dirSessions.map((s) => {
                 const active = activeSessionId != null && s.id === activeSessionId;
-                const unread = !active && isUnread(s);
+                const unread = isUnread(s);
                 const displayAgent = sessionDisplayAgent(s);
                 const agentLabel = AGENT_LABEL[displayAgent] || displayAgent || 'claude';
                 const unreadCountNum = typeof s.unread_count === 'number' ? s.unread_count : 1;

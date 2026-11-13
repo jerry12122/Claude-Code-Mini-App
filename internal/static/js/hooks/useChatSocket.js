@@ -2,7 +2,7 @@
  * ChatView 的 WebSocket 生命週期 + 串流解析 + 訊息／設定狀態。
  * 從 ChatView.js 抽出（原本塞在元件裡的 330 行 init effect）。
  */
-function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelect, guest = null, onHandoffChange }) {
+function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelect, guest = null, onHandoffChange, isFocused = true, scrollRef = null }) {
   // 分享訪客：{ nickname, role, mode, ... }；null＝擁有者。snapshot 模式只讀歷史、不連 WS。
   const isGuest = !!guest;
   const guestSnapshot = isGuest && guest.mode === 'snapshot';
@@ -54,6 +54,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
   const [lingering, setLingering] = useState(false);
   const onHandoffChangeRef = useRef(onHandoffChange);
   onHandoffChangeRef.current = onHandoffChange;
+  const readIDsRef = useRef(new Set());
 
   const shellBuf = useRef([]);
   const shellRenderPending = useRef(false);
@@ -72,6 +73,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
   // session 切換時重置訊息／連線相關狀態，避免殘留舊會話上下文
   useEffect(() => {
     activeSessionRef.current = session.id;
+    readIDsRef.current = new Set();
     streamBuf.current = '';
     setLiveActivity(null);
     setRunStartedAt(null);
@@ -116,6 +118,39 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
     setModelSel(session.model || '');
     setEffortSel(session.effort || '');
   }, [session.id, session.permission_mode, session.model, session.effort, agentType, session.input_mode]);
+
+  // Only acknowledge completed results rendered in the foreground focused chat.
+  useEffect(() => {
+    if (isGuest || isTG || !histLoaded || !isFocused) return;
+    let cancelled = false;
+    const acknowledged = readIDsRef.current;
+    const scroll = scrollRef?.current;
+    const markRead = () => {
+      if (cancelled || document.hidden || !document.hasFocus()) return;
+      if (scrollRef && (!scroll || scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight > 2)) return;
+      const ids = messages.filter(m => m.role !== 'user' && m.status !== 'pending' && !m.streaming &&
+        Number.isSafeInteger(m.id) && m.id > 0 && !acknowledged.has(m.id)).slice(0, 1000).map(m => m.id);
+      if (!ids.length) return;
+      ids.forEach(id => acknowledged.add(id));
+      apiFetch(`/sessions/${session.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mark_read: true, read_message_ids: ids }),
+      }).then(res => {
+        if (!res.ok) throw new Error('mark read failed');
+        markRead();
+      }).catch(() => ids.forEach(id => acknowledged.delete(id)));
+    };
+    markRead();
+    document.addEventListener('visibilitychange', markRead);
+    window.addEventListener('focus', markRead);
+    scroll?.addEventListener('scroll', markRead);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', markRead);
+      window.removeEventListener('focus', markRead);
+      scroll?.removeEventListener('scroll', markRead);
+    };
+  }, [session.id, messages, histLoaded, isFocused, isGuest, isTG, scrollRef]);
 
   // 載入歷史 + 建立 WS
   useEffect(() => {
@@ -217,16 +252,6 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
         if (!receivedSync) ws.close();
       }, 15000);
 
-      // 使用者正在看這個 session：標記已讀，讓列表未讀點消失。失敗不影響聊天功能，靜默忽略。
-      const markRead = () => {
-        if (isGuest) return; // 訪客沒有「已讀」概念，PATCH 也會被後端擋下
-        apiFetch(`/sessions/${session.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mark_read: true }),
-        }).catch(() => {});
-      };
-
       // 握手卡住（代理／休眠喚醒後）瀏覽器可能很久才 onclose；5 秒沒連上就主動關掉走重試。
       const openTimer = setTimeout(() => {
         if (ws.readyState === WebSocket.CONNECTING) ws.close();
@@ -237,7 +262,6 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
         attempt = 0;
         everConnected = true;
         if (isCurrent() && wsRef.current === ws) setConnected(true);
-        markRead();
       };
 
       const applyTelegramScope = (msg) => {
@@ -423,9 +447,6 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
             ));
           }
           if (msg.value === 'IDLE' || msg.value === 'AWAITING_CONFIRM') {
-            // 使用者全程留在這個 session：一輪對話結束才會推進 last_active，須補標已讀，
-            // 否則只在連線建立當下標過一次，中途 agent 的新回覆會讓列表誤判成未讀。
-            markRead();
             setMessages((prev) => {
               const updated = prev.map((m, i) => {
                 if (i === prev.length - 1 && m.streaming) {

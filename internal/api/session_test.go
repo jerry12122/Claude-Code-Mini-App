@@ -167,6 +167,53 @@ func TestSessionListReturnsUnreadCount(t *testing.T) {
 	}
 }
 
+func TestMarkReadAcknowledgesOnlyLoadedMessages(t *testing.T) {
+	database := testDB(t)
+	s, err := database.CreateSession("read", "", "", "default", "claude", nil, "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`UPDATE sessions SET last_read_at = '2000-01-01 00:00:00' WHERE id = ?`, s.ID); err != nil {
+		t.Fatal(err)
+	}
+	id, _, err := database.AddMessageWithID(s.ID, "claude", "loaded result", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.AddMessage(s.ID, "claude", "completed after the read request was sent", ""); err != nil {
+		t.Fatal(err)
+	}
+	app := fiber.New()
+	app.Patch("/sessions/:id", NewSessionHandler(database).Patch)
+	for _, tc := range []struct {
+		body   string
+		status int
+	}{
+		{fmt.Sprintf(`{"mark_read":true,"read_message_ids":[%d]}`, id), 200},
+		{`{"mark_read":true,"read_message_ids":[]}`, 400},
+		{`{"mark_read":true,"read_message_ids":[-1]}`, 400},
+		{`{"mark_read":true,"read_message_ids":[` + strings.Repeat("1,", 1000) + "1]}", 400},
+	} {
+		req := httptest.NewRequest("PATCH", "/sessions/"+s.ID, strings.NewReader(tc.body))
+		req.Header.Set("Content-Type", "application/json")
+		res, err := app.Test(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != tc.status {
+			t.Fatalf("HTTP=%d want=%d", res.StatusCode, tc.status)
+		}
+		got, err := database.GetSession(s.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.UnreadCount != 1 {
+			t.Fatalf("unseen result must remain unread, got %d", got.UnreadCount)
+		}
+	}
+}
+
 func TestCreateSessionTelegramDisguise(t *testing.T) {
 	database := testDB(t)
 	app := fiber.New()

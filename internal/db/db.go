@@ -171,7 +171,7 @@ func (db *DB) migrate() error {
 	// model/effort：使用者要求值（空字串＝不指定，交給 CLI 用預設）
 	tryAlter(`ALTER TABLE sessions ADD COLUMN model TEXT NOT NULL DEFAULT ''`)
 	tryAlter(`ALTER TABLE sessions ADD COLUMN effort TEXT NOT NULL DEFAULT ''`)
-	// last_read_at：使用者最後一次「正在看」此 session 的時間；配合 last_active 判斷未讀。
+	// last_read_at：已讀操作時間；舊資料的未讀狀態以此遷移至 messages.is_read。
 	tryAlter(`ALTER TABLE sessions ADD COLUMN last_read_at TEXT NOT NULL DEFAULT ''`)
 	// queue_paused：上一個任務失敗／中斷時佇列暫停，需使用者手動繼續。
 	tryAlter(`ALTER TABLE sessions ADD COLUMN queue_paused INTEGER NOT NULL DEFAULT 0`)
@@ -191,5 +191,28 @@ func (db *DB) migrate() error {
 		return err
 	}
 
+	if err := db.migrateMessageReadState(); err != nil {
+		return err
+	}
 	return db.ResetPendingMessages()
+}
+
+// Preserve existing read receipts once; new pending replies remain unread until completion.
+func (db *DB) migrateMessageReadState() error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`ALTER TABLE messages ADD COLUMN is_read INTEGER NOT NULL DEFAULT 0`); err != nil {
+		if strings.Contains(err.Error(), "duplicate column") {
+			return nil
+		}
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE messages SET is_read = 1 WHERE status != 'pending' AND created_at <=
+		(SELECT last_read_at FROM sessions WHERE sessions.id = messages.session_id)`); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

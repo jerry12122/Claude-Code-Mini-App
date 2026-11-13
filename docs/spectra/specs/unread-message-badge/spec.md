@@ -8,12 +8,37 @@ Provides a chat-application-style unread message counter badge on session cards 
 
 ### Requirement: Unread message count calculation
 
-The system SHALL compute `unread_count` for each session representing the total number of non-user messages created after `last_read_at`. Telegram sessions SHALL always report an `unread_count` of 0, because their messages are not stored locally.
+The system SHALL compute `unread_count` for each session representing the total number of completed non-user messages that have not been acknowledged as read. Pending replies SHALL NOT count until they complete. Telegram sessions SHALL always report an `unread_count` of 0, because their messages are not stored locally.
 
 #### Scenario: Accurate count of unread incoming messages
 
-- **WHEN** a session receives new assistant, shell, or agent messages after `last_read_at`
+- **WHEN** a session receives completed assistant, shell, or agent messages
 - **THEN** the session query SHALL return `unread_count` matching the exact number of incoming messages
+
+#### Scenario: Task completion requires reading the result
+
+- **WHEN** a task completes and returns to idle at the point where its completion notification is sent
+- **THEN** its completed reply SHALL become unread, including when the user read the session during execution or disconnected before completion
+- **AND** task completion SHALL NOT itself acknowledge reading
+
+#### Scenario: Foreground reading acknowledges loaded results
+
+- **WHEN** the owner views a loaded completed result in the focused chat, with the document visible and focused and the chat scrolled to the latest result
+- **THEN** the frontend SHALL acknowledge the loaded completed message IDs
+- **AND** background pages, unfocused panes, pending replies and reading older history SHALL NOT acknowledge the new result
+- **AND** delayed receipts SHALL NOT acknowledge messages absent from the receipt
+
+#### Scenario: Read all preserves future completions
+
+- **WHEN** the user marks all sessions read while a task is running
+- **THEN** only already completed results SHALL be acknowledged
+- **AND** the running reply SHALL become unread upon completion
+
+#### Scenario: Read receipts survive upgrades and restarts
+
+- **WHEN** an existing database is upgraded
+- **THEN** historical completed messages SHALL retain the read state implied by the previous `last_read_at`
+- **AND** subsequent restarts SHALL preserve explicit per-message read receipts
 
 #### Scenario: User messages excluded from unread count
 
@@ -87,9 +112,11 @@ The frontend SHALL display a pill-shaped unread badge on each session card and s
 - **WHEN** a session has an `unread_count` greater than 99
 - **THEN** the UI SHALL render `99+` inside the badge
 
-#### Scenario: Optimistic clear on entering session
+#### Scenario: Clear only after confirming reading
 - **WHEN** the user navigates into or clicks a session with unread messages
-- **THEN** the UI SHALL optimistically hide the badge and reset `unread_count` to zero immediately
+- **THEN** navigation alone SHALL NOT clear unread results
+- **AND** the badge SHALL reflect the backend count after the visible chat acknowledges loaded completed results
+- **AND** active sessions with unread results SHALL retain their badge and contribute to the document title count
 
 <!-- @trace
 source: post-message-and-unread-badge

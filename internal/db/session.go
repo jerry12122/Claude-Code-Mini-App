@@ -47,9 +47,9 @@ type Session struct {
 	Effort string `json:"effort"`
 	// DisguiseAgent 為 Telegram 會話的偽裝外觀（例如 claude、cursor、antigravity；空字串＝無偽裝）。
 	DisguiseAgent string `json:"disguise_agent,omitempty"`
-	// LastReadAt 為使用者最後一次「正在看」此 session 的時間；配合 LastActive 判斷未讀（見前端 isUnread）。
+	// LastReadAt 記錄最後一次已讀操作的時間；實際未讀依 messages.is_read 判斷。
 	LastReadAt string `json:"last_read_at"`
-	// UnreadCount 為在 last_read_at 之後接收到的非 user 訊息數量。
+	// UnreadCount 為已完成但尚未確認已讀的非 user 訊息數量。
 	UnreadCount int `json:"unread_count"`
 	// LastErrorText／LastErrorAt：最近一次 run 失敗的原始錯誤文字與時間（UTC，SQLite 格式）；下一輪成功時清空。
 	LastErrorText string `json:"last_error,omitempty"`
@@ -107,7 +107,7 @@ func (db *DB) CreateSessionWithInstruction(name, description, workDir, permissio
 func (db *DB) GetSession(id string) (*Session, error) {
 	row := db.QueryRow(
 		`SELECT s.id, s.agent_type, s.agent_session_id, s.name, s.description, s.work_dir, s.permission_mode, s.allowed_tools, s.pending_denials, s.last_active, s.status, s.cli_extra_args, s.input_mode, s.shell_pending, s.active_model, s.active_model_source, s.active_model_at, s.model, s.effort, s.last_read_at, s.disguise_agent, s.last_error_text, s.last_error_at, s.pinned, s.system_instruction,
-		       (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.created_at > s.last_read_at AND m.role != 'user' AND s.agent_type != 'telegram') AS unread_count
+		       (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.is_read = 0 AND m.status != 'pending' AND m.role != 'user' AND s.agent_type != 'telegram') AS unread_count
 		 FROM sessions s WHERE s.id = ?`, id,
 	)
 	return scanSession(row)
@@ -116,7 +116,7 @@ func (db *DB) GetSession(id string) (*Session, error) {
 func (db *DB) ListSessions() ([]*Session, error) {
 	rows, err := db.Query(
 		`SELECT s.id, s.agent_type, s.agent_session_id, s.name, s.description, s.work_dir, s.permission_mode, s.allowed_tools, s.pending_denials, s.last_active, s.status, s.cli_extra_args, s.input_mode, s.shell_pending, s.active_model, s.active_model_source, s.active_model_at, s.model, s.effort, s.last_read_at, s.disguise_agent, s.last_error_text, s.last_error_at, s.pinned, s.system_instruction,
-		       (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.created_at > s.last_read_at AND m.role != 'user' AND s.agent_type != 'telegram') AS unread_count
+		       (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.is_read = 0 AND m.status != 'pending' AND m.role != 'user' AND s.agent_type != 'telegram') AS unread_count
 		 FROM sessions s ORDER BY s.last_active DESC`,
 	)
 	if err != nil {
@@ -171,22 +171,50 @@ func (db *DB) SetSessionPinned(id string, pinned bool) error {
 	return err
 }
 
-// MarkSessionRead 記錄使用者最後一次「正在看」此 session 的時間。
-// 只動 last_read_at，不可連動 last_active——否則會把自己的已讀動作誤植為新活動，
-// 讓其他分頁／裝置的未讀判斷（last_active > last_read_at）失真。
-func (db *DB) MarkSessionRead(id string) error {
-	_, err := db.Exec(
-		`UPDATE sessions SET last_read_at = datetime('now') WHERE id = ?`,
-		id,
-	)
-	return err
+// MarkSessionRead confirms completed messages only. IDs bound browser receipts to loaded results.
+// Omitting IDs explicitly marks every completed message in the session read.
+func (db *DB) MarkSessionRead(id string, messageIDs ...int64) error {
+	return db.markMessagesRead(id, messageIDs)
 }
 
 // MarkAllSessionsRead 一次把所有 session 標記已讀（Read All 按鈕）。
-// 同樣只動 last_read_at，不動 last_active，理由同 MarkSessionRead。
+// 只確認已完成的訊息，不動 last_active，也不預先確認仍在執行的回覆。
 func (db *DB) MarkAllSessionsRead() error {
-	_, err := db.Exec(`UPDATE sessions SET last_read_at = datetime('now')`)
-	return err
+	return db.markMessagesRead("", nil)
+}
+
+func (db *DB) markMessagesRead(sessionID string, messageIDs []int64) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	sessionWhere, messageWhere := "", " WHERE status != 'pending' AND role != 'user'"
+	var args []any
+	if sessionID != "" {
+		sessionWhere = " WHERE id = ?"
+		messageWhere += " AND session_id = ?"
+		args = append(args, sessionID)
+	}
+	if _, err := tx.Exec(`UPDATE sessions SET last_read_at = datetime('now')`+sessionWhere, args...); err != nil {
+		return err
+	}
+	if len(messageIDs) > 0 {
+		messageWhere += " AND id IN (" + strings.TrimSuffix(strings.Repeat("?,", len(messageIDs)), ",") + ")"
+		for _, id := range messageIDs {
+			args = append(args, id)
+		}
+	}
+	if _, err := tx.Exec(`UPDATE messages SET is_read = 1`+messageWhere, args...); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if db.OnSessionChange != nil {
+		db.OnSessionChange()
+	}
+	return nil
 }
 
 // UpdateSessionCliExtraArgs replaces the whole custom CLI argv JSON array.

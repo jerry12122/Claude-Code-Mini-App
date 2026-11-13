@@ -45,7 +45,7 @@ function loadContext() {
     isTelegram: false,
     localStorage: { getItem: () => null, setItem: () => {} },
     requestAnimationFrame: (fn) => fn(),
-    document: Object.assign(new EventTarget(), { hidden: false }),
+    document: Object.assign(new EventTarget(), { hidden: false, hasFocus: () => true }),
     window: new EventTarget(),
     AbortController,
     setTimeout, clearTimeout,
@@ -222,6 +222,7 @@ function createHarness() {
   ctx.apiFetch = (p, opts = {}) => new Promise((resolve, reject) => {
     fetches.push({
       path: p,
+      options: opts,
       signal: opts.signal,
       respond: (data, status = 200, headers = {}) => resolve({ ok: status < 400, status, headers: { get: (k) => (k in headers ? headers[k] : null) }, json: async () => data }),
       fail: (err) => reject(err),
@@ -285,6 +286,43 @@ function createHarness() {
 const tgProps = (id) => ({
   session: { id, permission_mode: 'default', input_mode: 'agent' },
   agentType: 'telegram', showPermModeSelect: false, showEffortSelect: false, guest: null, onHandoffChange: null,
+});
+
+test('已讀只確認前景且聚焦會話中已載入的完成訊息；背景、未聚焦與串流結果保留未讀', async () => {
+  const h = createHarness();
+  h.ctx.document.hidden = true;
+  const scroll = Object.assign(new EventTarget(), { scrollHeight: 1000, clientHeight: 500, scrollTop: 500 });
+  const props = { ...tgProps('read'), agentType: 'claude', isFocused: true, scrollRef: { current: scroll } };
+  const rt = h.mount(props);
+  rt.render();
+  const ws = h.sockets[0];
+  ws.open();
+  ws.emit({ type: 'sync', value: 'THINKING', messages: [srv(1, null, 'old', 1), srv(2, null, 'partial', 2, { status: 'pending' })] });
+  assert.equal(h.fetches.length, 0, '背景開啟／同步不應標記已讀');
+  h.ctx.document.hidden = false;
+  h.ctx.document.dispatchEvent(new Event('visibilitychange'));
+  assert.equal(h.fetches.length, 1);
+  assert.deepEqual(JSON.parse(h.fetches[0].options.body), { mark_read: true, read_message_ids: [1] });
+  h.fetches[0].respond({});
+  await tick();
+  rt.setProps({ ...props, isFocused: false });
+  ws.emit({ type: 'status', value: 'IDLE' });
+  assert.equal(h.fetches.length, 1, '未聚焦窗格完成時仍應未讀');
+  h.ctx.document.hasFocus = () => false;
+  rt.setProps(props);
+  assert.equal(h.fetches.length, 1, '其他視窗取得焦點時不應標記已讀');
+  h.ctx.document.hasFocus = () => true;
+  scroll.scrollTop = 0;
+  h.ctx.window.dispatchEvent(new Event('focus'));
+  assert.equal(h.fetches.length, 1, '正在讀舊訊息時不能把底部的新結果標為已讀');
+  scroll.scrollTop = 500;
+  scroll.dispatchEvent(new Event('scroll'));
+  assert.equal(h.fetches.length, 2);
+  assert.deepEqual(JSON.parse(h.fetches[1].options.body).read_message_ids, [2]);
+  h.fetches[1].fail(new Error('offline'));
+  await tick();
+  h.ctx.window.dispatchEvent(new Event('focus'));
+  assert.equal(h.fetches.length, 3, '失敗的已讀請求必須能重試');
 });
 
 const view = (rt) => clone(rt.get().messages.map((m) => [m.id, m.telegram ? m.telegram.message_id : null, m.content, m.delivery || '']));
@@ -496,7 +534,7 @@ test('loadOlder：每次至多一頁、單頁 inflight 去重；與 live 交錯�
   const rt = await startTG(h);
   const ws = h.sockets[0];
   ws.open();
-  const pg = () => h.fetches.filter((x) => x.path.includes('pagination=telegram')); // 排除 markRead 的 PATCH
+  const pg = () => h.fetches.filter((x) => x.path.includes('pagination=telegram'));
   rt.get().loadOlder();
   rt.get().loadOlder();
   rt.get().loadOlder(); // sentinel／按鈕連續觸發
@@ -674,10 +712,10 @@ test('非 Telegram：只用 WS 初載，較早頁與 live／重連合併且不�
   assert.strictEqual(rt.get().histLoaded, true);
   const pending = rt.get().loadOlder();
   rt.get().loadOlder();
-  assert.strictEqual(h.fetches.length, 2); // mark-read PATCH + 一個補頁請求
-  assert.strictEqual(h.fetches[1].path, '/sessions/s9/messages?limit=100&before=3');
+  assert.strictEqual(h.fetches.length, 1); // 只有使用者訊息，不需已讀收據。
+  assert.strictEqual(h.fetches[0].path, '/sessions/s9/messages?limit=100&before=3');
   h.sockets[0].emit({ type: 'user_message', ...row(5) });
-  h.fetches[1].respond([row(1), row(2)]);
+  h.fetches[0].respond([row(1), row(2)]);
   await pending;
   h.sockets[0].emit({ type: 'sync', value: 'IDLE', history_has_more: true, messages: [row(4), row(5), row(6)] });
   assert.deepStrictEqual(arr(rt.get().messages).map(m => m.id), [1, 2, 3, 4, 5, 6]);
