@@ -34,7 +34,7 @@ function PasswordView({ onSuccess }) {
   };
 
   const handleKey = (e) => {
-    if (e.key === 'Enter') submit();
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) submit();
   };
 
   return (

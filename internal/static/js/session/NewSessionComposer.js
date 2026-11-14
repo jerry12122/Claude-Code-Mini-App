@@ -63,6 +63,8 @@ function NewSessionComposer({ prefill, onCreated, onCancel }) {
   const handleMessageKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      // 中文輸入法選字時的 Enter 是確認候選字，不能當成送出（keyCode 229 為 Safari 的 IME 標記）
+      if (e.nativeEvent.isComposing || e.keyCode === 229) return;
       submit();
     }
   };

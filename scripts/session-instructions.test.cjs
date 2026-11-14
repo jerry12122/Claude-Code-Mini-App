@@ -83,6 +83,21 @@ async function main() {
   assert.equal(form.buildCreatePayload().system_instruction, 'edited copy');
 
   const composer = read('session/NewSessionComposer.js');
+  for (const [source, name] of [[composer, 'handleMessageKeyDown'], [read('app.js'), 'handleKey']]) {
+    let submits = 0;
+    const onKey = handler(source, `  const ${name} =`, '\n  return (', { submit: () => submits++ }, name);
+    const event = { key: 'Enter', nativeEvent: { isComposing: false }, preventDefault() {} };
+    onKey({ ...event, nativeEvent: { isComposing: true } });
+    onKey({ ...event, keyCode: 229 });
+    onKey({ ...event, key: 'a' });
+    assert.equal(submits, 0, `${name}: composition must not submit`);
+    onKey(event);
+    assert.equal(submits, 1, `${name}: Enter still submits`);
+    if (name === 'handleMessageKeyDown') {
+      onKey({ ...event, shiftKey: true });
+      assert.equal(submits, 1, 'Shift+Enter keeps a newline');
+    }
+  }
   const forwarded = read('chat/ForwardModal.js');
   // The real DOM/keyboard check also runs in browser acceptance. These assertions
   // guard that the instruction textarea never receives the first-message submit handler.
