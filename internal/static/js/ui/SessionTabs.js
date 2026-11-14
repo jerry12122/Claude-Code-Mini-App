@@ -25,6 +25,14 @@ function focusSessionTabAfterClose(tabBarRef) {
   });
 }
 
+function idleSessionTabIds(tabs, sessionMap) {
+  // ponytail: 只關閉明確閒置的分頁；缺少或未知狀態一律保留。
+  return tabs.filter(id => {
+    const session = sessionMap.get(id);
+    return session?.status === 'idle' && !session.lingering;
+  });
+}
+
 /**
  * 個別群組的分頁列元件
  */
@@ -99,6 +107,7 @@ function SessionTabBar({
     return () => el.removeEventListener('wheel', onWheel);
   }, [hasTabs]);
 
+  const idleTabs = idleSessionTabIds(tabs, sessionMap);
   if (!hasTabs) {
     return null;
   }
@@ -321,6 +330,8 @@ function SessionTabBar({
             .find(element => element.dataset.sessionTabId === id)?.querySelector('[role="tab"]')?.focus());
         } }, { separator: true }] : []),
       { label: '關閉分頁', onSelect: () => closeTabs([tabMenu.sessionId]) },
+      { label: '關閉閒置分頁', disabled: idleTabs.length === 0, reason: idleTabs.length === 0 ? '此窗格沒有閒置分頁' : '',
+        onSelect: () => closeTabs(idleTabs) },
       { label: '關閉其他分頁', disabled: tabs.length < 2, onSelect: () => closeTabs(contextTabCloseIds(tabs, tabMenu.sessionId, 'others')) },
       { label: '關閉右側分頁', disabled: tabs.indexOf(tabMenu?.sessionId) === tabs.length - 1,
         onSelect: () => closeTabs(contextTabCloseIds(tabs, tabMenu.sessionId, 'right')) },

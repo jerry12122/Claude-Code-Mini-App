@@ -18,6 +18,8 @@ vm.runInContext(menuSource.slice(0, menuSource.indexOf('function ContextMenu('))
 const actionsSource = read('chat/MessageActions.js');
 vm.runInContext(actionsSource.slice(0, actionsSource.indexOf('function MessageActionsHost(')), context);
 vm.runInContext(read('hooks/tabGroups.js'), context);
+const tabsSource = read('ui/SessionTabs.js');
+vm.runInContext(tabsSource.slice(0, tabsSource.indexOf('function SessionTabBar(')), context);
 const plain = value => JSON.parse(JSON.stringify(value));
 
 assert.deepEqual(plain(context.contextMenuPosition(100, 200, 240, 180, 1000, 800)), { left: 100, top: 200 });
@@ -40,6 +42,21 @@ for (const id of context.contextTabCloseIds(groups.groups[1].tabs, 'b', 'others'
   groups = context.tabGroupsReducer(groups, { type: 'close', sessionId: id, groupIndex: 1 });
 }
 assert.deepEqual(plain(groups.groups), [{ tabs: ['main'], active: 'main' }, { tabs: ['b'], active: 'b' }]);
+
+const sessionMap = new Map([
+  ['idle', { status: 'idle' }], ['done', { status: 'idle', last_error: 'previous failure' }],
+  ['running', { status: 'running' }], ['confirm', { status: 'awaiting_confirm' }],
+  ['input', { status: 'awaiting_input' }], ['shell', { status: 'awaiting_shell_confirm' }],
+  ['lingering', { status: 'idle', lingering: true }], ['unknown', { status: 'new-state' }],
+  ['unset', {}], ['other-pane', { status: 'idle' }],
+]);
+const paneTabs = [...sessionMap.keys()].filter(id => id !== 'other-pane').concat('missing');
+const idleIds = context.idleSessionTabIds(paneTabs, sessionMap);
+assert.deepEqual(plain(idleIds), ['idle', 'done'], 'only explicit idle tabs in this pane may close');
+assert.deepEqual(plain(context.idleSessionTabIds(['running', 'missing'], sessionMap)), []);
+groups = { groups: [{ tabs: ['other-pane'], active: 'other-pane' }, { tabs: ['idle', 'done'], active: 'idle' }], focused: 1 };
+for (const id of idleIds) groups = context.tabGroupsReducer(groups, { type: 'close', sessionId: id, groupIndex: 1 });
+assert.deepEqual(plain(groups.groups), [{ tabs: ['other-pane'], active: 'other-pane' }], 'closing every idle tab preserves the other pane');
 
 const textNode = value => ({ nodeType: 3, nodeValue: value });
 const node = (name, children, skip = false) => ({ nodeType: 1, nodeName: name, childNodes: children, matches: () => skip });
