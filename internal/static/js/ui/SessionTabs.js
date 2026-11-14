@@ -240,10 +240,17 @@ function SessionTabBar({
               type="button"
               role="tab"
               aria-selected={isActive}
+              aria-keyshortcuts="Delete"
               tabIndex={isActive ? 0 : -1}
               className="flex items-center gap-1.5 flex-1 min-w-0 text-left rounded-sm"
               onKeyDown={(e) => {
                 if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing || e.keyCode === 229) return;
+                if (e.key === 'Delete') {
+                  e.preventDefault();
+                  onCloseTab?.(tabId);
+                  focusSessionTabAfterClose(tabBarRef);
+                  return;
+                }
                 const targetId = sessionTabKeyboardTarget(tabs, tabId, e.key);
                 if (targetId === null) return;
                 e.preventDefault();
@@ -287,8 +294,9 @@ function SessionTabBar({
                 onCloseTab?.(tabId);
                 focusSessionTabAfterClose(tabBarRef);
               }}
-              tabIndex={isActive ? 0 : -1}
-              aria-label={`關閉 ${s.name || '分頁'}`}
+              // tablist 的子層只能是 tab：關閉鈕僅供滑鼠／觸控，鍵盤與輔助技術改用分頁上的 Delete 鍵
+              tabIndex={-1}
+              aria-hidden="true"
               title="關閉分頁"
               className={`p-0.5 rounded text-ra-t5 hover:text-red-400 hover:bg-ra-raised transition-opacity shrink-0 ${
                 isActive ? 'opacity-80 hover:opacity-100' : 'opacity-0 group-hover/tab:opacity-100 group-focus-within/tabbar:opacity-100'

@@ -769,7 +769,7 @@ function App() {
             <p>{telegramAuthEnded ? '登入已失效，請關閉後重新開啟 Mini App；草稿會保留。' : '暫時無法連線，請稍後重試。'}</p>
             <button className="mt-4 rounded-lg px-4 py-2 bg-ra-raised" onClick={() => telegramAuthEnded ? tgApp.close() : location.reload()}>{telegramAuthEnded ? '關閉 Mini App' : '重試'}</button>
           </div> : <PasswordView onSuccess={() => setAuthed(true)} />)
-        : renderAuthedLayout()
+        : (isWideScreen ? renderAuthedLayout() : <main className="h-app">{renderAuthedLayout()}</main>)
       }
       <SettingsModal
         open={settingsOpen}

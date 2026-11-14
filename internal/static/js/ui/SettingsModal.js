@@ -361,6 +361,9 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
     };
   }, [open, onClose]);
 
+  const dialogRef = useRef(null);
+  useDialogFocus(dialogRef, open);
+
   if (!open) return null;
 
   const handleSave = async () => {
@@ -393,7 +396,9 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
       role="presentation"
     >
       <div
-        className={`w-full max-w-5xl h-[min(85vh,44rem)] flex overflow-hidden rounded-2xl border border-ra-line bg-ra-bg shadow-2xl shadow-black/50`}
+        ref={dialogRef}
+        tabIndex={-1}
+        className={`w-full max-w-5xl h-[min(85vh,44rem)] flex overflow-hidden rounded-2xl border border-ra-line bg-ra-bg shadow-2xl shadow-black/50 focus:outline-none`}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

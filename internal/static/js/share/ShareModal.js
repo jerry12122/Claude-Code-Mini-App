@@ -181,6 +181,9 @@ function ShareModal({ session, onClose }) {
     return () => window.removeEventListener('keydown', h);
   }, [onClose]);
 
+  const dialogRef = useRef(null);
+  useDialogFocus(dialogRef);
+
   const pickRole = (r) => {
     setRole(r);
     if (r === 'editor') setMode('live'); // 可編輯一定是即時；snapshot 只能唯讀
@@ -231,7 +234,9 @@ function ShareModal({ session, onClose }) {
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-[2px]" onClick={onClose} role="presentation">
       <div
-        className="w-full max-w-lg max-h-[88vh] flex flex-col overflow-hidden rounded-2xl border border-ra-line bg-ra-bg shadow-2xl shadow-black/50"
+        ref={dialogRef}
+        tabIndex={-1}
+        className="w-full max-w-lg max-h-[88vh] flex flex-col overflow-hidden rounded-2xl border border-ra-line bg-ra-bg shadow-2xl shadow-black/50 focus:outline-none"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

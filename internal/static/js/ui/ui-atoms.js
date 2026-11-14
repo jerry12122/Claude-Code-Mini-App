@@ -1317,3 +1317,34 @@ function buildHandoffDraftMessage(handoff, historyMessages) {
 
   return `${head}\n${historyBlock}\n${tail}`;
 }
+
+// 對話框焦點管理（role="dialog" 的自製浮層用）：開啟時把焦點移到對話框、Tab 在框內循環、關閉後還原到開啟前的元素。
+// 焦點先放在容器而非第一個控制項，讀屏會先念出對話框名稱，也不會讓滑鼠開啟時冒出焦點環。
+const DIALOG_FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+function useDialogFocus(dialogRef, active = true) {
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!active || !dialog) return undefined;
+    const opener = document.activeElement;
+    if (!dialog.contains(opener)) dialog.focus({ preventScroll: true });
+    const onKeyDown = (e) => {
+      if (e.key !== 'Tab') return;
+      const items = Array.from(dialog.querySelectorAll(DIALOG_FOCUSABLE)).filter((el) => el.offsetParent !== null);
+      const current = document.activeElement;
+      const inside = dialog.contains(current);
+      if (!items.length) { e.preventDefault(); return; }
+      const edge = e.shiftKey ? items[0] : items[items.length - 1];
+      // 焦點在容器本身（Shift+Tab 會跳出）或已在最後／最前一個控制項、或跑到框外時，繞到另一端
+      if (!inside || current === edge || (e.shiftKey && current === dialog)) {
+        e.preventDefault();
+        (e.shiftKey ? items[items.length - 1] : items[0]).focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      // 開啟者已被卸載（例如 Forward 後跳到別的會話）時不搶焦點
+      if (opener && opener !== document.body && opener.isConnected && typeof opener.focus === 'function') opener.focus({ preventScroll: true });
+    };
+  }, [active, dialogRef]);
+}

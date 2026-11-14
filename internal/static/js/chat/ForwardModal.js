@@ -80,6 +80,9 @@ function ForwardModal({
     return () => window.removeEventListener('keydown', h);
   }, [payload, onClose]);
 
+  const dialogRef = useRef(null);
+  useDialogFocus(dialogRef, !!payload);
+
   if (!payload) return null;
 
   const targets = sessionsList.filter((s) => s.id !== currentSessionId && s.agent_type !== 'kiro');
@@ -134,7 +137,9 @@ function ForwardModal({
       role="presentation"
     >
       <div
-        className="max-w-md sm:max-w-xl md:max-w-2xl w-full max-h-[min(90vh,32rem)] md:max-h-[min(92vh,48rem)] overflow-y-auto app-scroll rounded-2xl border border-slate-700 bg-slate-950/95 shadow-2xl shadow-black/50 p-4 md:p-6 space-y-3 md:space-y-4"
+        ref={dialogRef}
+        tabIndex={-1}
+        className="max-w-md sm:max-w-xl md:max-w-2xl w-full max-h-[min(90vh,32rem)] md:max-h-[min(92vh,48rem)] overflow-y-auto app-scroll rounded-2xl border border-slate-700 bg-slate-950/95 shadow-2xl shadow-black/50 p-4 md:p-6 space-y-3 md:space-y-4 focus:outline-none"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
