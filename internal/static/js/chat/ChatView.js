@@ -1351,7 +1351,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       >
         {taskRunning && !canQueue ? (
           <button onClick={handleInterrupt}
-            className={`w-full py-2 bg-red-900/60 hover:bg-red-800 text-red-300 rounded-lg text-sm ${interrupting ? 'animate-pulse' : ''}`}>
+            className={`w-full py-2 bg-red-900/60 hover:bg-red-800 text-red-300 rounded-lg text-sm ${interrupting ? 'animate-pulse motion-reduce:animate-none' : ''}`}>
             {interrupting ? '再按一次強制停止' : '中斷'}
           </button>
         ) : (
@@ -1457,7 +1457,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                       title="附加圖片或檔案"
                       className={sheet ? 'ra-tool-row ra-tool-attach' : 'shrink-0 flex items-center justify-center w-8 h-8 rounded-[8px] text-ra-t3 hover:bg-ra-raised hover:text-violet-300 disabled:opacity-40 transition-colors'}>
                       {uploading ? (
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="w-4 h-4 animate-spin" aria-hidden="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden="true">
                           <path d="M21 12a9 9 0 1 1-6.22-8.56" />
                         </svg>
                       ) : (

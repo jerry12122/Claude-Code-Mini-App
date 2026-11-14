@@ -38,7 +38,7 @@ function PasswordView({ onSuccess }) {
   };
 
   return (
-    <div className="flex items-center justify-center h-app">
+    <main className="flex items-center justify-center h-app">
       <div className="w-72 space-y-4">
         <div className="text-center">
           <div className="flex flex-col items-center gap-2 mb-1">
@@ -47,8 +47,8 @@ function PasswordView({ onSuccess }) {
             </div>
             <div className="ra-display text-2xl" style={{color:'oklch(var(--ra-t1))'}}>Agent Console</div>
           </div>
-          <div className="text-gray-500 text-sm">Claude Code · Remote Agent</div>
-          <div className="text-gray-600 text-xs">請輸入存取密碼</div>
+          <div className="text-gray-400 text-sm">Claude Code · Remote Agent</div>
+          <div className="text-gray-400 text-xs">請輸入存取密碼</div>
         </div>
         <input
           type="password"
@@ -65,7 +65,7 @@ function PasswordView({ onSuccess }) {
           {loading ? '驗證中…' : '進入'}
         </button>
       </div>
-    </div>
+    </main>
   );
 }
 

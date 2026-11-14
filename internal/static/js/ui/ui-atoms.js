@@ -1041,7 +1041,7 @@ function ShellOutput({ content, exitCode, streaming }) {
           if (line === '[interrupted]')     return <span key={i} className="text-yellow-400">{line}{nl}</span>;
           return <span key={i} className="text-gray-200">{line}{nl}</span>;
         })}
-        {streaming && <span className="text-amber-400 animate-pulse">▌</span>}
+        {streaming && <span className="text-amber-400 animate-pulse motion-reduce:animate-none">▌</span>}
       </pre>
       {!streaming && resolvedExitCode != null && (
         <div className={`mt-1.5 inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded ${resolvedExitCode === 0 ? 'bg-green-900/60 text-green-300' : 'bg-red-900/60 text-red-300'}`}>

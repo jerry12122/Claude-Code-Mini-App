@@ -8,6 +8,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
   <meta name="robots" content="noindex, nofollow, noarchive" />
   <meta name="theme-color" content="#0c0a09" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Claude Code" />
@@ -238,7 +239,7 @@
       }
     }
     @keyframes msg-pop-in { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-    .msg-pop { animation: msg-pop-in 0.14s ease-out; }
+    @media (prefers-reduced-motion: no-preference) { .msg-pop { animation: msg-pop-in 0.14s ease-out; } }
     .prose code:not(pre code) {
       font-family: 'JetBrains Mono', ui-monospace, monospace;
       background: transparent; padding: 0; border-radius: 0; font-size: 0.92em;
@@ -493,12 +494,13 @@
       margin-left: 0.1em;
       letter-spacing: 0.02em;
       color: oklch(0.75 0.14 275);
-      animation: streaming-dots 1s ease-in-out infinite;
     }
+    @media (prefers-reduced-motion: no-preference) { .streaming-tail { animation: streaming-dots 1s ease-in-out infinite; } }
     @keyframes pulse-dot {
       0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; }
     }
-    .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: oklch(0.62 0.19 275); margin: 0 2px; animation: pulse-dot 1.2s infinite; }
+    .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: oklch(0.62 0.19 275); margin: 0 2px; }
+    @media (prefers-reduced-motion: no-preference) { .dot { animation: pulse-dot 1.2s infinite; } }
     .dot:nth-child(2) { animation-delay: 0.2s; }
     .dot:nth-child(3) { animation-delay: 0.4s; }
     .app-scroll {
@@ -520,7 +522,7 @@
       from { opacity: 0; transform: translateY(6px); }
       to { opacity: 1; transform: translateY(0); }
     }
-    .ra-card-enter { animation: ra-fade-in 0.35s ease-out both; }
+    @media (prefers-reduced-motion: no-preference) { .ra-card-enter { animation: ra-fade-in 0.35s ease-out both; } }
     /* 淺色：內建 CSS 中未走 token 的寫死色（深色規則不變） */
     html[data-theme="light"] .ra-notes-h4 { color: oklch(0.42 0.12 280); }
     html[data-theme="light"] .ra-notes-code { color: oklch(0.48 0.14 275); }
