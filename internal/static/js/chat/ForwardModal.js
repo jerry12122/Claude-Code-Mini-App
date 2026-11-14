@@ -39,7 +39,7 @@ function ForwardModal({
     const inherited = allSessionsRef.current;
     if (Array.isArray(inherited) && inherited.length > 0) {
       setSessionsList(inherited);
-      const targets = inherited.filter((s) => s.id !== currentSessionId);
+      const targets = inherited.filter((s) => s.id !== currentSessionId && s.agent_type !== 'kiro');
       setSelectedId(targets[0]?.id ?? 'new');
       setCopyFromId(inherited[0]?.id ?? '');
     } else {
@@ -52,7 +52,7 @@ function ForwardModal({
           const list = Array.isArray(data) ? data : [];
           const sorted = sortSessionsByWorkDirThenName(list);
           setSessionsList(sorted);
-          const targets = sorted.filter((s) => s.id !== currentSessionId);
+          const targets = sorted.filter((s) => s.id !== currentSessionId && s.agent_type !== 'kiro');
           setSelectedId(targets[0]?.id ?? 'new');
           setCopyFromId(sorted[0]?.id ?? '');
         } catch (e) {
@@ -82,7 +82,7 @@ function ForwardModal({
 
   if (!payload) return null;
 
-  const targets = sessionsList.filter((s) => s.id !== currentSessionId);
+  const targets = sessionsList.filter((s) => s.id !== currentSessionId && s.agent_type !== 'kiro');
   const messageContent = String(payload.messageContent || '');
 
   const runForward = async () => {

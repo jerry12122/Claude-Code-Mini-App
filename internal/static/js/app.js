@@ -280,8 +280,12 @@ function App() {
         else toggleSplit();
       } else if (act && act.type === 'focus') {
         e.preventDefault();
-        dispatchTabGroups(act);
-        setMobileActivePane(act.groupIndex === 1 ? 'secondary' : 'primary');
+        ReactDOM.flushSync(() => {
+          dispatchTabGroups(act);
+          setMobileActivePane(act.groupIndex === 1 ? 'secondary' : 'primary');
+        });
+        const pane = document.querySelector(`[data-chat-pane="${act.groupIndex === 1 ? 'secondary' : 'primary'}"][data-chat-focused="true"]`);
+        (pane?.querySelector('textarea[data-chat-input]:not(:disabled)') || pane)?.focus({ preventScroll: true });
       } else if ((e.ctrlKey || e.metaKey) && e.altKey && (e.key === 'o' || e.key === 'O' || e.code === 'KeyO')) {
         e.preventDefault();
         toggleSplitOrientation();

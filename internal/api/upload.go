@@ -13,6 +13,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/agent"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/media"
 )
@@ -32,6 +33,9 @@ func (h *UploadHandler) Upload(c *fiber.Ctx) error {
 	sess, err := h.db.GetSession(c.Params("id"))
 	if err != nil {
 		return jsonErr(c, 404, "session 不存在")
+	}
+	if reason := agent.DisabledReason(sess.AgentType); reason != "" {
+		return jsonErr(c, 403, reason)
 	}
 	select {
 	case h.slots <- struct{}{}:

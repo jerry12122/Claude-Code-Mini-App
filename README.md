@@ -1,8 +1,8 @@
 # Claude Code Mini App
 
-> A self-hosted **multi-agent console** for Claude Code, Cursor Agent, Codex, Kiro and Antigravity. Run and supervise all your coding agents in one place — from a desktop window, any browser, or a Telegram Mini App on your phone. **One Go binary**, no separate frontend build.
+> A self-hosted **multi-agent console** for Claude Code, Cursor Agent, Codex, Kiro ACP and Antigravity. Run and supervise all your coding agents in one place — from a desktop window, any browser, or a Telegram Mini App on your phone. **One Go binary**, no separate frontend build.
 
-[![Version](https://img.shields.io/badge/version-0.18.9-blue)](#) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) [![Go](https://img.shields.io/badge/Go-1.26.11+-00ADD8?logo=go&logoColor=white)](#)
+[![Version](https://img.shields.io/badge/version-0.18.10-blue)](#) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) [![Go](https://img.shields.io/badge/Go-1.26.11+-00ADD8?logo=go&logoColor=white)](#)
 
 [繁體中文](README.zh-TW.md)
 
@@ -40,6 +40,8 @@ Detailed walkthrough: [Getting started from scratch](docs/getting-started.md) ·
 - **MCP server** — let other agents operate sessions, read history and query activity; `ask_session` has a hop limit against agent-to-agent loops
 - **Desktop auto-update** (Windows) — in-app release check and one-click upgrade with task busy-guard ([details](docs/features.md#desktop-auto-update))
 - **Shell & logs** — optional shell in `work_dir` (off by default) and a live server-log viewer in Settings → Logs
+
+Legacy Kiro CLI (`kiro` / `--no-interactive`) is no longer supported. Existing sessions remain read-only; create new sessions with Kiro ACP.
 
 Every feature in detail: [docs/features.md](docs/features.md).
 

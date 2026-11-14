@@ -29,6 +29,7 @@
 | 7 | `js/chat/chat-header.js` | `SlashCommandMenu` + `ChatSessionHeader`。 |
 | 8 | `js/chat/MentionMenu.js` | `@mention` 選單、上方 chips、送出時 `[miniapp]` 展開（詢問／討論，不是 Forward）。 |
 | 9 | `js/chat/MessageActions.js` | 訊息長按：`useLongPress`、浮動小選單 `MessageContextMenu`（複製／轉發，樣式參考 Claude iOS）、容器 `MessageActionsHost`。觸控裝置上 `.msg-lp` 會關閉原生選字，由此接手。 |
+| 9a | `js/chat/ComposerTools.js` | 手機 Plus、原生工具 dialog、設定單選頁與返回／焦點生命週期；桌面沿用內嵌工具。 |
 | 10 | `js/chat/ChatView.js` | `ChatView`（聊天主畫面，render + 操作 handler；WS 邏輯已移至 `useChatSocket`）。 |
 | 2c | `js/ui/desktop-update.js` | 桌面更新的純函式（狀態文字、錯誤代碼對應文字、`busyReason` 說明）與 `window.__desktopUpdater` 橋接；非桌面環境不掛載。測試：`scripts/desktop-update.test.cjs`。 |
 | 2d | `js/ui/DesktopUpdateSection.js` | 設定與系統匣共用的「桌面更新」區塊：版本／SHA、可用版本、純文字更新內容（不執行 HTML）、進度、下載、稍後、重新啟動並更新、重試。 |

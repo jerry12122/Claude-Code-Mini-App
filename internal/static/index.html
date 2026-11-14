@@ -303,6 +303,40 @@
       border-color: rgba(180, 83, 9, 0.45);
     }
     .ra-composer-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+    html:has(.ra-composer-sheet[open]) { overflow: hidden; }
+    .ra-composer-plus, .ra-tools-icon { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; flex-shrink: 0; border: 0; border-radius: 12px; background: transparent; color: oklch(var(--ra-t3)); cursor: pointer; }
+    .ra-composer-plus { grid-column: 1; grid-row: 1; align-self: end; }
+    .ra-chat-composer .ra-cmd-bar:has(> .ra-composer-plus) { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: end; border-radius: 16px; gap: 0 4px; padding: 4px; }
+    .ra-cmd-bar:has(> .ra-composer-plus) .ra-composer-input { grid-column: 2; grid-row: 1; align-self: center; }
+    .ra-cmd-bar:has(> .ra-composer-plus) .ra-composer-actions { grid-column: 3; grid-row: 1; }
+    .ra-cmd-bar:has(> .ra-composer-plus) .ra-composer-spacer { display: none; }
+    .ra-composer-plus svg, .ra-tools-icon svg { width: 20px; height: 20px; }
+    :is(.ra-composer-plus, .ra-tools-icon, .ra-tool-row):hover { background: oklch(var(--ra-raised)); }
+    :is(.ra-composer-plus, .ra-tools-icon, .ra-tool-row):focus-visible { outline: 2px solid oklch(var(--ra-accent-text)); outline-offset: -2px; }
+    .ra-composer-sheet { position: fixed; inset: auto 0 0; margin: 0 auto; width: 100%; max-width: none; max-height: min(70dvh, var(--tools-height, 70dvh)); padding: 0; box-sizing: border-box; border: 1px solid oklch(var(--ra-line-soft)); border-bottom: 0; border-radius: 24px 24px 0 0; background: oklch(var(--ra-card)); color: oklch(var(--ra-t1)); box-shadow: 0 -12px 48px #0003; overflow: hidden; }
+    .ra-composer-sheet[open] { display: flex; flex-direction: column; }
+    .ra-composer-sheet::backdrop { background: #0006; }
+    .ra-tools-header { display: flex; align-items: center; flex-shrink: 0; gap: 8px; padding: 12px 16px 8px; border-bottom: 1px solid oklch(var(--ra-line-soft)); }
+    .ra-tools-header h2 { flex: 1; margin: 0; font-size: 16px; font-weight: 600; }
+    .ra-tools-body { display: flex; flex-direction: column; gap: 8px; padding: 16px; padding-bottom: max(16px, env(safe-area-inset-bottom), var(--tg-safe-area-inset-bottom, 0px)); min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+    .ra-tool-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; flex-shrink: 0; padding: 12px; border: 0; border-radius: 12px; background: oklch(var(--ra-raised) / .55); color: inherit; font: inherit; font-size: 14px; text-align: left; cursor: pointer; box-sizing: border-box; }
+    .ra-tool-row[hidden] { display: none; }
+    .ra-tool-row:disabled, .ra-tool-choices:disabled { opacity: .45; cursor: default; }
+    .ra-tool-row > span:first-child { overflow-wrap: anywhere; }
+    .ra-tool-row > svg { width: 20px; height: 20px; flex-shrink: 0; color: oklch(var(--ra-t3)); }
+    .ra-tool-value { margin-left: auto; max-width: 55%; overflow-wrap: anywhere; text-align: right; color: oklch(var(--ra-t3)); font-size: 13px; }
+    .ra-tool-row.danger, .ra-tool-row.danger .ra-tool-value { color: oklch(var(--ra-warn)); }
+    .ra-tool-attach svg { width: 20px; height: 20px; flex-shrink: 0; }
+    .ra-tool-attach strong { font-weight: 600; }
+    .ra-tool-attach small { display: block; color: oklch(var(--ra-t3)); margin-top: 4px; font-size: 12px; }
+    .ra-tools-footnote { margin: 4px 8px 0; font-size: 12px; line-height: 1.6; color: oklch(var(--ra-t3)); }
+    .ra-tool-choices { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+    .ra-tool-choices .ra-tool-row { position: relative; }
+    .ra-tool-choices input { position: absolute; right: 12px; width: 20px; height: 20px; opacity: 0; }
+    .ra-tool-check { margin-left: auto; width: 20px; flex-shrink: 0; color: oklch(var(--ra-accent-text)); visibility: hidden; }
+    .ra-tool-choices input:checked + .ra-tool-check { visibility: visible; }
+    .ra-tool-row:has(input:checked) { background: oklch(var(--ra-accent-text) / .1); }
+    .ra-tool-row:has(input:focus-visible) { outline: 2px solid oklch(var(--ra-accent-text)); outline-offset: -2px; }
     .ra-select-label { display: none; }
     /* ponytail: opt in only on Telegram desktop fullscreen; other layouts keep their existing rules. */
     @media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
@@ -379,30 +413,17 @@
       .ra-composer-actions > button > svg { width: 18px; height: 18px; }
       .ra-chat-composer .ra-cmd-bar {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: 44px minmax(0, 1fr) auto;
         align-items: end;
         border-radius: 16px;
         gap: 0 4px;
         padding: 4px 4px 4px 10px;
       }
-      .ra-chat-composer .ra-composer-input { grid-column: 1; grid-row: 1; align-self: center; }
-      .ra-chat-composer .ra-composer-actions { grid-column: 2; grid-row: 1; }
+      .ra-chat-composer .ra-composer-input { grid-column: 2; grid-row: 1; align-self: center; }
+      .ra-chat-composer .ra-composer-actions { grid-column: 3; grid-row: 1; }
       .ra-chat-composer .ra-composer-actions > button { width: 44px; height: 44px; }
       .ra-chat-composer .ra-composer-spacer { display: none; }
-      /* Native file pickers can blur the WebView; keep their controls visible. */
-      .ra-chat-composer .ra-composer-tools {
-        display: flex;
-        grid-column: 1 / -1;
-        grid-row: 2;
-        margin-top: 4px;
-        padding-top: 6px;
-        border-top: 1px solid oklch(var(--ra-line-soft));
-      }
-      .ra-chat-composer .ra-composer-tools > button,
-      .ra-chat-composer .ra-composer-tools select { min-height: 40px; }
-      .ra-chat-composer .ra-composer-tools > button { min-width: 40px; }
       .ra-chat-composer textarea[data-chat-input] { max-height: min(160px, 30svh); }
-      .ra-chat-composer .ra-cmd-bar:not(:focus-within) textarea[data-chat-input] { max-height: 44px; }
     }
     .ra-cmd-badge {
       font-size: 12px;
@@ -563,6 +584,7 @@
 <script type="text/babel" data-presets="react-classic" src="./js/chat/SelectionQuotePopover.js"></script>
 <script src="./js/chat/MermaidBlock.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/chat/VirtualMessages.js"></script>
+<script type="text/babel" data-presets="react-classic" src="./js/chat/ComposerTools.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/chat/ChatView.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/setup/setupForm.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/setup/SetupWizard.js"></script>

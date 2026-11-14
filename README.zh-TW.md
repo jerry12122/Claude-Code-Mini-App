@@ -1,8 +1,8 @@
 # Claude Code Mini App
 
-> 自架的**多代理（multi-agent）控制台**，統一管理 Claude Code、Cursor Agent、Codex、Kiro 與 Antigravity。可從桌面視窗、任何瀏覽器，或手機上的 Telegram Mini App 操作。**單一 Go 二進位**，無需獨立前端建置。
+> 自架的**多代理（multi-agent）控制台**，統一管理 Claude Code、Cursor Agent、Codex、Kiro ACP 與 Antigravity。可從桌面視窗、任何瀏覽器，或手機上的 Telegram Mini App 操作。**單一 Go 二進位**，無需獨立前端建置。
 
-[![Version](https://img.shields.io/badge/version-0.18.9-blue)](#) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) [![Go](https://img.shields.io/badge/Go-1.26.11+-00ADD8?logo=go&logoColor=white)](#)
+[![Version](https://img.shields.io/badge/version-0.18.10-blue)](#) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) [![Go](https://img.shields.io/badge/Go-1.26.11+-00ADD8?logo=go&logoColor=white)](#)
 
 [English](README.md)
 
@@ -40,6 +40,8 @@
 - **MCP server** — 讓其他 agent 操作 session、讀紀錄、查活動；`ask_session` 有跳數上限防止互問迴圈
 - **桌面版自動更新**（Windows）— 於應用程式內直接檢查 Releases 並一鍵更新，具備任務忙碌保護機制（[詳細說明](docs/features.zh-TW.md#桌面版自動更新)）
 - **Shell 與日誌** — 選用的 `work_dir` shell（預設關閉），以及設定 → 日誌的即時伺服器日誌
+
+舊版 Kiro CLI（`kiro`／`--no-interactive`）已停止支援，既有會話僅供閱讀；請使用 Kiro ACP 建立新會話。
 
 每項功能的詳細說明：[docs/features.zh-TW.md](docs/features.zh-TW.md)。
 

@@ -39,33 +39,88 @@ tests:
 ---
 ### Requirement: Compact controls and zoom retain access to controls
 
-The composer SHALL preserve its existing 32 CSS pixel select and button height and existing action order. This change SHALL NOT enlarge controls or introduce a new tool-row wrapping policy. Browser zoom SHALL remain enabled. Permission, model and effort selectors SHALL remain available according to the session's existing agent and role rules when controls wrap on a narrow screen.
+The desktop composer SHALL preserve its existing compact control sizing and action order. Compact mobile layouts SHALL expose a Plus entry beside the input and send or interrupt actions and SHALL place attachment and supported setting controls in a bottom sheet. Mobile entry and sheet controls SHALL provide touch-operable targets and SHALL remain reachable when space is constrained. Browser zoom SHALL remain enabled. Permission, model and effort selectors SHALL remain available according to the session's existing agent and role rules. Mobile textarea sizing SHALL follow content and available space without changing its height limit solely because focus leaves the composer.
 
 #### Scenario: Use supported selectors on a phone
 
-- **WHEN** a session owner opens a Claude agent-mode chat at a 390 CSS pixel viewport width
-- **THEN** the supported permission, model, effort and send controls remain reachable with their existing compact arrangement without horizontal page scrolling
-- **AND** composer selectors and action buttons retain their existing 32 CSS pixel height
+- **WHEN** a session owner opens a Claude agent-mode chat on a phone and activates Plus
+- **THEN** the supported permission, model, effort and attachment actions are reachable in the sheet, including by internal scrolling, without horizontal page scrolling
 
 #### Scenario: Enlarge a narrow interface
 
 - **WHEN** the user enlarges text or uses browser zoom
-- **THEN** message input and important actions remain reachable and the page does not disable zoom through viewport restrictions
+- **THEN** message input, Plus, sheet dismissal, and important actions remain reachable and the page does not disable zoom through viewport restrictions
+
+#### Scenario: Preserve desktop controls
+
+- **WHEN** the user views an editable chat using the desktop layout
+- **THEN** the composer retains its inline tools, existing compact sizing and action order
+
+#### Scenario: Read a multiline draft after blur
+
+- **WHEN** a mobile user leaves a textarea containing a multiline draft to operate Plus or a sheet control
+- **THEN** blur alone does not collapse the textarea or hide its attachment chips
 
 
 <!-- @trace
-source: console-ux-polish
-updated: 2026-11-06
+source: mobile-composer-sheet
+updated: 2026-11-14
 code:
-  - internal/static/index.html
+  - internal/static/js/session/SessionView.js
+  - internal/server/server.go
+  - scripts/mobile-composer-mock.test.py
+  - internal/db/busy.go
+  - internal/static/sw.js
+  - internal/static/assets.go
+  - scripts/telegram-chat.test.cjs
+  - README.md
+  - internal/db/session.go
+  - internal/static/js/hooks/useNewSessionForm.js
+  - internal/quota/antigravity.go
+  - internal/db/db.go
+  - internal/static/js/hooks/useChatSocket.js
+  - internal/static/manifest.webmanifest
+  - README.zh-TW.md
+  - internal/static/AGENT.md
   - internal/static/js/chat/ChatView.js
-  - internal/static/js/chat/chat-header.js
-  - internal/static/js/core/core.js
-  - internal/static/js/ui/ui-atoms.js
-tests:
+  - internal/ws/handler.go
+  - internal/static/index.html
   - scripts/console-usability.test.cjs
-  - scripts/theme.test.cjs
-  - scripts/ux-reliability.test.cjs
+  - internal/static/js/app.js
+  - scripts/composer-attachment.test.py
+  - docs/prototypes/mobile-composer-sheet.dc.html
+  - internal/static/js/ui/ui-atoms.js
+  - internal/quota/codex.go
+  - internal/agent/factory.go
+  - internal/api/upload.go
+  - internal/static/js/ui/SessionTabs.js
+  - internal/static/assets_production.go
+  - internal/static/js/chat/ComposerTools.js
+  - internal/mcp/tools.go
+  - internal/static/robots.txt
+  - scripts/context-menu.test.cjs
+  - scripts/service-worker.test.cjs
+  - internal/usage/quota.go
+  - internal/api/session.go
+  - CHANGELOG.md
+  - internal/static/js/chat/ForwardModal.js
+tests:
+  - internal/ws/unread_test.go
+  - internal/quota/display_test.go
+  - internal/db/busy_test.go
+  - internal/usage/quota_test.go
+  - docs/spec/codex-cli.md
+  - docs/spec/antigravity-cli.md
+  - internal/db/unread_smoke_test.go
+  - docs/spec/kiro-cli.md
+  - internal/server/crawler_guard_test.go
+  - internal/server/start_helper_test.go
+  - internal/quota/codex_test.go
+  - internal/ws/kiro_readonly_test.go
+  - internal/mcp/kiro_readonly_test.go
+  - internal/quota/windows_test.go
+  - internal/api/session_test.go
+  - internal/agent/factory_test.go
 -->
 
 ---

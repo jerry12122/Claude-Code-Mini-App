@@ -124,6 +124,7 @@ function QuestionCard({ question, error, canAct, connected, send }) {
 function ChatView({ session, onBack, showBack = true, fullHeight = true, usePermModeDropdown = false, onJumpToSession, allSessions = [], guest = null, onOpenComposer, handoffInfo = null, onHandoffChange, isSplit = false, onToggleSplit = null, splitOrientation = 'horizontal', onToggleSplitOrientation = null, isSecondaryPane = false, onClosePane = null, isFocused = true }) {
   const jumpToSession = typeof onJumpToSession === 'function' ? onJumpToSession : () => {};
   const agentType = session.agent_type || 'claude';
+  const agentReadOnly = agentType === 'kiro';
   const displayAgent = sessionDisplayAgent(session) || agentType;
   // Claude / Cursor / Antigravity 皆支援 mode 切換（Codex / Telegram 暫無對應概念）
   const showPermModeSelect = agentType !== 'codex' && agentType !== 'kiro' && agentType !== 'telegram';
@@ -163,8 +164,11 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const isGuest = !!guest;
   const isSnapshot = isGuest && guest.mode === 'snapshot';
   const guestReadOnly = isGuest && (guest.role !== 'editor' || isSnapshot);
-  const canAct = !guestReadOnly; // 可以回應授權／Shell 確認等操作的人
+  const canAct = !guestReadOnly && !agentReadOnly; // 可以回應授權／Shell 確認等操作的人
   const [shareOpen, setShareOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const toolsSessionRef = useRef(session.id);
+  const updateToolsOpen = (open) => { toolsSessionRef.current = session.id; setToolsOpen(open); };
   const shareRemainingMs = useShareRemaining(isGuest ? guest.expires_at : null);
   const shareOver = isGuest && (!!shareEnded || (shareRemainingMs != null && shareRemainingMs <= 0));
   // 斷線超過 1.5 秒才顯示橫幅，切換 session 時的初次連線不閃一下；snapshot 沒有 WS、分享已結束也不顯示。
@@ -761,6 +765,16 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   };
 
   const fileInputRef = useRef(null);
+  const pickerRequestRef = useRef(null);
+  const uploadAllowedRef = useRef(false);
+  useLayoutEffect(() => {
+    pickerRequestRef.current = null;
+  }, [session.id, canAct, shareOver]);
+  const openAttachmentPicker = (sheet) => {
+    if (!uploadAllowedRef.current || pendingSendRef.current) return;
+    pickerRequestRef.current = { sessionId: session.id, mobile: !!sheet, close: sheet?.close };
+    fileInputRef.current?.click();
+  };
   const uploading = attachments.some(a => a.status === 'uploading');
   const uploadAttachment = async (item, sessionId) => {
     if (!attachmentItemsRef.current.some(a => a.id === item.id) || composerSessionRef.current !== sessionId) return;
@@ -786,23 +800,27 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     }
   };
   // Insert all placeholders immediately; serial uploads keep mobile memory bounded.
-  const uploadFiles = async (files) => {
-    if (!files.length || pendingSendRef.current || inputMode === 'shell' || isDisabled) return;
+  const uploadFiles = async (files, picker = null) => {
+    if (!files.length || pendingSendRef.current || !uploadAllowedRef.current) return;
     const sessionId = session.id;
     const items = files.map(file => ({ id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`, file, name: file.name, size: file.size, previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : '', status: 'uploading' }));
     updateAttachments(prev => [...prev, ...items]);
-    focusChatInput();
+    if (picker?.mobile) picker.close();
+    else focusChatInput();
     for (const item of items) await uploadAttachment(item, sessionId);
   };
   const retryAttachment = (id) => {
-    if (pendingSendRef.current) return;
+    if (pendingSendRef.current || !uploadAllowedRef.current) return;
     const item = attachmentItemsRef.current.find(a => a.id === id);
     if (item?.status === 'error') uploadAttachment(item, session.id);
   };
   const handleFilesPicked = (e) => {
     const files = Array.from(e.target.files || []);
     e.target.value = '';
-    uploadFiles(files);
+    const picker = pickerRequestRef.current;
+    pickerRequestRef.current = null;
+    if (!picker || picker.sessionId !== composerSessionRef.current || !uploadAllowedRef.current) return;
+    uploadFiles(files, picker);
   };
   // 貼上剪貼簿的截圖／檔案；純文字貼上不攔。截圖常沒有副檔名（後端依副檔名比白名單），依 MIME 補上。
   const handlePaste = (e) => {
@@ -820,7 +838,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   // 桌面拖放檔案：用計數器處理子元素 enter/leave 交錯造成的閃爍
   const hasFiles = (e) => Array.from(e.dataTransfer?.types || []).includes('Files');
   const handleDragEnter = (e) => {
-    if (inputMode === 'shell' || !hasFiles(e)) return;
+    if (!canAct || inputMode === 'shell' || !hasFiles(e)) return;
     e.preventDefault();
     dragDepthRef.current += 1;
     setDragOver(true);
@@ -889,9 +907,13 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const taskRunning = state === 'AWAITING_INPUT' || agentRunning || lingering || state === 'SHELL_RUNNING' || state === 'SHELL_EXEC';
   // Agent 執行中／等授權時仍可送出：後端排入佇列，前一輪成功後依序執行。
   const canQueue = inputMode !== 'shell' && (agentRunning || lingering || state === 'AWAITING_CONFIRM' || state === 'AWAITING_INPUT');
-  const isDisabled = draftRestoring || (!canQueue && (state === 'THINKING' || state === 'STREAMING' || state === 'AWAITING_CONFIRM' || state === 'AWAITING_INPUT' || state === 'SHELL_RUNNING' || state === 'SHELL_AWAITING_APPROVAL' || state === 'SHELL_EXEC' || state === 'AWAITING_SHELL_CONFIRM'));
+  const isDisabled = !canAct || draftRestoring || (!canQueue && (state === 'THINKING' || state === 'STREAMING' || state === 'AWAITING_CONFIRM' || state === 'AWAITING_INPUT' || state === 'SHELL_RUNNING' || state === 'SHELL_AWAITING_APPROVAL' || state === 'SHELL_EXEC' || state === 'AWAITING_SHELL_CONFIRM'));
+  uploadAllowedRef.current = canAct && !shareOver && !sending && !isDisabled && inputMode !== 'shell';
   const modeSwitchDisabled = ['THINKING', 'STREAMING', 'AWAITING_CONFIRM', 'AWAITING_INPUT', 'SHELL_RUNNING', 'SHELL_AWAITING_APPROVAL', 'SHELL_EXEC', 'AWAITING_SHELL_CONFIRM'].includes(state);
   const coarsePointer = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+  useLayoutEffect(() => {
+    if (toolsSessionRef.current !== session.id || !canAct || shareOver || !isFocused || (taskRunning && !canQueue)) setToolsOpen(false);
+  }, [session.id, canAct, shareOver, isFocused, taskRunning, canQueue]);
   const slashMenuOpen = slashMenuItems.length > 0;
   const composerMenuOpen = slashMenuOpen || mentionOpen;
 
@@ -968,6 +990,9 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   return (
     <div
       ref={chatRootRef}
+      data-chat-pane={isSecondaryPane ? 'secondary' : 'primary'}
+      data-chat-focused={isFocused}
+      tabIndex={-1}
       className={`flex flex-col ${fullHeight ? 'h-app' : 'h-full'}`}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
@@ -1026,13 +1051,13 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         {!isTGChat && histLoaded && historyPaging && <TelegramOlderControl paging={historyPaging} onLoad={handleLoadOlder} />}
         {histLoaded && messages.length === 0 && !(isTGChat && tgPaging && tgPaging.needsInit && tgPaging.error) && (
           <div className="ra-chat-empty mt-16 flex flex-col items-center gap-4 text-center">
-            <div className="text-sm text-ra-t4">{guestReadOnly ? '目前還沒有訊息' : '輸入指令開始對話'}</div>
+            <div className="text-sm text-ra-t4">{!canAct ? '目前還沒有訊息' : '輸入指令開始對話'}</div>
             {session.work_dir ? (
               <div className="max-w-full truncate ra-mono text-xs text-ra-t5" title={session.work_dir}>
                 {workDirGroupShortLabel(session.work_dir)}{session.git_branch ? ` · ${session.git_branch}` : ''}
               </div>
             ) : null}
-            {inputMode !== 'shell' && !isGuest && (
+            {inputMode !== 'shell' && !isGuest && canAct && (
               <div className="flex flex-wrap justify-center gap-2">
                 {EMPTY_SUGGESTIONS.map((t) => (
                   <button key={t} type="button" onClick={() => applySuggestion(t)}
@@ -1084,7 +1109,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 role: m.role,
                 canForward: canForwardShellOrAgent,
                 canShowForward: !isGuest && (m.role === 'claude' || m.role === 'shell'),
-                canQuote: !guestReadOnly && !shareOver,
+                canQuote: canAct && !shareOver,
                 streaming: !!m.streaming,
                 messageKey: msgKey,
                 createdAt: m.createdAt,
@@ -1308,12 +1333,16 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       )}
       </div>
 
-      {agentRunning && !isSnapshot && !shareOver && (
+      {agentRunning && !agentReadOnly && !isSnapshot && !shareOver && (
         <LiveActivity key={session.id} activity={liveActivity} state={state} connected={connected} runStartedAt={runStartedAt} />
       )}
 
       {/* 輸入區：水平內距略小於訊息列表，讓輸入框可用寬度較大。唯讀訪客／分享已結束時改顯示提示列。 */}
-      {guestReadOnly || shareOver ? (
+      {agentReadOnly ? (
+        <div role="status" className="shrink-0 border-t border-ra-line-soft bg-ra-bg px-4 py-4 text-center text-sm text-ra-t3">
+          Kiro CLI（舊版）已停止支援，此會話僅供閱讀；請建立 Kiro ACP 新會話
+        </div>
+      ) : guestReadOnly || shareOver ? (
         <GuestReadOnlyBar snapshot={isSnapshot} ended={shareOver} />
       ) : (
       <div
@@ -1409,29 +1438,24 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                   ].join(' ')}
                 />
               </div>
-              <div className="ra-composer-tools">
-                {!isGuest && (
-                  <ModeToggleBtn
-                    value={inputMode}
-                    onChange={handleInputModeChange}
-                    disabled={modeSwitchDisabled || sending}
-                    agentLabel={AGENT_LABEL[displayAgent] || 'Claude'}
-                  />
-                )}
-                {inputMode !== 'shell' && (
-                  <>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      multiple
-                      className="hidden"
-                      onChange={handleFilesPicked}
+              <input ref={fileInputRef} type="file" multiple hidden onChange={handleFilesPicked} onCancel={() => { pickerRequestRef.current = null; }} />
+              <ComposerTools key={session.id} open={toolsOpen && toolsSessionRef.current === session.id} setOpen={updateToolsOpen} enabled={canAct && !shareOver && isFocused}>
+                {sheet => {
+                  const modeControl = !isGuest && (
+                    <ModeToggleBtn
+                      sheet={sheet}
+                      value={inputMode}
+                      onChange={handleInputModeChange}
+                      disabled={modeSwitchDisabled || sending}
+                      agentLabel={AGENT_LABEL[displayAgent] || 'Claude'}
                     />
-                    <button type="button" onClick={() => fileInputRef.current?.click()}
+                  );
+                  const attachmentControl = inputMode !== 'shell' && (
+                    <button type="button" hidden={!!sheet?.page} onClick={() => openAttachmentPicker(sheet)}
                       disabled={sending || isDisabled}
                       aria-label="附加圖片或檔案"
                       title="附加圖片或檔案"
-                      className="shrink-0 flex items-center justify-center w-8 h-8 rounded-[8px] text-ra-t3 hover:bg-ra-raised hover:text-violet-300 disabled:opacity-40 transition-colors">
+                      className={sheet ? 'ra-tool-row ra-tool-attach' : 'shrink-0 flex items-center justify-center w-8 h-8 rounded-[8px] text-ra-t3 hover:bg-ra-raised hover:text-violet-300 disabled:opacity-40 transition-colors'}>
                       {uploading ? (
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="w-4 h-4 animate-spin" aria-hidden="true">
                           <path d="M21 12a9 9 0 1 1-6.22-8.56" />
@@ -1441,42 +1465,53 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                           <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
                         </svg>
                       )}
+                      {sheet && <span><strong>加入圖片或檔案</strong><small>選取後回到訊息草稿</small></span>}
                     </button>
-                    {!isGuest && (
-                      <>
-                        {showPermModeSelect && (
-                          <PermModeSelect
-                            compact
-                            agentType={agentType}
-                            value={mode}
-                            onChange={handlePermModeDraftChange}
-                            disabled={modeSwitchDisabled}
-                            title={agentType === 'antigravity' ? 'Antigravity 權限模式' : agentType === 'cursor' ? '權限模式（bypass：Cursor 會加 --force）' : '權限模式'}
-                            id="chat-perm-mode"
-                          />
-                        )}
-                        <ModelSelect
-                          compact
-                          agentType={agentType}
-                          value={modelSel}
-                          onChange={handleModelDraftChange}
-                          disabled={modeSwitchDisabled}
-                          id="chat-model"
-                        />
-                        {showEffortSelect && (
-                          <EffortSelect
-                            compact
-                            value={effortSel}
-                            onChange={handleEffortDraftChange}
-                            disabled={modeSwitchDisabled}
-                            id="chat-effort"
-                          />
-                        )}
-                      </>
-                    )}
-                  </>
-                )}
-              </div>
+                  );
+                  const permissionControl = showPermModeSelect && (
+                    <PermModeSelect
+                      sheet={sheet}
+                      compact
+                      agentType={agentType}
+                      value={mode}
+                      onChange={handlePermModeDraftChange}
+                      disabled={modeSwitchDisabled}
+                      title={agentType === 'antigravity' ? 'Antigravity 權限模式' : agentType === 'cursor' ? '權限模式（bypass：Cursor 會加 --force）' : '權限模式'}
+                      id="chat-perm-mode"
+                    />
+                  );
+                  const modelControl = (
+                    <ModelSelect
+                      sheet={sheet}
+                      compact
+                      agentType={agentType}
+                      value={modelSel}
+                      onChange={handleModelDraftChange}
+                      disabled={modeSwitchDisabled}
+                      id="chat-model"
+                    />
+                  );
+                  const effortControl = showEffortSelect && (
+                    <EffortSelect
+                      sheet={sheet}
+                      compact
+                      value={effortSel}
+                      onChange={handleEffortDraftChange}
+                      disabled={modeSwitchDisabled}
+                      id="chat-effort"
+                    />
+                  );
+                  return <>
+                    {!sheet && modeControl}
+                    {attachmentControl}
+                    {sheet && modeControl}
+                    {!isGuest && inputMode !== 'shell' && (sheet
+                      ? <>{modelControl}{effortControl}{permissionControl}</>
+                      : <>{permissionControl}{modelControl}{effortControl}</>)}
+                    {sheet && !sheet.page && !isGuest && inputMode !== 'shell' && <p className="ra-tools-footnote">模型、思考強度與權限將於下次送出套用。</p>}
+                  </>;
+                }}
+              </ComposerTools>
               {/* 把中斷／送出推到按鈕列右側 */}
               <div className="ra-composer-spacer flex-1" aria-hidden="true" />
               <div className="ra-composer-actions flex shrink-0 items-center gap-2">
@@ -1535,7 +1570,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       />
 
       <SelectionQuotePopover
-        targetRect={quoteSelection ? quoteSelection.targetRect : null}
+        targetRect={canAct && quoteSelection ? quoteSelection.targetRect : null}
         onQuote={handleQuoteReply}
         onClose={() => setQuoteSelection(null)}
       />

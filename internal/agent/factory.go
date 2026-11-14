@@ -8,8 +8,8 @@ const (
 	TypeCursor      = "cursor"
 	TypeCodex       = "codex"
 	TypeAntigravity = "antigravity"
-	TypeKiro        = "kiro"
-	// TypeKiroACP：kiro-cli acp（JSON-RPC），與 TypeKiro（--no-interactive）並存。
+	TypeKiro        = "kiro" // 已停止支援，既有會話僅供閱讀。
+	// TypeKiroACP：kiro-cli acp（JSON-RPC）。
 	TypeKiroACP = "kiroacp"
 	// TypeGemini 是 Antigravity 的舊別名，既有 Session 可執行，但不可新建。
 	TypeGemini = "gemini"
@@ -19,7 +19,6 @@ const (
 
 // createDisabledAgentTypes 不可新建，但既有 Session 仍可執行。
 var createDisabledAgentTypes = map[string]string{
-	TypeKiro:   "請改用 Kiro ACP（kiroacp）建立新會話",
 	TypeGemini: "請改用 Antigravity（antigravity）建立新會話",
 }
 
@@ -33,11 +32,14 @@ func normalizeAgentType(agentType string) string {
 	return agentType
 }
 
-// IsEnabled 保留既有 API；ponytail: 目前沒有停用的 agent_type，註冊檢查由 IsRegistered 處理。
-func IsEnabled(string) bool { return true }
+// IsEnabled 不影響既有會話與歷史的讀取。
+func IsEnabled(agentType string) bool { return DisabledReason(agentType) == "" }
 
 // CanCreate 檢查 agent_type 是否可新建 Session。
 func CanCreate(agentType string) bool {
+	if !IsEnabled(agentType) {
+		return false
+	}
 	if _, disabled := createDisabledAgentTypes[agentType]; disabled {
 		return false
 	}
@@ -45,11 +47,18 @@ func CanCreate(agentType string) bool {
 	return !disabled
 }
 
-// DisabledReason：目前沒有停用的 agent_type。
-func DisabledReason(string) string { return "" }
+func DisabledReason(agentType string) string {
+	if agentType == TypeKiro {
+		return "Kiro CLI（舊版）已停止支援，此會話僅供閱讀；請建立 Kiro ACP 新會話"
+	}
+	return ""
+}
 
 // CreateDisabledReason 回傳不可新建的原因；可新建時為空字串。
 func CreateDisabledReason(agentType string) string {
+	if reason := DisabledReason(agentType); reason != "" {
+		return reason
+	}
 	if reason, ok := createDisabledAgentTypes[agentType]; ok {
 		return reason
 	}
@@ -69,6 +78,9 @@ func Register(name string, build runnerBuilder) {
 // NewRunner 依 agentType 建立 Runner 實例。
 // agentType 為空字串時預設為 "claude"。
 func NewRunner(agentType string) (Runner, error) {
+	if reason := DisabledReason(agentType); reason != "" {
+		return nil, fmt.Errorf("%s", reason)
+	}
 	agentType = normalizeAgentType(agentType)
 	b, ok := registry[agentType]
 	if !ok {

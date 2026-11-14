@@ -22,12 +22,14 @@ func (r WorkReport) Busy() bool {
 // PendingWork 讀取全站工作摘要。任何錯誤都回傳給呼叫端，不以「空閒」掩蓋。
 func (db *DB) PendingWork() (WorkReport, error) {
 	var r WorkReport
+	// 舊 Kiro 已唯讀；保留的佇列／待確認資料不再是可執行工作，不應阻擋更新。
 	err := db.QueryRow(
-		`SELECT
-			(SELECT COUNT(*) FROM queued_messages),
-			(SELECT COUNT(*) FROM sessions WHERE TRIM(pending_denials) != ''),
-			(SELECT COUNT(*) FROM sessions WHERE TRIM(shell_pending) != ''),
-			(SELECT COUNT(*) FROM sessions WHERE status IN (?, ?, ?))`,
+		`WITH writable_sessions AS (SELECT * FROM sessions WHERE agent_type != 'kiro')
+		SELECT
+			(SELECT COUNT(*) FROM queued_messages q JOIN writable_sessions s ON s.id = q.session_id),
+			(SELECT COUNT(*) FROM writable_sessions WHERE TRIM(pending_denials) != ''),
+			(SELECT COUNT(*) FROM writable_sessions WHERE TRIM(shell_pending) != ''),
+			(SELECT COUNT(*) FROM writable_sessions WHERE status IN (?, ?, ?))`,
 		SessionStatusRunning, SessionStatusAwaitingInput, SessionStatusAwaitingShellConfirm,
 	).Scan(&r.QueuedMessages, &r.PendingDenials, &r.ShellPending, &r.ActiveStatus)
 	return r, err
@@ -38,8 +40,8 @@ func (db *DB) PendingWorkDetails() ([]string, error) {
 	rows, err := db.Query(`SELECT s.id, s.name, s.status, s.queue_paused,
 		TRIM(s.pending_denials) != '', TRIM(s.shell_pending) != '', COALESCE(q.n, 0)
 		FROM sessions s LEFT JOIN (SELECT session_id, COUNT(*) n FROM queued_messages GROUP BY session_id) q ON q.session_id=s.id
-		WHERE q.n > 0 OR TRIM(s.pending_denials) != '' OR TRIM(s.shell_pending) != ''
-		OR s.status IN ('running','awaiting_input','awaiting_shell_confirm') ORDER BY s.id LIMIT 50`)
+		WHERE s.agent_type != 'kiro' AND (q.n > 0 OR TRIM(s.pending_denials) != '' OR TRIM(s.shell_pending) != ''
+		OR s.status IN ('running','awaiting_input','awaiting_shell_confirm')) ORDER BY s.id LIMIT 50`)
 	if err != nil {
 		return nil, err
 	}

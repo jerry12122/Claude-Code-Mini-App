@@ -1,5 +1,7 @@
 # Kiro CLI 整合規格
 
+> **已停止支援**：舊版 `kiro` runner（`--no-interactive`）不再執行，既有會話僅供閱讀；新會話請使用 Kiro ACP（`kiroacp`）。以下保留為歷史實作紀錄。
+
 > 版本：kiro-cli 2.10.0（實測）  
 > 參考：[官方 headless 文件](https://kiro.dev/docs/cli/headless/)  
 > 關聯實作：`internal/kiro/runner.go`

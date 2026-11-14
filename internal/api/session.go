@@ -299,6 +299,18 @@ func (h *SessionHandler) Patch(c *fiber.Ctx) error {
 	if body.Name == nil && body.CliExtraArgs == nil && body.MarkRead == nil && body.Pinned == nil {
 		return c.Status(400).JSON(fiber.Map{"error": "name、cli_extra_args、mark_read 或 pinned 至少指定一項"})
 	}
+	if body.CliExtraArgs != nil {
+		s, err := h.db.GetSession(id)
+		if err != nil {
+			if !errors.Is(err, sql.ErrNoRows) {
+				return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+			}
+			return c.Status(404).JSON(fiber.Map{"error": "session 不存在"})
+		}
+		if reason := agent.DisabledReason(s.AgentType); reason != "" {
+			return c.Status(403).JSON(fiber.Map{"error": reason})
+		}
+	}
 	if body.Name != nil {
 		trimmed := strings.TrimSpace(*body.Name)
 		if trimmed == "" {

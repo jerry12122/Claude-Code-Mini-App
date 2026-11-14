@@ -288,7 +288,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 			ShellType:      syncData.ShellType,
 			ShellPending:   syncData.ShellPendingCmd,
 		}
-		if quotaSvc != nil {
+		if quotaSvc != nil && agent.IsEnabled(agentType) {
 			q := quotaSvc.Get(agentType)
 			p := q.ToPayload()
 			syncMsg.Quota = &p
@@ -305,7 +305,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 		announcePresence(sessionID, "join", entry.displayName(), isGuest)
 
 		// 進入會話時若 quota cache 已過期，背景補打一次並推播更新（cache 未過期則 RefreshAfterRun 內部直接跳過）。
-		if quotaSvc != nil {
+		if quotaSvc != nil && agent.IsEnabled(agentType) {
 			go func(at string) {
 				snap, err := quotaSvc.RefreshAfterRun(context.Background(), at)
 				if err != nil {
@@ -1343,6 +1343,14 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 
 			if msg.Type == "ping" {
 				send(serverMsg{Type: "pong"})
+				continue
+			}
+			if reason := agent.DisabledReason(agentType); reason != "" {
+				kind := "error"
+				if msg.Type == "input" && msg.RequestID != "" {
+					kind = "input_rejected"
+				}
+				send(serverMsg{Type: kind, RequestID: msg.RequestID, Code: "agent_disabled", Content: reason})
 				continue
 			}
 			// 唯讀訪客（viewer）：除 ping 外一律丟棄並回錯誤事件，不進入任何處理。角色由後端強制。

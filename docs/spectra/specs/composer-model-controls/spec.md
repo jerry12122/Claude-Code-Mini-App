@@ -8,57 +8,83 @@ Defines where the model, effort, and permission-mode selectors appear in the cha
 
 ### Requirement: Composer action row hosts model, effort, and permission controls
 
-The chat composer SHALL render a permission-mode selector, a model selector, and an effort selector in its action row, immediately after the attachment button, for the owner of a session in agent input mode.
+For a session owner in agent input mode, the chat composer SHALL expose the permission-mode, model, and effort selectors supported by that session's agent type. Desktop layouts SHALL render these controls in the action row immediately after the attachment button. Compact mobile layouts SHALL expose them inside the tools sheet reached by the composer's Plus button, with the current selection visible for each supported control. The sheet SHALL also retain the owner's allowed input-mode switch. Agent-type availability, busy-state disabling, dangerous permission emphasis, and next-send application SHALL retain their existing behavior.
 
 #### Scenario: Controls visible in agent mode
 
 - **WHEN** the session owner views a Claude session with the composer in agent input mode
-- **THEN** the composer action row shows the permission-mode, model, and effort selectors after the attachment button
+- **THEN** desktop shows the permission-mode, model, and effort selectors after the attachment button and compact mobile exposes them through Plus in the tools sheet
 
 #### Scenario: Controls hidden in shell mode
 
 - **WHEN** the composer is switched to shell input mode
-- **THEN** none of the three selectors is rendered
+- **THEN** none of the three selectors is rendered in either the desktop action row or the mobile sheet and the owner's allowed mode switch remains reachable
 
 #### Scenario: Controls hidden for guests
 
 - **WHEN** a guest opens a shared chat
-- **THEN** none of the three selectors is rendered
+- **THEN** none of the three selectors or the owner-only mode switch is rendered and a writable guest retains the existing attachment action through the mobile sheet
 
 
 <!-- @trace
-source: composer-model-controls
-updated: 2026-10-16
+source: mobile-composer-sheet
+updated: 2026-11-14
 code:
-  - internal/quota/claude.go
-  - internal/static/AGENT.md
-  - internal/quota/cursor.go
-  - internal/static/js/chat/chat-header.js
-  - internal/quota/antigravity.go
-  - internal/server/server.go
-  - internal/quota/codex.go
-  - internal/quota/result.go
-  - internal/static/js/chat/ChatView.js
-  - internal/static/js/ui/ui-atoms.js
-  - internal/static/js/hooks/tabGroups.js
-  - CLAUDE.md
-  - internal/ws/handler.go
-  - internal/static/js/hooks/useChatSocket.js
-  - internal/static/index.html
-  - AGENTS.md
   - internal/static/js/session/SessionView.js
-  - internal/quota/kiro.go
-  - internal/static/js/core/core.js
+  - internal/server/server.go
+  - scripts/mobile-composer-mock.test.py
+  - internal/db/busy.go
+  - internal/static/sw.js
+  - internal/static/assets.go
+  - scripts/telegram-chat.test.cjs
+  - README.md
+  - internal/db/session.go
+  - internal/static/js/hooks/useNewSessionForm.js
+  - internal/quota/antigravity.go
+  - internal/db/db.go
+  - internal/static/js/hooks/useChatSocket.js
+  - internal/static/manifest.webmanifest
+  - README.zh-TW.md
+  - internal/static/AGENT.md
+  - internal/static/js/chat/ChatView.js
+  - internal/ws/handler.go
+  - internal/static/index.html
+  - scripts/console-usability.test.cjs
   - internal/static/js/app.js
-  - internal/quota/windows.go
+  - scripts/composer-attachment.test.py
+  - docs/prototypes/mobile-composer-sheet.dc.html
+  - internal/static/js/ui/ui-atoms.js
+  - internal/quota/codex.go
+  - internal/agent/factory.go
+  - internal/api/upload.go
   - internal/static/js/ui/SessionTabs.js
-  - internal/static/js/ui/SettingsModal.js
-  - internal/version/version.go
-  - scripts/tab-groups.test.cjs
+  - internal/static/assets_production.go
+  - internal/static/js/chat/ComposerTools.js
+  - internal/mcp/tools.go
+  - internal/static/robots.txt
+  - scripts/context-menu.test.cjs
+  - scripts/service-worker.test.cjs
+  - internal/usage/quota.go
+  - internal/api/session.go
+  - CHANGELOG.md
+  - internal/static/js/chat/ForwardModal.js
 tests:
+  - internal/ws/unread_test.go
+  - internal/quota/display_test.go
+  - internal/db/busy_test.go
+  - internal/usage/quota_test.go
+  - docs/spec/codex-cli.md
+  - docs/spec/antigravity-cli.md
+  - internal/db/unread_smoke_test.go
+  - docs/spec/kiro-cli.md
+  - internal/server/crawler_guard_test.go
+  - internal/server/start_helper_test.go
+  - internal/quota/codex_test.go
+  - internal/ws/kiro_readonly_test.go
+  - internal/mcp/kiro_readonly_test.go
   - internal/quota/windows_test.go
-  - internal/ws/queue_test.go
-  - internal/version/version_test.go
+  - internal/api/session_test.go
+  - internal/agent/factory_test.go
 -->
 
 ---
@@ -263,52 +289,78 @@ tests:
 ---
 ### Requirement: Chat header no longer duplicates the controls
 
-The chat header SHALL NOT render model, effort, or permission-mode selectors, nor a collapse toggle for them, on desktop or mobile; the repo, model label, and quota sub-line MUST remain.
+The chat header SHALL NOT render model, effort, or permission-mode selectors, nor a toggle for those selectors, on desktop or mobile. Existing header identity, model labels, quota information, and session-details disclosure SHALL remain governed by their current behavior. Desktop selectors SHALL remain inline in the composer and compact mobile selectors SHALL be reachable by activating the composer's Plus button without requiring textarea focus.
 
 #### Scenario: Desktop header
 
-- **WHEN** a session owner views the chat on a viewport at least 640px wide
-- **THEN** the header shows no model, effort, or permission selectors while the repo, model label, and quota sub-line remain
+- **WHEN** a session owner views a chat using the desktop layout
+- **THEN** the header shows no model, effort, or permission selectors while its existing identity, model label, and quota information remain available
 
 #### Scenario: Mobile header
 
-- **WHEN** a session owner views the chat on a viewport under 640px wide
-- **THEN** the header has no expand/collapse button and no permission icon chip, and the selectors are reachable in the composer without extra taps
+- **WHEN** a session owner views a chat using the compact mobile layout
+- **THEN** the header does not duplicate permission, model, or effort controls and Plus provides access to supported selectors without focusing the message input or expanding header details
 
 
 <!-- @trace
-source: composer-model-controls
-updated: 2026-10-16
+source: mobile-composer-sheet
+updated: 2026-11-14
 code:
-  - internal/quota/claude.go
-  - internal/static/AGENT.md
-  - internal/quota/cursor.go
-  - internal/static/js/chat/chat-header.js
-  - internal/quota/antigravity.go
-  - internal/server/server.go
-  - internal/quota/codex.go
-  - internal/quota/result.go
-  - internal/static/js/chat/ChatView.js
-  - internal/static/js/ui/ui-atoms.js
-  - internal/static/js/hooks/tabGroups.js
-  - CLAUDE.md
-  - internal/ws/handler.go
-  - internal/static/js/hooks/useChatSocket.js
-  - internal/static/index.html
-  - AGENTS.md
   - internal/static/js/session/SessionView.js
-  - internal/quota/kiro.go
-  - internal/static/js/core/core.js
+  - internal/server/server.go
+  - scripts/mobile-composer-mock.test.py
+  - internal/db/busy.go
+  - internal/static/sw.js
+  - internal/static/assets.go
+  - scripts/telegram-chat.test.cjs
+  - README.md
+  - internal/db/session.go
+  - internal/static/js/hooks/useNewSessionForm.js
+  - internal/quota/antigravity.go
+  - internal/db/db.go
+  - internal/static/js/hooks/useChatSocket.js
+  - internal/static/manifest.webmanifest
+  - README.zh-TW.md
+  - internal/static/AGENT.md
+  - internal/static/js/chat/ChatView.js
+  - internal/ws/handler.go
+  - internal/static/index.html
+  - scripts/console-usability.test.cjs
   - internal/static/js/app.js
-  - internal/quota/windows.go
+  - scripts/composer-attachment.test.py
+  - docs/prototypes/mobile-composer-sheet.dc.html
+  - internal/static/js/ui/ui-atoms.js
+  - internal/quota/codex.go
+  - internal/agent/factory.go
+  - internal/api/upload.go
   - internal/static/js/ui/SessionTabs.js
-  - internal/static/js/ui/SettingsModal.js
-  - internal/version/version.go
-  - scripts/tab-groups.test.cjs
+  - internal/static/assets_production.go
+  - internal/static/js/chat/ComposerTools.js
+  - internal/mcp/tools.go
+  - internal/static/robots.txt
+  - scripts/context-menu.test.cjs
+  - scripts/service-worker.test.cjs
+  - internal/usage/quota.go
+  - internal/api/session.go
+  - CHANGELOG.md
+  - internal/static/js/chat/ForwardModal.js
 tests:
+  - internal/ws/unread_test.go
+  - internal/quota/display_test.go
+  - internal/db/busy_test.go
+  - internal/usage/quota_test.go
+  - docs/spec/codex-cli.md
+  - docs/spec/antigravity-cli.md
+  - internal/db/unread_smoke_test.go
+  - docs/spec/kiro-cli.md
+  - internal/server/crawler_guard_test.go
+  - internal/server/start_helper_test.go
+  - internal/quota/codex_test.go
+  - internal/ws/kiro_readonly_test.go
+  - internal/mcp/kiro_readonly_test.go
   - internal/quota/windows_test.go
-  - internal/ws/queue_test.go
-  - internal/version/version_test.go
+  - internal/api/session_test.go
+  - internal/agent/factory_test.go
 -->
 
 ---

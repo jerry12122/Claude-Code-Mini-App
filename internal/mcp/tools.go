@@ -28,6 +28,17 @@ type deps struct {
 	notifier func(botToken string, chatID int64, text string) error
 }
 
+func (d *deps) requireWritableSession(sessionID string) error {
+	s, err := d.db.GetSession(sessionID)
+	if err != nil {
+		return err
+	}
+	if reason := agent.DisabledReason(s.AgentType); reason != "" {
+		return errors.New(reason)
+	}
+	return nil
+}
+
 const (
 	defaultActivityLimit    = 200
 	maxActivityLimit        = 500
@@ -249,7 +260,7 @@ func (d *deps) deleteQueueMessage(_ context.Context, _ *gomcp.CallToolRequest, i
 	if in.MessageID <= 0 {
 		return nil, okOut{}, fmt.Errorf("message_id 必須大於 0")
 	}
-	if _, err := d.db.GetSession(sessionID); err != nil {
+	if err := d.requireWritableSession(sessionID); err != nil {
 		return nil, okOut{}, err
 	}
 	if err := ws.RemoveQueuedMessage(d.db, sessionID, in.MessageID); err != nil {
@@ -380,6 +391,9 @@ func (d *deps) prepareConsult(toID, fromID, rawText string, mode consultMode) (s
 	text := strings.TrimSpace(rawText)
 	if text == "" {
 		return "", fmt.Errorf("text 不可為空")
+	}
+	if err := d.requireWritableSession(toID); err != nil {
+		return "", err
 	}
 	fromID = strings.TrimSpace(fromID)
 	if fromID == "" {
@@ -514,6 +528,9 @@ type respondPermissionIn struct {
 }
 
 func (d *deps) respondPermission(_ context.Context, _ *gomcp.CallToolRequest, in respondPermissionIn) (*gomcp.CallToolResult, startedOut, error) {
+	if err := d.requireWritableSession(in.SessionID); err != nil {
+		return nil, startedOut{}, err
+	}
 	if err := d.reg.RespondPermission(in.SessionID, in.Decision, in.Tools); err != nil {
 		return nil, startedOut{}, err
 	}
@@ -528,6 +545,9 @@ type setPermissionModeIn struct {
 }
 
 func (d *deps) setPermissionMode(_ context.Context, _ *gomcp.CallToolRequest, in setPermissionModeIn) (*gomcp.CallToolResult, okOut, error) {
+	if err := d.requireWritableSession(in.SessionID); err != nil {
+		return nil, okOut{}, err
+	}
 	if err := d.reg.SetPermissionMode(in.SessionID, in.Mode); err != nil {
 		return nil, okOut{}, err
 	}
@@ -542,6 +562,9 @@ type setModelIn struct {
 }
 
 func (d *deps) setModel(_ context.Context, _ *gomcp.CallToolRequest, in setModelIn) (*gomcp.CallToolResult, okOut, error) {
+	if err := d.requireWritableSession(in.SessionID); err != nil {
+		return nil, okOut{}, err
+	}
 	if err := d.reg.SetModel(in.SessionID, in.Model); err != nil {
 		return nil, okOut{}, err
 	}
@@ -554,6 +577,9 @@ type setEffortIn struct {
 }
 
 func (d *deps) setEffort(_ context.Context, _ *gomcp.CallToolRequest, in setEffortIn) (*gomcp.CallToolResult, okOut, error) {
+	if err := d.requireWritableSession(in.SessionID); err != nil {
+		return nil, okOut{}, err
+	}
 	if err := d.reg.SetEffort(in.SessionID, in.Effort); err != nil {
 		return nil, okOut{}, err
 	}
@@ -563,6 +589,9 @@ func (d *deps) setEffort(_ context.Context, _ *gomcp.CallToolRequest, in setEffo
 // --- interrupt ---
 
 func (d *deps) interrupt(_ context.Context, _ *gomcp.CallToolRequest, in sessionIDIn) (*gomcp.CallToolResult, okOut, error) {
+	if err := d.requireWritableSession(in.SessionID); err != nil {
+		return nil, okOut{}, err
+	}
 	if err := d.reg.Interrupt(in.SessionID); err != nil {
 		return nil, okOut{}, err
 	}
@@ -584,6 +613,9 @@ func (d *deps) resumeQueue(_ context.Context, _ *gomcp.CallToolRequest, in sessi
 		}
 		return nil, okOut{}, err
 	}
+	if err := d.requireWritableSession(sessionID); err != nil {
+		return nil, okOut{}, err
+	}
 	if err := d.reg.ResumeQueue(sessionID); err != nil {
 		return nil, okOut{}, err
 	}
@@ -600,6 +632,9 @@ type shellExecIn struct {
 func (d *deps) shellExec(_ context.Context, _ *gomcp.CallToolRequest, in shellExecIn) (*gomcp.CallToolResult, startedOut, error) {
 	if strings.TrimSpace(in.Command) == "" {
 		return nil, startedOut{}, fmt.Errorf("command 不可為空")
+	}
+	if err := d.requireWritableSession(in.SessionID); err != nil {
+		return nil, startedOut{}, err
 	}
 	if err := d.reg.ShellExec(in.SessionID, in.Command); err != nil {
 		return nil, startedOut{}, err
@@ -658,6 +693,9 @@ func (d *deps) postMessage(_ context.Context, _ *gomcp.CallToolRequest, in postM
 	_, err := d.db.GetSession(sessionID)
 	if err != nil {
 		return nil, postMessageOut{}, fmt.Errorf("session_id 不存在: %w", err)
+	}
+	if err := d.requireWritableSession(sessionID); err != nil {
+		return nil, postMessageOut{}, err
 	}
 
 	role := strings.ToLower(strings.TrimSpace(in.Role))

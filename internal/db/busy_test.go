@@ -45,4 +45,13 @@ func TestPendingWork(t *testing.T) {
 			t.Fatalf("%s 應被計入忙碌: %+v", c.name, r)
 		}
 	}
+	if _, err := database.Exec("UPDATE sessions SET agent_type = 'kiro' WHERE id = ?", s.ID); err != nil {
+		t.Fatal(err)
+	}
+	if report, err := database.PendingWork(); err != nil || report.Busy() {
+		t.Fatalf("唯讀 Kiro 不應阻擋更新: %+v, %v", report, err)
+	}
+	if details, err := database.PendingWorkDetails(); err != nil || len(details) != 0 {
+		t.Fatalf("唯讀 Kiro 不應列為待處理工作: %+v, %v", details, err)
+	}
 }

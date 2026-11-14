@@ -34,9 +34,12 @@ func TestIsEnabledClaude(t *testing.T) {
 	}
 }
 
-func TestCanCreateKiroDisabledKeepACP(t *testing.T) {
-	if !IsEnabled(TypeKiro) {
-		t.Fatal("既有 kiro session 仍應可執行")
+func TestKiroReadOnlyKeepACP(t *testing.T) {
+	if IsEnabled(TypeKiro) {
+		t.Fatal("既有 kiro session 應為唯讀")
+	}
+	if _, err := NewRunner(TypeKiro); err == nil || err.Error() != DisabledReason(TypeKiro) {
+		t.Fatalf("kiro runner 應拒絕執行並說明原因: %v", err)
 	}
 	if CanCreate(TypeKiro) {
 		t.Fatal("kiro 不可新建")
@@ -44,7 +47,7 @@ func TestCanCreateKiroDisabledKeepACP(t *testing.T) {
 	if CreateDisabledReason(TypeKiro) == "" {
 		t.Fatal("kiro 應有不可新建原因")
 	}
-	if !CanCreate(TypeKiroACP) {
+	if !IsEnabled(TypeKiroACP) || !CanCreate(TypeKiroACP) {
 		t.Fatal("kiroacp 應可新建")
 	}
 	if !CanCreate(TypeClaude) {

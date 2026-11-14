@@ -409,13 +409,14 @@ const selectWrapClass = (compact, className) => compact ? 'relative shrink-0 min
 const selectClass = (compact, danger, className) => compact ? selectCompactClass(danger) : `${selectBaseClass(danger)} ${className || ''}`;
 
 /** 權限模式：窄螢幕（app 版）用下拉選單，與 PermModeSwitch 選項一致。danger 值會套用琥珀邊框（與分段按鈕語意一致）。 */
-function PermModeSelect({ agentType, value, onChange, disabled, title, id, className, compact }) {
+function PermModeSelect({ agentType, value, onChange, disabled, title, id, className, compact, sheet }) {
   const opts = permModeOptionsFor(agentType);
   const t = String(agentType || 'claude').toLowerCase();
   const ariaLabel =
     title || (t === 'antigravity' ? 'Antigravity 核准模式' : '權限模式');
   const selectId = id || `perm-mode-select-${t}`;
   const danger = value === 'bypassPermissions' || value === 'yolo';
+  if (sheet) return <ComposerToolChoice id={selectId} label="權限" value={value} options={opts} onChange={onChange} disabled={disabled} danger={danger} sheet={sheet} />;
   return (
     <div className={selectWrapClass(compact, className)}>
       <span className="ra-select-label" aria-hidden="true">權限</span>
@@ -437,7 +438,7 @@ function PermModeSelect({ agentType, value, onChange, disabled, title, id, class
 }
 
 /** Model 下拉選單：選項打 GET /model-options/:agentType，固定含「預設（不指定）」。 */
-function ModelSelect({ agentType, value, onChange, disabled, id, className, compact }) {
+function ModelSelect({ agentType, value, onChange, disabled, id, className, compact, sheet }) {
   const [opts, setOpts] = useState([]);
   useEffect(() => {
     let cancelled = false;
@@ -447,6 +448,9 @@ function ModelSelect({ agentType, value, onChange, disabled, id, className, comp
       .catch(() => { if (!cancelled) setOpts([]); });
     return () => { cancelled = true; };
   }, [agentType]);
+  if (sheet) return <ComposerToolChoice id={id || 'model'} label="模型" value={value || ''}
+    options={[{ value: '', label: '預設' }, ...opts.map(opt => ({ value: opt.model_id, label: opt.label }))]}
+    onChange={onChange} disabled={disabled} sheet={sheet} />;
   return (
     <div className={selectWrapClass(compact, className)}>
       <span className="ra-select-label" aria-hidden="true">模型</span>
@@ -469,7 +473,10 @@ function ModelSelect({ agentType, value, onChange, disabled, id, className, comp
 }
 
 /** Effort 下拉選單：固定 low/medium/high/xhigh/max，含「預設（不指定）」。Cursor 不支援，呼叫端不應渲染。 */
-function EffortSelect({ value, onChange, disabled, id, className, compact }) {
+function EffortSelect({ value, onChange, disabled, id, className, compact, sheet }) {
+  if (sheet) return <ComposerToolChoice id={id || 'effort'} label="思考強度" value={value || ''}
+    options={[{ value: '', label: '預設' }, ...EFFORT_OPTIONS.map(value => ({ value, label: value }))]}
+    onChange={onChange} disabled={disabled} sheet={sheet} />;
   return (
     <div className={selectWrapClass(compact, className)}>
       <span className="ra-select-label" aria-hidden="true">思考強度</span>
@@ -1082,7 +1089,10 @@ function InputModeTab({ value, onChange, disabled }) {
   );
 }
 
-function ModeToggleBtn({ value, onChange, disabled, showLabel = false, agentLabel = 'Claude' }) {
+function ModeToggleBtn({ value, onChange, disabled, showLabel = false, agentLabel = 'Claude', sheet }) {
+  if (sheet) return <ComposerToolChoice id="input-mode" label="輸入模式" value={value}
+    options={[{ value: 'agent', label: agentLabel }, { value: 'shell', label: 'Shell' }]}
+    onChange={onChange} disabled={disabled} sheet={sheet} />;
   const isShell = value === 'shell';
   return (
     <button
