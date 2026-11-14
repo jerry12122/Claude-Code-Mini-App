@@ -1347,7 +1347,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       ) : (
       <div
         className={`ra-chat-composer shrink-0 px-3 sm:px-7 py-2 sm:py-4 border-t transition-colors duration-200 ${inputMode === 'shell' ? 'bg-ra-bg border-amber-900/40' : 'bg-ra-bg border-ra-line-soft'}`}
-        style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
+        style={{ paddingBottom: 'calc(0.75rem + var(--ra-safe-bottom, env(safe-area-inset-bottom)))' }}
       >
         {taskRunning && !canQueue ? (
           <button onClick={handleInterrupt}

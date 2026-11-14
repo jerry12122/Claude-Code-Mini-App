@@ -195,6 +195,7 @@
     .ra-notes-hr { border: 0; border-top: 1px solid oklch(var(--ra-line)); margin: 10px 0; }
     .ra-display { font-family: 'Manrope', sans-serif; font-weight: 800; letter-spacing: -0.02em; }
     .h-app { height: var(--tg-viewport-height, 100svh); }
+    html.ra-kb-open { --ra-safe-bottom: 0px; }
     @media (max-width: 767px) {
       input, textarea, select { font-size: 16px !important; }
       /* 手機輸入框不可小於 16px（iOS 聚焦時會自動放大），調大時才跟著變 */
@@ -550,6 +551,8 @@
   <script>(function(){function resolveTheme(pref,pd){if(pref==='light')return'light';if(pref==='system'&&pd===false)return'light';return'dark';}var pref='dark';try{var raw=localStorage.getItem('cc_theme_v1');if(raw==='system'||raw==='dark'||raw==='light')pref=raw;}catch(e){}var pd=null;try{if(typeof matchMedia==='function')pd=matchMedia('(prefers-color-scheme: dark)').matches;}catch(e2){}document.documentElement.dataset.theme=resolveTheme(pref,pd);})();</script>
   <!-- 對話文字大小：每個裝置各自的偏好（localStorage），在 React 載入前先套，避免先閃一下預設大小。 -->
   <script>try{var f=parseInt(localStorage.getItem('cc_chat_fs_v1'),10);if(f>=12&&f<=22)document.documentElement.style.setProperty('--ra-chat-fs',f+'px')}catch(e){}</script>
+  <!-- 軟鍵盤：iOS 鍵盤開啟時仍回報 Home 指示條的 safe-area-inset-bottom，輸入區下方會多出一塊空白。觸控裝置上有輸入元件取得焦點即視為鍵盤開啟，加 ra-kb-open 讓 --ra-safe-bottom 歸零。 -->
+  <script>(function(){var c=matchMedia('(pointer: coarse)'),r=document.documentElement,t;function f(e){return c.matches&&e.target.matches&&e.target.matches('textarea,input:not([type=checkbox],[type=radio],[type=button],[type=submit],[type=file],[type=range],[type=color])');}addEventListener('focusin',function(e){if(f(e)){clearTimeout(t);r.classList.add('ra-kb-open');}});addEventListener('focusout',function(e){if(f(e)){t=setTimeout(function(){r.classList.remove('ra-kb-open');},100);}});})();</script>
   <!-- Settings 彈窗的「自訂 CSS」寫入這裡；預設空白，不影響任何樣式。 -->
   <style id="ra-custom-css"></style>
 </head>
