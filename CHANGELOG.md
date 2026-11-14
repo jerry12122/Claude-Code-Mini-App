@@ -4,6 +4,21 @@
 
 發版流程：更新 `VERSION`、`internal/version/version.go`、README 版本徽章與本檔 → commit → 打 `vX.Y.Z` tag 並 push，GitHub Actions 會自動建置並發佈 Release（說明文字取自本檔對應段落）。Release 說明依序為：更新內容 → 下載 → 桌面版更新方法 → 首次設定。
 
+## [0.18.8] - 2026-11-14
+
+### 新增
+- 網頁版支援 PWA 安裝與獨立視窗，並調整手機鍵盤的視窗行為
+- 建立會話時可為 Claude、Codex 與 Antigravity 設定自訂指示
+
+### 修正
+- Codex 與 Antigravity 用量改由原生 CLI 查詢，查詢失敗保留快取，並限制等待時間與清理子程序
+- 未讀回覆保留至前景中的聊天實際確認已讀，重啟後保留閱讀狀態
+- 桌面版可開啟本機路徑，並嵌入工作列圖示
+
+### 改善
+- 加入搜尋引擎禁止索引與相關 HTTP 標頭
+- 附帶手機輸入區「＋」底部面板與單選清單的互動 mock（docs/prototypes/mobile-composer-sheet.dc.html）；正式聊天介面尚未套用此設計
+
 ## [0.18.7] - 2026-11-12
 
 ### 修正
