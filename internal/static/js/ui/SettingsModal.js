@@ -1,4 +1,4 @@
-// ── 設定彈窗（左選單 + 右內容，仿 Claude Desktop）───────────────────────────
+// ── 設定彈窗（桌面左右分欄；手機分類清單 → 內容 → 返回）───────────────────
 // 目前有「一般」「外觀」兩個分類：
 //   一般：伺服器端本機行為開關（目前僅 vscodeNoAdmin）。
 //   外觀：Markdown 顏色（heading/bold/inline code）+ 自訂 CSS。
@@ -324,6 +324,10 @@ function AppearanceSection({ draft, setDraft }) {
 
 function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = null }) {
   const [section, setSection] = useState('general');
+  const mobile = useMediaQuery('(max-width: 639px), (max-width: 1023px) and (pointer: coarse)');
+  // ponytail: two modal levels only; keep navigation local rather than adding routes.
+  const [mobileDetail, setMobileDetail] = useState(false);
+  const backRef = useRef(null);
   // 桌面可安裝更新；瀏覽器／Telegram 只有版本資訊。
   const updateBridge = !!(desktopUpdate && desktopUpdate.bridge);
   const updateVisible = !!desktopUpdate;
@@ -334,13 +338,9 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
   const [saving, setSaving] = useState(false);
   const [buildInfo, setBuildInfo] = useState(null);
 
-  // 托盤「檢查更新」會要求開啟更新區（openNonce 每次遞增）。
-  useEffect(() => {
-    if (updateOpenNonce > 0) setSection('update');
-  }, [updateOpenNonce]);
-
   // 開啟時重新從 localStorage 載入，避免上次關閉未存的草稿殘留。
   useEffect(() => {
+    setMobileDetail(false);
     if (open) {
       setDraft(readStoredAppearance());
       setSaveError('');
@@ -349,20 +349,40 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
     }
   }, [open]);
 
+  // 更新通知直接進入更新內容；一般開啟仍從手機分類清單開始。
+  useEffect(() => {
+    if (updateOpenNonce > 0) {
+      setSection('update');
+      setMobileDetail(true);
+    }
+  }, [updateOpenNonce]);
+
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const h = (e) => { if (e.key === 'Escape') onClose(); };
+    const h = (e) => {
+      if (e.key !== 'Escape') return;
+      if (mobile && mobileDetail) { e.preventDefault(); setMobileDetail(false); }
+      else onClose();
+    };
     window.addEventListener('keydown', h);
     return () => {
       document.body.style.overflow = prev;
       window.removeEventListener('keydown', h);
     };
-  }, [open, onClose]);
+  }, [open, onClose, mobile, mobileDetail]);
 
   const dialogRef = useRef(null);
   useDialogFocus(dialogRef, open);
+  useEffect(() => {
+    if (!open) return;
+    const dialog = dialogRef.current;
+    const target = mobile ? (mobileDetail ? backRef.current
+      : dialog?.querySelector(`[data-settings-section="${section}"]`))
+      : (!dialog?.contains(document.activeElement) ? dialog : null);
+    target?.focus({ preventScroll: true });
+  }, [open, mobile, mobileDetail]);
 
   if (!open) return null;
 
@@ -388,61 +408,79 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
     setDraft({ ...APPEARANCE_DEFAULTS });
     setSaveError('');
   };
+  const sections = updateVisible ? [...SETTINGS_SECTIONS, { id: 'update', label: '更新' }] : SETTINGS_SECTIONS;
+  const enterSection = (id) => { setSection(id); setMobileDetail(true); };
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-[2px]"
+      className={`fixed inset-0 z-[100] flex items-center justify-center ${mobile ? '' : 'p-4'} bg-black/60 backdrop-blur-[2px]`}
       onClick={onClose}
       role="presentation"
     >
       <div
         ref={dialogRef}
         tabIndex={-1}
-        className={`w-full max-w-5xl h-[min(85vh,44rem)] flex overflow-hidden rounded-2xl border border-ra-line bg-ra-bg shadow-2xl shadow-black/50 focus:outline-none`}
+        className={`w-full flex overflow-hidden bg-ra-bg shadow-2xl shadow-black/50 focus:outline-none ${mobile ? 'h-full flex-col' : 'max-w-5xl h-[min(85vh,44rem)] rounded-2xl border border-ra-line'}`}
+        style={mobile ? { paddingBottom: 'max(env(safe-area-inset-bottom, 0px), var(--tg-safe-area-inset-bottom, 0px))' } : undefined}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-modal-title"
       >
-        {/* 左側選單 */}
-        <div className="w-40 shrink-0 border-r border-ra-line-soft bg-ra-sunken flex flex-col">
-          <div id="settings-modal-title" className="px-4 pt-4 pb-3 text-sm font-semibold text-ra-t1">
+        {mobile && <header className="flex shrink-0 items-center gap-2 border-b border-ra-line-soft px-3 pb-2"
+          style={{ paddingTop: 'calc(max(8px, env(safe-area-inset-top, 0px), var(--tg-safe-area-inset-top, 0px)) + var(--tg-content-safe-top, 0px))' }}>
+          {mobileDetail && <button type="button" ref={backRef} aria-label="返回設定分類"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-ra-t2 hover:bg-ra-raised"
+            onClick={() => setMobileDetail(false)}>
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m14 6-6 6 6 6" /></svg>
+          </button>}
+          <h2 id="settings-modal-title" className="flex-1 px-2 text-base font-semibold text-ra-t1">{mobileDetail ? sections.find(s => s.id === section)?.label : '設定'}</h2>
+          <button type="button" aria-label="關閉設定" onClick={onClose}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-ra-t2 hover:bg-ra-raised">
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6" /></svg>
+          </button>
+        </header>}
+        {/* 桌面側欄／手機第一層分類 */}
+        {(!mobile || !mobileDetail) && <div className={`${mobile ? 'flex-1 min-h-0 overflow-y-auto' : 'w-40 shrink-0 border-r border-ra-line-soft'} bg-ra-sunken flex flex-col`}>
+          {!mobile && <div id="settings-modal-title" className="px-4 pt-4 pb-3 text-sm font-semibold text-ra-t1">
             設定
-          </div>
-          <div className="flex-1 px-2 space-y-0.5">
-            {(updateVisible ? [...SETTINGS_SECTIONS, { id: 'update', label: '更新' }] : SETTINGS_SECTIONS).map((s) => (
+          </div>}
+          <nav aria-label="設定分類" className={`flex-1 space-y-0.5 ${mobile ? 'p-3' : 'px-2'}`}>
+            {sections.map((s) => (
               <button
                 key={s.id}
                 type="button"
-                onClick={() => setSection(s.id)}
-                className={`w-full text-left rounded-lg px-2.5 py-2 text-sm transition-colors ${
-                  section === s.id
+                data-settings-section={s.id}
+                onClick={() => enterSection(s.id)}
+                className={`w-full flex items-center text-left rounded-lg text-sm transition-colors ${mobile ? 'min-h-14 px-4 py-3' : 'px-2.5 py-2'} ${
+                  !mobile && section === s.id
                     ? 'bg-violet-500/15 text-violet-200'
                     : 'text-ra-t4 hover:bg-ra-card hover:text-ra-t2'
                 }`}
               >
                 {s.label}
                 {s.id === 'update' && desktopUpdate?.hasUpdate && <span className="inline-block ml-2 h-2 w-2 rounded-full bg-violet-500" role="img" aria-label="有可用更新" />}
+                {mobile && <span className="ml-auto text-ra-t5" aria-hidden="true">›</span>}
               </button>
             ))}
-          </div>
+          </nav>
           <div className="shrink-0 px-4 py-3 text-xs leading-5 font-mono text-ra-t4 select-text">
             <div>v{buildInfo?.version || '—'}</div>
             <div title={buildInfo?.sha || 'unknown'}>SHA {buildInfo?.sha?.slice(0, 7) || '—'}</div>
             {updateVisible ? (
               <button
                 type="button"
-                onClick={() => setSection('update')}
-                className="mt-1 font-sans text-[11px] text-violet-400 hover:text-violet-300 transition-colors"
+                onClick={() => enterSection('update')}
+                className={`${mobile ? 'min-h-11' : ''} mt-1 font-sans text-[11px] text-violet-400 hover:text-violet-300 transition-colors`}
               >
                 前往更新
               </button>
             ) : null}
           </div>
-        </div>
+        </div>}
 
         {/* 右側內容 */}
-        <div className="flex-1 min-w-0 flex flex-col">
+        {(!mobile || mobileDetail) && <div className="flex-1 min-w-0 min-h-0 flex flex-col">
           {/* 日誌頁自己管捲動（清單內捲、頂部工具列固定），所以外層不捲 */}
           <div className={`flex-1 min-h-0 app-scroll px-5 ${section === 'logs' ? 'py-4 overflow-hidden' : 'py-5 overflow-y-auto'}`}>
             {section === 'general' && <GeneralSection />}
@@ -460,7 +498,7 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
             )}
             {section === 'update' && updateVisible && !updateBridge && <WebUpdateSection status={desktopUpdate.webStatus} />}
           </div>
-          <div className="shrink-0 flex items-center justify-between gap-2 px-5 py-3 border-t border-ra-line-soft">
+          <div className={`shrink-0 flex items-center justify-between gap-2 px-5 py-3 border-t border-ra-line-soft ${mobile ? '[&_button]:min-h-11' : ''}`}>
             {/* 還原預設／儲存只對外觀有效，日誌頁不顯示 */}
             {section !== 'logs' && section !== 'shares' && section !== 'update' && (
               <button
@@ -493,7 +531,7 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
               )}
             </div>
           </div>
-        </div>
+        </div>}
       </div>
     </div>
   );

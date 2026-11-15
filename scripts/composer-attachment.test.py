@@ -101,6 +101,36 @@ with tempfile.TemporaryDirectory(prefix="composer-check-") as tmp, sync_playwrig
                 expect(page.locator("textarea[data-chat-input]")).to_be_enabled()
             return page
 
+        # The actual mobile sheet slides up on every opening; reduced motion stays static.
+        page = load(390, 844, True)
+        page.emulate_media(reduced_motion='no-preference')
+        for _ in range(2):
+            page.wait_for_function('!composerToolsBackPending')
+            positions = page.get_by_role('button', name='聊天工具', exact=True).evaluate("""el => {
+                ReactDOM.flushSync(() => el.click());
+                const sheet = document.querySelector('.ra-composer-sheet');
+                const slide = sheet.getAnimations().find(a => a.animationName === 'ra-tools-slide-up');
+                if (!slide) throw new Error('Missing sheet entry animation');
+                slide.pause();
+                return [0, 140, 280].map(time => {
+                    slide.currentTime = time;
+                    return sheet.getBoundingClientRect().top;
+                });
+            }""")
+            assert positions[0] > positions[1] > positions[2], positions
+            assert abs(positions[0] - 844) <= 1, positions
+            expect(page.locator('.ra-composer-sheet')).to_have_css('transform', 'none')
+            expect(page.locator('.ra-composer-sheet')).to_have_css('animation-duration', '0.28s')
+            assert page.locator('.ra-composer-sheet').evaluate("el => getComputedStyle(el, '::backdrop').animationName") == 'ra-tools-backdrop-in'
+            page.get_by_role('button', name='關閉聊天工具').click()
+        page.wait_for_function('!composerToolsBackPending')
+        page.emulate_media(reduced_motion='reduce')
+        page.get_by_role('button', name='聊天工具', exact=True).click()
+        expect(page.locator('.ra-composer-sheet')).to_have_css('animation-name', 'none')
+        expect(page.locator('.ra-composer-sheet')).to_have_css('transform', 'none')
+        assert page.locator('.ra-composer-sheet').evaluate("el => getComputedStyle(el, '::backdrop').animationName") == 'none'
+        page.close()
+
         page = load()
         field = page.locator("textarea[data-chat-input]")
         field.fill("草稿保留")
