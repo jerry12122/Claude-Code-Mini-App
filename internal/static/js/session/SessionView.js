@@ -375,9 +375,9 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
 
   // 分頁標題顯示未讀數，切到別的分頁／視窗也看得到
   useEffect(() => {
-    document.title = (unreadCount > 0 ? `(${unreadCount}) ` : '') + 'Claude Code · Remote Agent';
+    document.title = (unreadCount > 0 ? `(${unreadCount}) ` : '') + 'MiniApp';
   }, [unreadCount]);
-  useEffect(() => () => { document.title = 'Claude Code · Remote Agent'; }, []);
+  useEffect(() => () => { document.title = 'MiniApp'; }, []);
 
   const handleReadAll = () => {
     // Optimistic：點了就消掉；背景打 API，不等回應、失敗不回滾，下次 5 秒 poll 覆蓋掉也沒差。
@@ -546,7 +546,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
           <div className="w-6 h-6 rounded-[6px] bg-gradient-to-br from-[oklch(0.62_0.19_275)] to-[oklch(0.6_0.17_300)] flex items-center justify-center shrink-0" aria-hidden>
             <div className="w-[9px] h-[9px] rounded-[2px] bg-white" />
           </div>
-          <span className="ra-display text-base text-ra-t1 tracking-tight">Agent Console</span>
+          <span className="ra-display text-base text-ra-t1 tracking-tight">MiniApp</span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {onToggleSplit && (

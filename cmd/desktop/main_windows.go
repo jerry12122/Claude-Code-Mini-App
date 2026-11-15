@@ -42,7 +42,7 @@ func main() {
 	started, err := server.Start(context.Background())
 	if err != nil {
 		slog.Error(err.Error())
-		messageBox("Claude Code Mini App", err.Error())
+		messageBox("MiniApp", err.Error())
 		os.Exit(1)
 	}
 
@@ -84,7 +84,7 @@ func main() {
 
 	var show func()
 	appOpts := application.Options{
-		Name:        "Claude Code Mini App",
+		Name:        "MiniApp",
 		Description: "本機視窗殼，網頁與 Telegram Mini App 仍走同一個 port",
 		Icon:        icon,
 		Assets:      application.AlphaAssets,
@@ -134,7 +134,7 @@ func main() {
 
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:             "main",
-		Title:            "Claude Code Mini App",
+		Title:            "MiniApp",
 		Width:            1280,
 		Height:           800,
 		MinWidth:         960,
@@ -185,7 +185,7 @@ func main() {
 	}
 
 	tray := app.SystemTray.New()
-	tray.SetTooltip("Claude Code Mini App")
+	tray.SetTooltip("MiniApp")
 	if icon != nil {
 		tray.SetIcon(icon)
 	}
@@ -210,7 +210,7 @@ func main() {
 
 	if err := app.Run(); err != nil {
 		slog.Error(err.Error())
-		messageBox("Claude Code Mini App", err.Error())
+		messageBox("MiniApp", err.Error())
 		os.Exit(1)
 	}
 }

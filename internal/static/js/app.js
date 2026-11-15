@@ -45,9 +45,9 @@ function PasswordView({ onSuccess }) {
             <div className="w-10 h-10 rounded-[10px] bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center" aria-hidden>
               <div className="w-3.5 h-3.5 rounded-[3px] bg-white" />
             </div>
-            <div className="ra-display text-2xl" style={{color:'oklch(var(--ra-t1))'}}>Agent Console</div>
+            <div className="ra-display text-2xl" style={{color:'oklch(var(--ra-t1))'}}>MiniApp</div>
           </div>
-          <div className="text-gray-400 text-sm">Claude Code · Remote Agent</div>
+          <div className="text-gray-400 text-sm">多代理控制台</div>
           <div className="text-gray-400 text-xs">請輸入存取密碼</div>
         </div>
         <input

@@ -1,7 +1,7 @@
 {
-  "name": "Claude Code MiniApp",
-  "short_name": "Claude Code",
-  "description": "Claude Code Remote Agent",
+  "name": "MiniApp",
+  "short_name": "MiniApp",
+  "description": "多代理控制台",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

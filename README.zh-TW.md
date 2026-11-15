@@ -1,4 +1,4 @@
-# Claude Code Mini App
+# MiniApp
 
 > 自架的**多代理（multi-agent）控制台**，統一管理 Claude Code、Cursor Agent、Codex、Kiro ACP 與 Antigravity。可從桌面視窗、任何瀏覽器，或手機上的 Telegram Mini App 操作。**單一 Go 二進位**，無需獨立前端建置。
 
@@ -6,7 +6,7 @@
 
 [English](README.md)
 
-![Agent Console：雙群組分割檢視、會話分頁、側欄專案分組與未讀標記，包含 Claude、Cursor、Codex、Kiro 與 Antigravity 會話](docs/images/split-view.png)
+![MiniApp：雙群組分割檢視、會話分頁、側欄專案分組與未讀標記，包含 Claude、Cursor、Codex、Kiro 與 Antigravity 會話](docs/images/split-view.png)
 
 <sub>示範資料，取自臨時啟動的實例。</sub>
 

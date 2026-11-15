@@ -11,7 +11,7 @@ Only the latest minor release receives security updates.
 
 ## Scope & Security Boundary
 
-Claude Code Mini App is designed as a self-hosted console for supervising local AI coding agents. Given that the app can run shell commands, manage local sessions, and expose an MCP server, please keep the following security properties in mind:
+MiniApp is designed as a self-hosted console for supervising local AI coding agents. Given that the app can run shell commands, manage local sessions, and expose an MCP server, please keep the following security properties in mind:
 
 - **Authentication**: `web.password` or Telegram `initData` protect access. `no_auth: true` is strictly for isolated local environments and must never be exposed publicly.
 - **Direct Shell (`shell.enabled`)**: Directly executes commands on the host in the session's `work_dir`. It is disabled by default.

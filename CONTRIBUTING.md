@@ -1,6 +1,6 @@
-# Contributing to Claude Code Mini App
+# Contributing to MiniApp
 
-Thank you for your interest in contributing to Claude Code Mini App! This document provides guidelines for contributing to this project.
+Thank you for your interest in contributing to MiniApp! This document provides guidelines for contributing to this project.
 
 ## Core Architectural Principles
 

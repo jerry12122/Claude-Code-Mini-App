@@ -1,4 +1,4 @@
-# Claude Code Mini App
+# MiniApp
 
 > A self-hosted **multi-agent console** for Claude Code, Cursor Agent, Codex, Kiro ACP and Antigravity. Run and supervise all your coding agents in one place — from a desktop window, any browser, or a Telegram Mini App on your phone. **One Go binary**, no separate frontend build.
 
@@ -6,7 +6,7 @@
 
 [繁體中文](README.zh-TW.md)
 
-![Agent Console: split view with Claude and Codex sessions, tab groups, unread badges, and sessions for Claude, Cursor, Codex, Kiro and Antigravity grouped by project](docs/images/split-view.png)
+![MiniApp: split view with Claude and Codex sessions, tab groups, unread badges, and sessions for Claude, Cursor, Codex, Kiro and Antigravity grouped by project](docs/images/split-view.png)
 
 <sub>Demo data on a throwaway instance. The UI is shown in Traditional Chinese.</sub>
 

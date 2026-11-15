@@ -572,7 +572,7 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
-	slog.Info(fmt.Sprintf("Claude Code Mini App v%s listening on %s", version.Version, addr))
+	slog.Info(fmt.Sprintf("MiniApp v%s listening on %s", version.Version, addr))
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		_ = database.Close()
