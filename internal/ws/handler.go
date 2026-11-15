@@ -704,6 +704,8 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				defer goRelease()
 				defer permCleanup()
 				defer taskEnd(sessionID, msgID)
+				// run 結束一定要取消 ctx：卡在授權／提問的請求靠它解除，否則 claude 子進程先結束時項目會永遠殘留。
+				defer cancel()
 
 				content := &messageBuffer{write: func(text string) error { return database.AppendMessageContent(msgID, text) }, send: broadcast}
 				defer content.Flush()
@@ -1622,7 +1624,9 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				// 使用者按停止＝不要自動接著跑，故暫停佇列。
 				// kiroacp 等授權時子進程在等我們回覆，直接強制取消。
 				if _, waiting := permPending(sessionID); waiting || questionPending(sessionID) != nil {
-					taskCancel(sessionID)
+					if !dropStalePrompts(sessionID) { // 沒有任務支撐的殘留項目直接清掉；有任務則照舊取消
+						taskCancel(sessionID)
+					}
 					pauseQueue()
 					continue
 				}

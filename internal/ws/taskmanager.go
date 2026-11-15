@@ -2,6 +2,7 @@ package ws
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -150,6 +151,54 @@ func taskCancel(sessionID string) {
 	taskManager.mu.Unlock()
 	if e != nil && e.cancel != nil {
 		e.cancel()
+	}
+}
+
+// dropStalePrompts 清掉沒有任務支撐的授權／提問等待項目；有任務在跑時不動，回傳是否真的清了東西。
+// 等授權或回答時子進程一定還在等，任務必然已登記；任務已不在、項目卻還在，就是殘留（例如 run 已結束而請求未被取消），
+// 留著會讓更新閘門永遠判定忙碌，且 taskCancel 找不到任務、中斷也清不掉。
+func dropStalePrompts(sessionID string) bool {
+	if taskIsActive(sessionID) {
+		return false
+	}
+	dropped := false
+	pendingPerms.mu.Lock()
+	if e, ok := pendingPerms.m[sessionID]; ok {
+		delete(pendingPerms.m, sessionID)
+		select { // 若還有人在等就放行為拒絕，避免 goroutine 懸著
+		case e.ch <- false:
+		default:
+		}
+		dropped = true
+	}
+	pendingPerms.mu.Unlock()
+	pendingQuestions.Lock()
+	if _, ok := pendingQuestions.m[sessionID]; ok {
+		delete(pendingQuestions.m, sessionID)
+		dropped = true
+	}
+	pendingQuestions.Unlock()
+	if dropped {
+		slog.Warn("ws: 清除沒有任務支撐的授權／提問等待項目", "session_id", sessionID)
+	}
+	return dropped
+}
+
+// reapStalePrompts 對所有有等待項目的 session 執行 dropStalePrompts。
+func reapStalePrompts() {
+	var sids []string
+	pendingPerms.mu.Lock()
+	for id := range pendingPerms.m {
+		sids = append(sids, id)
+	}
+	pendingPerms.mu.Unlock()
+	pendingQuestions.Lock()
+	for id := range pendingQuestions.m {
+		sids = append(sids, id)
+	}
+	pendingQuestions.Unlock()
+	for _, id := range sids {
+		dropStalePrompts(id)
 	}
 }
 

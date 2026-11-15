@@ -303,21 +303,6 @@ func TestDesktopUpdateAdmission(t *testing.T) {
 			setShellPending(sid, &shellPendingInfo{Command: "ls", WorkDir: "."})
 			return func() { clearInMemoryShellApproval(sid) }
 		}},
-		{"kiroacp 授權等待（記憶體）", func(t *testing.T, database *db.DB, wsURL func(string) string, sid string) func() {
-			e := &pendingPermEntry{ch: make(chan bool, 1), tools: "Write"}
-			permSet(sid, e)
-			return func() { permClear(sid, e) }
-		}},
-		{"問題等待（記憶體）", func(t *testing.T, database *db.DB, wsURL func(string) string, sid string) func() {
-			pendingQuestions.Lock()
-			pendingQuestions.m[sid] = &pendingQuestion{RequestID: "adm-q", ch: make(chan json.RawMessage, 1)}
-			pendingQuestions.Unlock()
-			return func() {
-				pendingQuestions.Lock()
-				delete(pendingQuestions.m, sid)
-				pendingQuestions.Unlock()
-			}
-		}},
 		{"佇列中（DB）", func(t *testing.T, database *db.DB, wsURL func(string) string, sid string) func() {
 			if _, err := database.EnqueueMessage(sid, "adm-later", ""); err != nil {
 				t.Fatal(err)
@@ -357,8 +342,6 @@ func TestDesktopUpdateAdmission(t *testing.T) {
 		"agent 執行中":           "running_task",
 		"shell 執行中（記憶體）":      "shell_task",
 		"shell 待確認（記憶體）":      "pending_confirm",
-		"kiroacp 授權等待（記憶體）":   "pending_confirm",
-		"問題等待（記憶體）":           "pending_confirm",
 		"佇列中（DB）":             "queued",
 		"暫停佇列（DB）":            "queued",
 		"pending_denials（DB）": "pending_confirm",
@@ -389,6 +372,47 @@ func TestDesktopUpdateAdmission(t *testing.T) {
 			admWaitIdle(t)
 		})
 	}
+
+	// 授權／提問等待時任務必然在跑；任務不在而項目還在就是殘留，閘門要清掉而不是永久擋住更新。
+	t.Run("stale prompt entries without a task do not block update and are cleared", func(t *testing.T) {
+		database, _ := startAdmServer(t, ShellOpts{Enabled: true})
+		sid := admSession(t, database, "fakeadm", "default")
+		permSet(sid, &pendingPermEntry{ch: make(chan bool, 1), tools: "Write"})
+		pendingQuestions.Lock()
+		pendingQuestions.m[sid] = &pendingQuestion{RequestID: "adm-q", ch: make(chan json.RawMessage, 1)}
+		pendingQuestions.Unlock()
+		rel, err := TryBeginDesktopUpdate()
+		if err != nil {
+			t.Fatalf("殘留項目不應擋住更新: %v", err)
+		}
+		rel()
+		if _, ok := permPending(sid); ok {
+			t.Error("殘留授權項目應被清除")
+		}
+		if questionPending(sid) != nil {
+			t.Error("殘留提問項目應被清除")
+		}
+	})
+
+	t.Run("prompt entries backed by a task are kept and still busy", func(t *testing.T) {
+		database, _ := startAdmServer(t, ShellOpts{Enabled: true})
+		sid := admSession(t, database, "fakeadm", "default")
+		taskStart(sid, func() {}, 1)
+		e := &pendingPermEntry{ch: make(chan bool, 1), tools: "Write"}
+		permSet(sid, e)
+		if _, err := TryBeginDesktopUpdate(); !errors.Is(err, ErrUpdateBusy) {
+			t.Fatalf("有任務支撐的授權等待應忙碌，實際 %v", err)
+		}
+		if dropStalePrompts(sid) {
+			t.Error("有任務時不可清除等待項目")
+		}
+		if _, ok := permPending(sid); !ok {
+			t.Error("等待項目不應被清掉")
+		}
+		permClear(sid, e)
+		taskEnd(sid, 1)
+		admWaitIdle(t)
+	})
 
 	t.Run("cancel map entry removed but cleanup pending is still busy", func(t *testing.T) {
 		database, wsURL := startAdmServer(t, ShellOpts{Enabled: true})

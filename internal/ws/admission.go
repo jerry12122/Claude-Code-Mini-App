@@ -135,6 +135,10 @@ func TryBeginDesktopUpdate() (func(), error) {
 	if gate.maint {
 		return nil, &BusyError{Reason: "maintenance"}
 	}
+	// 沒有任何 goroutine 在跑時，授權／提問等待項目不可能有人在等，先清掉殘留，免得永久擋住更新。
+	if gate.inflight == 0 {
+		reapStalePrompts()
+	}
 	// 先看記憶體來源（能分出 shell_task／pending_confirm），再看 inflight（剩下的都算仍在執行或收尾）。
 	if reason, sid := inMemoryBusyReason(); reason != "" {
 		return nil, updateBusyError(reason, sid)
