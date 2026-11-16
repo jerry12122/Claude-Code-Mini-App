@@ -41,6 +41,10 @@ vendor/
 !internal/static/js/vendor/
 !internal/static/js/vendor/**
 
+# Python bytecode 快取（scripts/ 下的發版與測試輔助腳本）
+__pycache__/
+*.pyc
+
 # POC 探測腳本與樣本：僅供本機調查/一次性驗證，不進版控
 poc/
 
