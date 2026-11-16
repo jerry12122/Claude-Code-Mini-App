@@ -11,6 +11,15 @@ Before contributing, please keep in mind the following project design choices:
 3. **Multi-Agent First**: Features should remain compatible across the supported coding agents (Claude Code, Cursor Agent, Codex, Kiro ACP, Antigravity) without vendor-locking.
 4. **Spec-Driven Development (Spectra)**: Major features and schema updates follow SDD. Specs live in `docs/spectra/specs/`, and changes in `docs/spectra/changes/`.
 
+### Layering Rules
+
+Both sides of the codebase have an enforced layering spec. Read the relevant one before adding files:
+
+- Backend (`internal/`, `cmd/`): [`docs/spec/backend-architecture.md`](docs/spec/backend-architecture.md), verified by `go test ./internal/arch/`
+- Frontend (`internal/static/`): [`docs/spec/frontend-architecture.md`](docs/spec/frontend-architecture.md), verified by `node scripts/frontend-layering.test.cjs`
+
+Each spec carries a known-violations whitelist. **Entries may be removed, never added.**
+
 ## Getting Started
 
 ### Prerequisites
@@ -45,6 +54,12 @@ Editing frontend files in `internal/static/` is immediately visible upon refresh
 Run all Go unit and integration tests:
 ```bash
 go test -v ./...
+```
+
+Check the backend layering rules on their own (fast):
+```bash
+go test ./internal/arch/
+gofmt -l internal cmd    # must print nothing
 ```
 
 Run JavaScript unit tests (using Node.js standard test runner or assertion runner):

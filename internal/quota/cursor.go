@@ -45,6 +45,11 @@ func cursorStateDBPath() string {
 	return filepath.Join(home, ".config", "Cursor", "User", "globalStorage", "state.vscdb")
 }
 
+// readCursorAccessToken 讀 Cursor 自己的 state.vscdb 取登入 token。
+//
+// 這是本專案唯一在 internal/db 之外開啟 SQLite 連線的地方（見
+// docs/spec/backend-architecture.md 的 R3 例外）：它存取的是 Cursor 安裝的資料庫，
+// 不是本專案的 DB，所以不該收進 internal/db。一律以 mode=ro 唯讀開啟，不建立、不寫入。
 func readCursorAccessToken() (string, error) {
 	dbPath := cursorStateDBPath()
 	if _, err := os.Stat(dbPath); err != nil {
