@@ -297,6 +297,7 @@ function SessionTabBar({
               // tablist 的子層只能是 tab：關閉鈕僅供滑鼠／觸控，鍵盤與輔助技術改用分頁上的 Delete 鍵
               tabIndex={-1}
               aria-hidden="true"
+              data-context-surface
               title="關閉分頁"
               className={`p-0.5 rounded text-ra-t5 hover:text-red-400 hover:bg-ra-raised transition-opacity shrink-0 ${
                 isActive ? 'opacity-80 hover:opacity-100' : 'opacity-0 group-hover/tab:opacity-100 group-focus-within/tabbar:opacity-100'

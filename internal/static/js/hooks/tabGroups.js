@@ -673,8 +673,14 @@ function sessionTabKeyboardTarget(tabs, activeTab, key) {
   return null;
 }
 
+/** 桌面版（WebView2）才有 window.chrome.webview；一般瀏覽器沒有。 */
+function isDesktopApp(win = typeof window !== 'undefined' ? window : null) {
+  return typeof win?.chrome?.webview?.postMessage === 'function';
+}
+
 /**
  * 鍵盤事件 → 分頁群組動作（純函式，回傳 null 表示不處理）。
+ * - Ctrl/Cmd+W（不含 Alt/Shift）→ closeActive（app.js 僅在桌面版處理，瀏覽器保留此鍵）；
  * - Ctrl/Cmd+\（不含 Alt/Shift）→ toggleSplit；Ctrl+Alt+←/→ → focus 群組 0/1
  * - 排除 AltGr（部分鍵盤的 \ 需要 Ctrl+Alt）與 IME 組字中（isComposing / keyCode 229）
  */
@@ -683,6 +689,7 @@ function resolveTabShortcut(e) {
   const mod = e.ctrlKey || e.metaKey;
   if (!mod) return null;
   if (e.key === '\\' && !e.altKey && !e.shiftKey) return { type: 'toggleSplit' };
+  if (!e.altKey && !e.shiftKey && (e.key === 'w' || e.key === 'W' || e.code === 'KeyW')) return { type: 'closeActive' };
   if (e.altKey && !e.shiftKey && e.key === 'ArrowLeft') return { type: 'focus', groupIndex: 0 };
   if (e.altKey && !e.shiftKey && e.key === 'ArrowRight') return { type: 'focus', groupIndex: 1 };
   return null;

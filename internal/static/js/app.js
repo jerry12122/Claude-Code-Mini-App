@@ -278,6 +278,13 @@ function App() {
         // 寬螢幕：單一分頁時不動作（spec）；窄螢幕沿用舊行為（可自動開另一個會話）
         if (isWideScreen) dispatchTabGroups(act);
         else toggleSplit();
+      } else if (act && act.type === 'closeActive' && isDesktopApp()) {
+        e.preventDefault();
+        const activeGroupIdx = tabGroups.focused === 1 ? 1 : 0;
+        const activeId = tabGroups.groups[activeGroupIdx]?.active || tabGroups.groups[0]?.active;
+        if (activeId) {
+          dispatchTabGroups({ type: 'close', sessionId: activeId, groupIndex: activeGroupIdx });
+        }
       } else if (act && act.type === 'focus') {
         e.preventDefault();
         ReactDOM.flushSync(() => {
@@ -313,7 +320,7 @@ function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isWideScreen, toggleSplit, toggleSplitOrientation]);
+  }, [isWideScreen, toggleSplit, toggleSplitOrientation, tabGroups.focused]);
   // ponytail: 接手提示只存本頁記憶體；取消表單不丟失，新一輪清除。需要離線恢復時再持久化。
   const [handoffBySession, setHandoffBySession] = useState({});
   const handleHandoffChange = useCallback((sessionId, value) => {

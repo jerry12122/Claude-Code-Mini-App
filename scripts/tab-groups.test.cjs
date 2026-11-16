@@ -568,6 +568,7 @@ function deepFreeze(obj) {
 // ─────────────────────────────────────────────────────────────
 {
   const { resolveTabShortcut } = context;
+  const appSrcForGate = () => require('node:fs').readFileSync(require('node:path').join(__dirname, '../internal/static/js/app.js'), 'utf8');
   const mk = (groups, focused = 0) => deepFreeze({ groups, focused, orientation: 'horizontal', ratio: 0.5 });
 
   // 只有一個分頁：Ctrl+\ 不動作（回傳同一個 state）
@@ -625,6 +626,26 @@ function deepFreeze(obj) {
   assert.equal(resolveTabShortcut(key({ key: '\\', ctrlKey: true, altKey: true })), null, 'AltGr+\\ 是打字');
   assert.equal(resolveTabShortcut(key({ key: 'ArrowLeft' })), null);
   assert.equal(resolveTabShortcut(key({ key: 'ArrowLeft', ctrlKey: true })), null, '只有 Ctrl 的 Left 是移動游標');
+  // Ctrl/Cmd+W 關閉作用中分頁（不含 Alt/Shift）
+  assert.deepEqual(resolveTabShortcut(key({ key: 'w', ctrlKey: true })), { type: 'closeActive' });
+  assert.deepEqual(resolveTabShortcut(key({ key: 'W', ctrlKey: true })), { type: 'closeActive' });
+  assert.deepEqual(resolveTabShortcut(key({ key: 'w', metaKey: true })), { type: 'closeActive' });
+  assert.deepEqual(resolveTabShortcut(key({ key: 'ㄊ', code: 'KeyW', ctrlKey: true })), { type: 'closeActive' }, '非拉丁鍵盤配置以 code 判斷');
+  assert.equal(resolveTabShortcut(key({ key: 'w' })), null, '沒有修飾鍵是打字');
+  assert.equal(resolveTabShortcut(key({ key: 'w', ctrlKey: true, shiftKey: true })), null);
+  assert.equal(resolveTabShortcut(key({ key: 'w', ctrlKey: true, altKey: true })), null, 'AltGr+w 是打字');
+  assert.equal(resolveTabShortcut(key({ key: 'w', ctrlKey: true, isComposing: true })), null);
+  // Ctrl+W 僅限桌面版（WebView2）；瀏覽器保留此鍵，網頁不處理
+  const { isDesktopApp } = context;
+  assert.equal(isDesktopApp({}), false);
+  assert.equal(isDesktopApp({ chrome: {} }), false, '一般 Chrome 有 window.chrome 但沒有 webview');
+  assert.equal(isDesktopApp({ chrome: { webview: {} } }), false);
+  assert.equal(isDesktopApp({ chrome: { webview: { postMessage() {} } } }), true);
+  assert.equal(isDesktopApp(null), false);
+  assert.match(appSrcForGate(), /act\.type === 'closeActive' && isDesktopApp\(\)/);
+  // 快捷鍵 effect 讀 tabGroups.focused，focus 動作不改 groups 參照，所以必須列入依賴，否則會關到舊窗格的分頁
+  const appSrc = require('node:fs').readFileSync(require('node:path').join(__dirname, '../internal/static/js/app.js'), 'utf8');
+  assert.match(appSrc, /\}, \[isWideScreen, toggleSplit, toggleSplitOrientation, tabGroups\.focused\]\);/);
   // IME 組字中不觸發
   assert.equal(resolveTabShortcut(key({ key: '\\', ctrlKey: true, isComposing: true })), null);
   assert.equal(resolveTabShortcut(key({ key: 'ArrowLeft', ctrlKey: true, altKey: true, isComposing: true })), null);

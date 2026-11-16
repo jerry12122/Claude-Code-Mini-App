@@ -85,6 +85,18 @@ for (const native of [event({ shiftKey: true }), event({ target: { closest: () =
   binding.onContextMenu(native);
   assert.equal(native.prevented, undefined, 'Shift / native input, link, code, image must retain browser menu');
 }
+const surfaceButton = { getAttribute: () => null, hasAttribute: name => name === 'data-context-surface' };
+const plainButton = { getAttribute: () => null, hasAttribute: () => false };
+const onButton = button => event({ target: { closest: selector => selector === 'button' ? button : null } });
+const beforeButton = opened.length;
+const onSurface = onButton(surfaceButton);
+binding.onContextMenu(onSurface);
+assert.equal(onSurface.prevented, true, 'button marked data-context-surface (tab close X) opens the custom menu');
+assert.equal(opened.length, beforeButton + 1);
+const onPlain = onButton(plainButton);
+binding.onContextMenu(onPlain);
+assert.equal(onPlain.prevented, undefined, 'other nested buttons keep the native menu');
+assert.match(tabsSource.slice(tabsSource.indexOf('{/* 關閉按鈕 */}'), tabsSource.indexOf('title="關閉分頁"')), /data-context-surface/);
 selection = { anchorNode: 'selected', focusNode: 'selected', toString: () => 'Hello' };
 binding.onContextMenu(event({}));
 assert.equal(opened.at(-1).selectedText, 'Hello');

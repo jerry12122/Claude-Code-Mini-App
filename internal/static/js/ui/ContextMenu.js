@@ -29,7 +29,7 @@ function contextMenuNativeTarget(event) {
   if (selection?.toString() && event.currentTarget.contains &&
       (!event.currentTarget.contains(selection.anchorNode) || !event.currentTarget.contains(selection.focusNode))) return true;
   const button = event.target.closest?.('button');
-  return !!button && button !== event.currentTarget && button.getAttribute('role') !== 'tab';
+  return !!button && button !== event.currentTarget && button.getAttribute('role') !== 'tab' && !button.hasAttribute('data-context-surface');
 }
 
 function readableMessageText(node) {
