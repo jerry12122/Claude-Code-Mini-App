@@ -97,7 +97,7 @@ func TestCodexQuotaProcess(t *testing.T) {
 func TestQuotaFetchFailurePreservesCache(t *testing.T) {
 	t.Setenv("PATH", "")
 	t.Setenv("CC_AGY_BIN", "nonexistent-quota-test-agy")
-	for _, provider := range []string{"codex", "antigravity"} {
+	for _, provider := range []string{"codex", "antigravity", "kiro", "kiroacp"} {
 		s := NewService()
 		previous := Snapshot{Provider: provider, DisplayText: "cached quota"}
 		s.cache[provider] = &cacheEntry{snap: previous, fetchedAt: time.Now()}

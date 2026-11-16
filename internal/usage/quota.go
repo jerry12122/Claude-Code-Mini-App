@@ -214,7 +214,7 @@ func FromKiroUsageText(text string) *QuotaInfo {
 			Percent: pct, Used: floatPtr(used), Limit: floatPtr(limit),
 		})
 	}
-	if plan := regexp.MustCompile(`KIRO\s+(\w+)`).FindStringSubmatch(clean); len(plan) == 2 {
+	if plan := regexp.MustCompile(`KIRO\s+([\w+]+)`).FindStringSubmatch(clean); len(plan) == 2 {
 		out.Plan = plan[1]
 	}
 	return out
