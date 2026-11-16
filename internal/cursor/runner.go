@@ -72,25 +72,30 @@ func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventC
 
 	// prompt 必須放在最後當 positional argument。
 	//
-	// Windows workaround：`cursor-agent` 在 Windows 是 `.cmd` → `.ps1` → node.exe 的 wrapper，
-	// Go `exec.Command` 啟動 `.cmd` 時會走 `cmd.exe /c`，而 cmd.exe 的 parser 遇到 arg
-	// 裡的 LF (0x0A) 會截斷整條命令，造成多行 prompt 只剩第一行。cursor-agent 又沒有
-	// stdin 模式可退，只能在傳進去前把 LF 轉成字面 `\n`（兩字元）—— 實測 LLM 會把它當
-	// 成換行理解（訓練語料裡 `\n` 本來就代表換行）。代價是極罕見的 edge case：使用者
-	// 的 prompt 本身就包含字面 `\n`（例如在問「Python 的 `\n` 怎麼用」）時語意會偏差。
-	// 因為是 Windows dev 環境限定，權衡下來可接受。正式部署的 Linux 不會走這條路。
+	// Windows 優先由 Go 直接啟動 node.exe index.js（見 launcher.go），prompt 原樣傳入。
+	// 找不到官方佈局時退回 cursor-agent.cmd，該路徑會經 cmd.exe／PowerShell 5.1，
+	// 需先用 shimPrompt 近似處理 LF 與引號（%VAR%、!x! 仍會被改寫）。
+	bin, binArgs := "cursor-agent", args
+	node, index, direct := resolveDirect(ctx)
 	prompt := opts.Prompt
-	if runtime.GOOS == "windows" && strings.ContainsRune(prompt, '\n') {
-		prompt = strings.ReplaceAll(prompt, "\n", `\n`)
-		slog.Info(fmt.Sprintf("[cursor] Windows 偵測到多行 prompt，已把 LF 轉為字面 \\n（避開 cmd.exe 截斷）"))
+	if direct {
+		bin, binArgs = node, append([]string{index}, args...)
+	} else if runtime.GOOS == "windows" {
+		if sp := shimPrompt(prompt); sp != prompt {
+			prompt = sp
+			slog.Warn("[cursor] 找不到 node.exe/index.js，改走 cursor-agent.cmd；prompt 的 LF／引號已近似處理，%VAR% 與 !x! 可能被 cmd.exe 改寫")
+		}
 	}
-	args = append(args, prompt)
-	slog.Info(fmt.Sprintf("[cursor] 執行指令: cursor-agent %s (prompt len=%d)", strings.Join(args, " "), len(prompt)))
+	binArgs = append(binArgs, prompt)
+	slog.Info(fmt.Sprintf("[cursor] 執行指令: %s %s (prompt len=%d)", bin, strings.Join(binArgs, " "), len(prompt)))
 	if opts.WorkDir != "" {
 		slog.Info(fmt.Sprintf("[cursor] 工作目錄: %s", opts.WorkDir))
 	}
 
-	cmd := exec.CommandContext(ctx, "cursor-agent", args...)
+	cmd := exec.CommandContext(ctx, bin, binArgs...)
+	if direct {
+		cmd.Env = directEnv()
+	}
 	if opts.WorkDir != "" {
 		cmd.Dir = opts.WorkDir
 	}
@@ -200,7 +205,7 @@ func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventC
 		if ctx.Err() == nil && !sawResult.Load() {
 			cb(agent.Event{Type: agent.EventError, Err: classifyRunnerError(stderr, waitErr)})
 		}
-		slog.Error("[cursor] run 結束", "session_id", sessionID, "duration", duration, "lines", lineCount.Load(), "ok", false, "err", waitErr)
+		slog.Error("[cursor] run 結束", "session_id", sessionID, "duration", duration, "lines", lineCount.Load(), "ok", false, "err", waitErr, "stderr", truncate(strings.TrimSpace(stderr), 300))
 	} else {
 		slog.Info("[cursor] run 結束", "session_id", sessionID, "duration", duration, "lines", lineCount.Load(), "ok", true)
 	}
