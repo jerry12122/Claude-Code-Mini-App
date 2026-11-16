@@ -4,6 +4,16 @@
 
 發版流程：更新 `VERSION`、`internal/version/version.go`、README 版本徽章與本檔 → commit → 打 `vX.Y.Z` tag 並 push，GitHub Actions 會自動建置並發佈 Release（說明文字取自本檔對應段落）。Release 說明依序為：更新內容 → 下載 → 桌面版更新方法 → 首次設定。
 
+## [0.19.0] - 2026-11-16
+
+### 修正
+- Windows 上 Cursor 會話的 prompt 不再被命令列層改寫：含雙引號的內容不再讓 cursor-agent 以 `unknown option` 失敗，`%VAR%`、`!x!` 與多行內容也會原樣送出；Cursor 執行失敗時，錯誤紀錄會附上 stderr 以利排查
+- 桌面版更新不再被殘留的授權／提問項目卡在「待確認」：執行結束時一併取消對應請求，並清除沒有任務對應的殘留項目
+
+### 改善
+- 手機版聊天工具列加入動畫，設定改為逐層進入的選單
+- 顯示名稱統一為 MiniApp（README、桌面版、PWA 名稱與頁面標題）
+
 ## [0.18.11] - 2026-11-14
 
 ### 修正
