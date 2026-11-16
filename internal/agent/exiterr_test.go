@@ -24,7 +24,7 @@ func TestNewExitError_fallbackWait(t *testing.T) {
 type waitErr string
 
 func (e waitErr) Error() string { return string(e) }
-func fmtWait(s string) error     { return waitErr(s) }
+func fmtWait(s string) error    { return waitErr(s) }
 
 func TestPreferErrorText(t *testing.T) {
 	cases := []struct {

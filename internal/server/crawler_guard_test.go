@@ -102,4 +102,3 @@ func TestPWAManifestAndServiceWorker(t *testing.T) {
 		t.Errorf("sw Content-Type = %q, want text/javascript", got)
 	}
 }
-

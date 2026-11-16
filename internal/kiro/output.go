@@ -30,7 +30,7 @@ func isKiroResponseLine(raw string) bool {
 
 // toolResultItemRe 匹配 Kiro code/grep 工具回傳的符號列表行，例如：
 //
-//	1. Method ComputeFooIntent at service\foopkg\intent.go:57:1
+//  1. Method ComputeFooIntent at service\foopkg\intent.go:57:1
 var toolResultItemRe = regexp.MustCompile(`(?i)^\d+\.\s+(Method|Function|Type|Class|Variable|Interface|Struct|Const|Field)\s+\S+\s+at\s+\S+:\d+`)
 
 // isKiroToolNarration 判斷剝除前綴後的一行是否為 Kiro CLI 固定格式的工具敘述／結果摘要。

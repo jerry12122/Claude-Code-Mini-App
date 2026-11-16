@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	resetsAtTZRe   = regexp.MustCompile(`^(.+?)\s*\(([^)]+)\)\s*$`)
+	resetsAtTZRe    = regexp.MustCompile(`^(.+?)\s*\(([^)]+)\)\s*$`)
 	resetsAtHumanRe = regexp.MustCompile(`(?i)^([A-Za-z]{3})\s+(\d{1,2}),\s+(\d{1,2}):(\d{2})\s*(am|pm)$`)
 )
 

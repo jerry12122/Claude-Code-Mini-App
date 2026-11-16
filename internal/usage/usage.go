@@ -17,23 +17,23 @@ var cursorUsageRe = []*regexp.Regexp{
 
 // Info 是跨 provider 正規化後的單回合用量（POC / 後續 WS 可共用）。
 type Info struct {
-	Provider         string  `json:"provider"`
+	Provider         string   `json:"provider"`
 	CostUSD          *float64 `json:"cost_usd,omitempty"`
 	Credits          *float64 `json:"credits,omitempty"`
-	InputTokens      *int64  `json:"input_tokens,omitempty"`
-	OutputTokens     *int64  `json:"output_tokens,omitempty"`
-	CacheReadTokens  *int64  `json:"cache_read_tokens,omitempty"`
-	CacheWriteTokens *int64  `json:"cache_write_tokens,omitempty"`
-	DurationMS       *int64  `json:"duration_ms,omitempty"`
-	DurationText     string  `json:"duration_text,omitempty"` // Kiro: "2s"
+	InputTokens      *int64   `json:"input_tokens,omitempty"`
+	OutputTokens     *int64   `json:"output_tokens,omitempty"`
+	CacheReadTokens  *int64   `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens *int64   `json:"cache_write_tokens,omitempty"`
+	DurationMS       *int64   `json:"duration_ms,omitempty"`
+	DurationText     string   `json:"duration_text,omitempty"` // Kiro: "2s"
 }
 
 type claudeResult struct {
-	Type          string   `json:"type"`
-	TotalCostUSD  *float64 `json:"total_cost_usd"`
-	DurationMS    *int64   `json:"duration_ms"`
-	APIErrorStatus *string `json:"api_error_status"`
-	Usage         *struct {
+	Type           string   `json:"type"`
+	TotalCostUSD   *float64 `json:"total_cost_usd"`
+	DurationMS     *int64   `json:"duration_ms"`
+	APIErrorStatus *string  `json:"api_error_status"`
+	Usage          *struct {
 		InputTokens              *int64 `json:"input_tokens"`
 		OutputTokens             *int64 `json:"output_tokens"`
 		CacheReadInputTokens     *int64 `json:"cache_read_input_tokens"`
@@ -53,7 +53,7 @@ type cursorResult struct {
 }
 
 var (
-	ansiRe     = regexp.MustCompile(`\x1b\[[0-9;?]*[A-Za-z]|\x1b[A-Za-z]`)
+	ansiRe        = regexp.MustCompile(`\x1b\[[0-9;?]*[A-Za-z]|\x1b[A-Za-z]`)
 	kiroCreditsRe = regexp.MustCompile(`Credits:\s*([\d.]+).*?Time:\s*(\S+)`)
 )
 

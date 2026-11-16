@@ -108,7 +108,6 @@ func buildCmd(ctx context.Context, command, workDir string) (*exec.Cmd, error) {
 	return cmd, nil
 }
 
-
 func readLineLimited(br *bufio.Reader, max int) (string, error) {
 	var b []byte
 	for {
