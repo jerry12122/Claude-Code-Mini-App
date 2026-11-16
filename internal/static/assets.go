@@ -6,7 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io/fs"
-	"log"
+	"log/slog"
 	"os"
 	"path"
 	"strings"
@@ -60,7 +60,7 @@ func serveBundled(c *fiber.Ctx, res *bundleResult, name string) error {
 		return sendBody(c, res.index, name, contentType)
 	}
 	if res.err != nil {
-		log.Printf("前端 bundle 編譯失敗：%v", res.err)
+		slog.Error("前端 bundle 編譯失敗", "err", res.err)
 		c.Set(fiber.HeaderContentType, "text/plain; charset=utf-8")
 		return c.Status(fiber.StatusInternalServerError).SendString("前端 bundle 編譯失敗：" + res.err.Error())
 	}
