@@ -84,8 +84,8 @@ func TestPWAManifestAndServiceWorker(t *testing.T) {
 	if !strings.Contains(string(body), `"standalone"`) {
 		t.Errorf("manifest body missing standalone display: %s", string(body))
 	}
-	if !strings.Contains(string(body), `"Claude Code"`) {
-		t.Errorf("manifest body missing Claude Code: %s", string(body))
+	if !strings.Contains(string(body), `"MiniApp"`) {
+		t.Errorf("manifest body missing MiniApp: %s", string(body))
 	}
 
 	// 2. 測試 /sw.js
