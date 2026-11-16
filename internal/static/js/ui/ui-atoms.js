@@ -503,7 +503,7 @@ function EffortSelect({ value, onChange, disabled, id, className, compact, sheet
 function sessionStatusDotClass(s) {
   const st = String(s && s.status || '').toLowerCase();
   if (st === 'running') return 'ra-status-dot running';
-  if (st === 'awaiting_confirm' || st === 'awaiting_input') return 'ra-status-dot awaiting';
+  if (/^awaiting_(input|confirm|shell_confirm)$/.test(st)) return 'ra-status-ask';
   return '';
 }
 
@@ -512,6 +512,7 @@ function sessionStatusLabel(s) {
   if (st === 'running') return '執行中';
   if (st === 'awaiting_confirm') return '待授權';
   if (st === 'awaiting_input') return '待回答';
+  if (st === 'awaiting_shell_confirm') return '待確認 Shell';
   return '';
 }
 

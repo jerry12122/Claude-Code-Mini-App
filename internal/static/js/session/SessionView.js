@@ -785,6 +785,13 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
                     }
                   >
                     <AgentBadgeIcon agentType={displayAgent} session={s} />
+                    {sessionStatusDotClass(s) === 'ra-status-ask' && (
+                      <span
+                        className="ra-status-ask absolute -top-1 -left-1 pointer-events-none ring-2 ring-ra-bg"
+                        title={sessionStatusLabel(s)}
+                        aria-label={sessionStatusLabel(s)}
+                      />
+                    )}
                     {unread && (
                       <span
                         className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-violet-600 text-white text-[10px] font-bold flex items-center justify-center leading-none pointer-events-none ring-2 ring-ra-bg"

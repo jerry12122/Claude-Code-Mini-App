@@ -478,7 +478,14 @@
       width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
     }
     .ra-status-dot.running { background: oklch(0.75 0.15 70); }
-    .ra-status-dot.awaiting { background: oklch(0.75 0.15 70); }
+    .ra-status-ask {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;
+      background: oklch(0.75 0.15 70); color: oklch(0.2 0.03 70);
+      font-size: 11px; font-weight: 800; line-height: 1;
+    }
+    .ra-status-ask::after { content: '?'; }
+    @media (prefers-reduced-motion: no-preference) { .ra-status-dot.running { animation: pulse-dot 1.2s infinite; } }
     .ra-status-dot.unread { background: #a78bfa; }
     .ra-unread-badge {
       display: inline-flex;
