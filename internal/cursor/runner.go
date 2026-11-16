@@ -38,16 +38,8 @@ type Runner struct{}
 // Name 實作 agent.Runner。
 func (r *Runner) Name() string { return agent.TypeCursor }
 
-// Run 實作 agent.Runner：啟動 cursor-agent 子進程並串流事件。
-//
-// 指令格式：
-//
-//	cursor-agent --print --output-format stream-json --stream-partial-output \
-//	  [--resume <session_id>] [--model <m>] [--force] <prompt>
-//
-// prompt 是 positional argument（不是 flag）。
-func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventCallback) error {
-	start := time.Now()
+// cursorArgs 組出除 prompt 以外的所有旗標。prompt 必須由呼叫端最後以 positional 附加。
+func cursorArgs(opts agent.RunOptions) []string {
 	args := []string{
 		"--print",
 		"--output-format", "stream-json",
@@ -56,11 +48,9 @@ func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventC
 		// 信任僅代表允許 cursor-agent 在此目錄執行；是否放寬命令授權由 --force 控制。
 		"--trust",
 	}
-
 	if opts.SessionID != "" {
 		args = append(args, "--resume", opts.SessionID)
 	}
-
 	if opts.ExtraArgs != nil {
 		if m := strings.TrimSpace(opts.ExtraArgs[agent.ArgModel]); m != "" {
 			args = append(args, "--model", m)
@@ -69,12 +59,16 @@ func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventC
 			args = append(args, "--force")
 		}
 	}
+	return args
+}
 
-	// prompt 必須放在最後當 positional argument。
-	//
-	// Windows 優先由 Go 直接啟動 node.exe index.js（見 launcher.go），prompt 原樣傳入。
-	// 找不到官方佈局時退回 cursor-agent.cmd，該路徑會經 cmd.exe／PowerShell 5.1，
-	// 需先用 shimPrompt 近似處理 LF 與引號（%VAR%、!x! 仍會被改寫）。
+// cursorCommand 決定實際執行檔並組出 *exec.Cmd（含工作目錄、環境與取消行為）。
+//
+// prompt 必須放在最後當 positional argument。
+// Windows 優先由 Go 直接啟動 node.exe index.js（見 launcher.go），prompt 原樣傳入。
+// 找不到官方佈局時退回 cursor-agent.cmd，該路徑會經 cmd.exe／PowerShell 5.1，
+// 需先用 shimPrompt 近似處理 LF 與引號（%VAR%、!x! 仍會被改寫）。
+func cursorCommand(ctx context.Context, opts agent.RunOptions, args []string) *exec.Cmd {
 	bin, binArgs := "cursor-agent", args
 	node, index, direct := resolveDirect(ctx)
 	prompt := opts.Prompt
@@ -107,6 +101,18 @@ func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventC
 		}
 		return nil
 	}
+	return cmd
+}
+
+// Run 實作 agent.Runner：啟動 cursor-agent 子進程並串流事件。
+//
+// 指令格式：
+//
+//	cursor-agent --print --output-format stream-json --stream-partial-output \
+//	  [--resume <session_id>] [--model <m>] [--force] <prompt>
+func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventCallback) error {
+	start := time.Now()
+	cmd := cursorCommand(ctx, opts, cursorArgs(opts))
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
