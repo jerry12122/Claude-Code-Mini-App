@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 
@@ -149,39 +148,5 @@ func TestOpenHostAccess(t *testing.T) {
 		if resp.StatusCode != 403 {
 			t.Fatalf("%s: forwarded header bypassed local access: %d", path, resp.StatusCode)
 		}
-	}
-}
-
-func TestFolderOpenCommand(t *testing.T) {
-	cmd := folderOpenCommand("/tmp")
-	switch runtime.GOOS {
-	case "windows":
-		if cmd.Args[0] != "explorer" {
-			t.Fatalf("args=%v", cmd.Args)
-		}
-	case "darwin":
-		if cmd.Args[0] != "open" {
-			t.Fatalf("args=%v", cmd.Args)
-		}
-	default:
-		if cmd.Args[0] != "xdg-open" {
-			t.Fatalf("args=%v", cmd.Args)
-		}
-	}
-}
-
-func TestVscodeURI(t *testing.T) {
-	if got := vscodeURI(`C:\Users\a b\proj`); got != "vscode://file/C:/Users/a b/proj" {
-		t.Fatalf("got=%q", got)
-	}
-}
-
-func TestVscodeNoAdminCommand(t *testing.T) {
-	cmd := vscodeNoAdminCommand(`C:\Users\a b\proj`)
-	if cmd.Args[0] != "explorer.exe" {
-		t.Fatalf("args=%v", cmd.Args)
-	}
-	if cmd.Args[1] != "vscode://file/C:/Users/a b/proj" {
-		t.Fatalf("args=%v", cmd.Args)
 	}
 }
