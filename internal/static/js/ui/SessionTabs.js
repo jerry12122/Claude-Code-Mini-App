@@ -1,6 +1,18 @@
 // ── 會話分頁列與群組外框元件 (VSCode-style Session Tabs) ───────────────────────
 // 純瀏覽器 React 元件，無 import/export，依賴全域作用域。
 
+function scrollSessionTabIntoView(tab, options = {}) {
+  const scroller = tab?.closest?.('[data-tab-zone]');
+  if (!scroller) { tab?.scrollIntoView?.({ block: 'nearest', inline: 'nearest', ...options }); return; }
+  const rect = tab.getBoundingClientRect();
+  const viewport = scroller.getBoundingClientRect();
+  const delta = options.inline === 'center'
+    ? (rect.left + rect.right - viewport.left - viewport.right) / 2
+    : rect.left < viewport.left ? rect.left - viewport.left : Math.max(0, rect.right - viewport.right);
+  // Scroll this zone explicitly: older browsers ignore scrollIntoView's container option.
+  scroller.scrollTo({ left: scroller.scrollLeft + delta, behavior: options.behavior || 'auto' });
+}
+
 function revealSessionTab(sessionId) {
   requestAnimationFrame(() => {
     const tab = Array.from(document.querySelectorAll('[data-session-tab-id]'))
@@ -8,7 +20,7 @@ function revealSessionTab(sessionId) {
     if (!tab) return;
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     tab.querySelector('[role="tab"]')?.focus({ preventScroll: true });
-    tab.scrollIntoView({ block: 'nearest', inline: 'center', behavior: reduced ? 'auto' : 'smooth' });
+    scrollSessionTabIntoView(tab, { inline: 'center', behavior: reduced ? 'auto' : 'smooth' });
     if (!reduced) tab.animate?.([
       { boxShadow: 'inset 0 0 0 2px oklch(var(--ra-accent-text) / 0.85)' },
       { boxShadow: 'inset 0 0 0 2px transparent' },
@@ -21,7 +33,8 @@ function focusSessionTabAfterClose(tabBarRef) {
     const target = tabBarRef.current?.querySelector('[role="tab"][aria-selected="true"]')
       || document.querySelector('.session-tab-bar [role="tab"][aria-selected="true"]')
       || document.querySelector('[data-session-navigation]');
-    target?.focus();
+    target?.focus({ preventScroll: true });
+    scrollSessionTabIntoView(target?.closest?.('.session-tab'));
   });
 }
 
@@ -40,11 +53,13 @@ function SessionTabBar({
   groupIndex = 0,
   tabs = [],
   activeTab = null,
+  pinnedTabs = [],
   isFocused = false,
   allSessions = [],
   isWideScreen = true,
   onSelectTab,
   onCloseTab,
+  onTogglePin,
   onDropOnTabBar,
   onMoveTab,
   groupCount = 1,
@@ -55,6 +70,8 @@ function SessionTabBar({
   const closeTabMenu = useCallback(() => setTabMenu(null), []);
   useEffect(() => setTabMenu(null), [activeTab]);
   const [dropInsertIndex, setDropInsertIndex] = useState(null);
+  const pinnedIds = tabs.filter(id => pinnedTabs.includes(id));
+  const regularIds = tabs.filter(id => !pinnedTabs.includes(id));
 
   const sessionMap = useMemo(() => {
     const map = new Map();
@@ -88,43 +105,67 @@ function SessionTabBar({
   // 滾輪（垂直）轉橫向捲動分頁列；React onWheel 為 passive，需原生 listener 才能 preventDefault
   const hasTabs = Array.isArray(tabs) && tabs.length > 0;
   const closeTabs = ids => {
-    ids.forEach(id => onCloseTab?.(id));
+    ids.filter(id => !pinnedTabs.includes(id)).forEach(id => onCloseTab?.(id));
     focusSessionTabAfterClose(tabBarRef);
   };
   useEffect(() => {
     const el = tabBarRef.current;
     if (!el) return undefined;
     const onWheel = (e) => {
-      if (e.ctrlKey || el.scrollWidth <= el.clientWidth) return;
+      const zone = e.target.closest?.('[data-tab-zone]');
+      if (!zone || e.ctrlKey || zone.scrollWidth <= zone.clientWidth) return;
       // 觸控板已有橫向位移時維持原生行為
       if (Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
       // deltaMode: 0=pixel, 1=line, 2=page
-      const delta = e.deltaMode === 1 ? e.deltaY * 32 : e.deltaMode === 2 ? e.deltaY * el.clientWidth : e.deltaY;
-      el.scrollLeft += delta;
+      const delta = e.deltaMode === 1 ? e.deltaY * 32 : e.deltaMode === 2 ? e.deltaY * zone.clientWidth : e.deltaY;
+      zone.scrollLeft += delta;
       e.preventDefault();
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, [hasTabs]);
 
-  const idleTabs = idleSessionTabIds(tabs, sessionMap);
+  useEffect(() => {
+    const tab = Array.from(tabBarRef.current?.querySelectorAll('.session-tab') || [])
+      .find(element => element.dataset.sessionTabId === activeTab);
+    if (tab) scrollSessionTabIntoView(tab);
+  }, [activeTab, tabs, pinnedTabs]);
+
+  const idleTabs = idleSessionTabIds(regularIds, sessionMap);
+  const otherTabs = contextTabCloseIds(tabs, tabMenu?.sessionId, 'others').filter(id => !pinnedTabs.includes(id));
+  const rightTabs = contextTabCloseIds(tabs, tabMenu?.sessionId, 'right').filter(id => !pinnedTabs.includes(id));
+  const menuPinned = pinnedTabs.includes(tabMenu?.sessionId);
+  const togglePin = id => { onTogglePin?.(id); revealSessionTab(id); };
   if (!hasTabs) {
     return null;
   }
 
-  const getIndicatorStyle = (idx) => {
-    if (!tabBarRef.current) return { left: 4 };
+  const getDropIndex = (event, sessionId) => {
+    const pinned = pinnedTabs.includes(sessionId);
+    const zone = tabBarRef.current?.querySelector(`[data-tab-zone="${pinned ? 'pinned' : 'regular'}"]`);
+    const elements = Array.from(zone?.querySelectorAll('.session-tab') || [])
+      .filter(element => element.dataset.sessionTabId !== sessionId);
+    const rects = elements.map(element => element.getBoundingClientRect());
+    const remaining = tabs.filter(id => id !== sessionId);
+    const offset = pinned ? 0 : remaining.filter(id => pinnedTabs.includes(id)).length;
+    const viewport = zone?.getBoundingClientRect();
+    const index = viewport && event.clientX <= viewport.left ? 0
+      : viewport && event.clientX >= viewport.right ? elements.length : calculateTabInsertIndex(rects, event.clientX);
+    return sessionTabInsertIndex(remaining, pinnedTabs, sessionId, offset + index);
+  };
+
+  const getIndicatorStyle = ({ index, sessionId }) => {
+    const pinned = pinnedTabs.includes(sessionId);
+    const zone = tabBarRef.current?.querySelector(`[data-tab-zone="${pinned ? 'pinned' : 'regular'}"]`);
     const containerRect = tabBarRef.current.getBoundingClientRect();
-    const tabElements = Array.from(tabBarRef.current.querySelectorAll('.session-tab'));
-    if (tabElements.length === 0 || idx <= 0) {
-      return { left: 4 };
-    }
-    if (idx < tabElements.length) {
-      const r = tabElements[idx].getBoundingClientRect();
-      return { left: Math.max(4, r.left - containerRect.left - 2) };
-    }
-    const last = tabElements[tabElements.length - 1].getBoundingClientRect();
-    return { left: Math.max(4, last.right - containerRect.left + 2) };
+    if (!zone) return { left: pinned ? 4 : containerRect.width - 7 };
+    const zoneRect = zone.getBoundingClientRect();
+    const elements = Array.from(zone.querySelectorAll('.session-tab')).filter(el => el.dataset.sessionTabId !== sessionId);
+    const offset = pinned ? 0 : pinnedIds.filter(id => id !== sessionId).length;
+    const idx = index - offset;
+    const edge = elements[idx]?.getBoundingClientRect().left
+      ?? elements[elements.length - 1]?.getBoundingClientRect().right ?? zoneRect.left;
+    return { left: Math.max(zoneRect.left, Math.min(zoneRect.right - 3, edge)) - containerRect.left };
   };
 
   return (
@@ -133,23 +174,13 @@ function SessionTabBar({
       ref={tabBarRef}
       role="tablist"
       aria-label={`會話分頁列 ${groupIndex + 1}`}
-      className="session-tab-bar group/tabbar shrink-0 flex items-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex-nowrap bg-ra-sunken border-b border-ra-line-soft px-1.5 pt-1.5 gap-1 select-none relative"
+      className="session-tab-bar group/tabbar shrink-0 min-w-0 flex items-stretch flex-nowrap bg-ra-sunken border-b border-ra-line-soft px-1.5 pt-1.5 gap-1 select-none relative"
       onDragOver={(e) => {
         if (!isSessionDragTypes(e.dataTransfer.types)) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
-        const tabElements = tabBarRef.current ? Array.from(tabBarRef.current.querySelectorAll('.session-tab')) : [];
-        const tabRects = tabElements.map((el) => {
-          const r = el.getBoundingClientRect();
-          return { left: r.left, width: r.width };
-        });
         const dragSource = typeof window !== 'undefined' ? window.__miniapp_drag_source : null;
-        // 被拖會話若已在本列（不論來自分頁或側欄），索引排除自身，與 reducer 'move' 語意一致
-        const draggedIndex = dragSource ? tabs.indexOf(dragSource.sessionId) : -1;
-        const insertIdx = calculateTabInsertIndex(tabRects, e.clientX, draggedIndex);
-        if (dropInsertIndex !== insertIdx) {
-          setDropInsertIndex(insertIdx);
-        }
+        setDropInsertIndex({ index: getDropIndex(e, dragSource?.sessionId), sessionId: dragSource?.sessionId });
       }}
       onDragLeave={(e) => {
         if (tabBarRef.current && !tabBarRef.current.contains(e.relatedTarget)) {
@@ -167,20 +198,19 @@ function SessionTabBar({
         if (!data || !data.sessionId) return;
         if (!allSessions.some((s) => s.id === data.sessionId)) return;
 
-        const tabElements = tabBarRef.current ? Array.from(tabBarRef.current.querySelectorAll('.session-tab')) : [];
-        const tabRects = tabElements.map((el) => {
-          const r = el.getBoundingClientRect();
-          return { left: r.left, width: r.width };
-        });
-        const draggedIndex = tabs.indexOf(data.sessionId);
-        const insertIdx = calculateTabInsertIndex(tabRects, e.clientX, draggedIndex);
+        const insertIdx = getDropIndex(e, data.sessionId);
 
         onDropOnTabBar?.(data.sessionId, data.fromGroup, insertIdx);
       }}
     >
-      {tabs.map((tabId) => {
+      {[pinnedIds, regularIds].map((ids, zoneIndex) => ids.length > 0 && (
+      <div key={zoneIndex} role="presentation" data-tab-zone={zoneIndex === 0 ? 'pinned' : 'regular'}
+        className={`flex min-w-0 items-stretch gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${zoneIndex === 0 ? 'flex-initial' : 'flex-1'}`}
+        style={{ maxWidth: zoneIndex === 0 && regularIds.length > 0 ? '50%' : undefined }}>
+      {ids.map((tabId) => {
         const s = sessionMap.get(tabId) || { id: tabId, name: '未命名', agent_type: 'claude' };
         const isActive = tabId === activeTab;
+        const isPinned = pinnedTabs.includes(tabId);
         const dotClass = sessionStatusDotClass(s);
         const statusLabel = sessionStatusLabel(s);
         const agentType = sessionDisplayAgent(s);
@@ -214,13 +244,13 @@ function SessionTabBar({
             onAuxClick={(e) => {
               if (e.button === 1) {
                 e.preventDefault();
-                onCloseTab?.(tabId);
+                if (!isPinned) onCloseTab?.(tabId);
               }
             }}
             onMouseDown={(e) => {
               if (e.button === 1) e.preventDefault();
             }}
-            className={`session-tab group/tab relative flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg text-xs cursor-pointer border-t border-x transition-colors shrink-0 max-w-[200px] min-w-[90px] ${
+            className={`session-tab group/tab relative flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg text-xs cursor-pointer border-t border-x transition-colors shrink-0 max-w-[200px] min-w-[90px] ${isPinned ? 'w-[144px]' : ''} ${
               isActive
                 ? 'bg-ra-card text-ra-t1 font-medium border-ra-line shadow-sm'
                 : 'bg-transparent text-ra-t4 hover:bg-ra-bg hover:text-ra-t2 border-transparent'
@@ -229,8 +259,8 @@ function SessionTabBar({
             {/* 作用中分頁上方指示線：聚焦時為亮紫，非聚焦時為深紫/灰 */}
             {isActive && (
               <span
-                className={`absolute top-0 left-0 right-0 h-0.5 rounded-t transition-colors ${
-                  isFocused ? 'bg-violet-500' : 'bg-gray-500'
+                className={`absolute top-0 left-0 right-0 border-t-2 rounded-t transition-colors ${
+                  isFocused ? 'border-violet-500' : 'border-gray-500'
                 }`}
                 aria-hidden
               />
@@ -240,15 +270,18 @@ function SessionTabBar({
               type="button"
               role="tab"
               aria-selected={isActive}
-              aria-keyshortcuts="Delete"
+              aria-description={isPinned ? '已釘選；請先取消釘選再關閉' : undefined}
+              aria-keyshortcuts={isPinned ? undefined : 'Delete'}
               tabIndex={isActive ? 0 : -1}
               className="flex items-center gap-1.5 flex-1 min-w-0 text-left rounded-sm"
               onKeyDown={(e) => {
                 if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing || e.keyCode === 229) return;
                 if (e.key === 'Delete') {
                   e.preventDefault();
-                  onCloseTab?.(tabId);
-                  focusSessionTabAfterClose(tabBarRef);
+                  if (!isPinned) {
+                    onCloseTab?.(tabId);
+                    focusSessionTabAfterClose(tabBarRef);
+                  }
                   return;
                 }
                 const targetId = sessionTabKeyboardTarget(tabs, tabId, e.key);
@@ -257,8 +290,8 @@ function SessionTabBar({
                 onSelectTab?.(targetId);
                 const targetIndex = tabs.indexOf(targetId);
                 const target = tabBarRef.current?.querySelectorAll('[role="tab"]')[targetIndex];
-                target?.focus();
-                target?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                target?.focus({ preventScroll: true });
+                scrollSessionTabIntoView(target?.closest('.session-tab'));
               }}
             >
             {/* Agent 圖示 */}
@@ -291,16 +324,20 @@ function SessionTabBar({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onCloseTab?.(tabId);
-                focusSessionTabAfterClose(tabBarRef);
+                if (isPinned) togglePin(tabId);
+                else {
+                  onCloseTab?.(tabId);
+                  focusSessionTabAfterClose(tabBarRef);
+                }
               }}
-              // tablist 的子層只能是 tab：關閉鈕僅供滑鼠／觸控，鍵盤與輔助技術改用分頁上的 Delete 鍵
+              onMouseDown={e => e.preventDefault()}
+              // tablist 的子層只能是 tab：圖示鈕僅供指標；鍵盤以 Delete 關閉、右鍵選單取消釘選。
               tabIndex={-1}
               aria-hidden="true"
               data-context-surface
-              title="關閉分頁"
-              className={`p-0.5 rounded text-ra-t5 hover:text-red-400 hover:bg-ra-raised transition-opacity shrink-0 ${
-                isActive ? 'opacity-80 hover:opacity-100' : 'opacity-0 group-hover/tab:opacity-100 group-focus-within/tabbar:opacity-100'
+              title={isPinned ? '取消釘選分頁' : '關閉分頁'}
+              className={`min-w-[24px] min-h-[24px] flex items-center justify-center rounded text-ra-t5 hover:text-ra-t1 hover:bg-ra-raised transition-opacity shrink-0 ${
+                isPinned || isActive ? 'opacity-80 hover:opacity-100' : 'opacity-0 group-hover/tab:opacity-100 group-focus-within/tabbar:opacity-100'
               }`}
             >
               <svg
@@ -314,13 +351,17 @@ function SessionTabBar({
                 strokeLinejoin="round"
                 aria-hidden
               >
-                <line x1="4" y1="4" x2="12" y2="12" />
-                <line x1="12" y1="4" x2="4" y2="12" />
+                {isPinned ? <path d="M6 2h4l-1 4 3 3H4l3-3-1-4Zm2 7v5" /> : <>
+                  <line x1="4" y1="4" x2="12" y2="12" />
+                  <line x1="12" y1="4" x2="4" y2="12" />
+                </>}
               </svg>
             </button>
           </div>
         );
       })}
+      </div>
+      ))}
 
       {/* 分頁列放置位置指示線 */}
       {dropInsertIndex !== null && (
@@ -331,6 +372,8 @@ function SessionTabBar({
       )}
     </div>
     <ContextMenu menu={tabs.includes(tabMenu?.sessionId) ? tabMenu : null} onClose={closeTabMenu} label="分頁操作" items={[
+      { label: menuPinned ? '取消釘選分頁' : '釘選分頁', onSelect: () => togglePin(tabMenu.sessionId) },
+      { separator: true },
       ...(isWideScreen && onMoveTab ? [{ label: '移到另一個窗格', disabled: groupCount === 1 && tabs.length < 2,
         reason: '至少需要兩個分頁才能分割', onSelect: () => {
           const id = tabMenu.sessionId;
@@ -338,12 +381,11 @@ function SessionTabBar({
           requestAnimationFrame(() => Array.from(document.querySelectorAll('.session-tab'))
             .find(element => element.dataset.sessionTabId === id)?.querySelector('[role="tab"]')?.focus());
         } }, { separator: true }] : []),
-      { label: '關閉分頁', onSelect: () => closeTabs([tabMenu.sessionId]) },
-      { label: '關閉閒置分頁', disabled: idleTabs.length === 0, reason: idleTabs.length === 0 ? '此窗格沒有閒置分頁' : '',
+      { label: '關閉分頁', disabled: menuPinned, reason: menuPinned ? '請先取消釘選' : '', onSelect: () => closeTabs([tabMenu.sessionId]) },
+      { label: '關閉閒置分頁', disabled: idleTabs.length === 0, reason: idleTabs.length === 0 ? '此窗格沒有未釘選的閒置分頁' : '',
         onSelect: () => closeTabs(idleTabs) },
-      { label: '關閉其他分頁', disabled: tabs.length < 2, onSelect: () => closeTabs(contextTabCloseIds(tabs, tabMenu.sessionId, 'others')) },
-      { label: '關閉右側分頁', disabled: tabs.indexOf(tabMenu?.sessionId) === tabs.length - 1,
-        onSelect: () => closeTabs(contextTabCloseIds(tabs, tabMenu.sessionId, 'right')) },
+      { label: '關閉其他分頁', disabled: otherTabs.length === 0, onSelect: () => closeTabs(otherTabs) },
+      { label: '關閉右側分頁', disabled: rightTabs.length === 0, onSelect: () => closeTabs(rightTabs) },
     ]} />
     </>
   );
@@ -355,12 +397,14 @@ function SessionTabBar({
 function SessionGroupFrame({
   groupIndex = 0,
   group = null,
+  pinnedTabs = [],
   isFocused = false,
   allSessions = [],
   groupCount = 1,
   isWideScreen = true,
   onSelectTab,
   onCloseTab,
+  onTogglePin,
   onMoveTab,
   onFocusGroup,
   onDropOnTabBar,
@@ -417,11 +461,13 @@ function SessionGroupFrame({
         groupIndex={groupIndex}
         tabs={tabs}
         activeTab={activeTab}
+        pinnedTabs={pinnedTabs}
         isFocused={isFocused}
         allSessions={allSessions}
         isWideScreen={isWideScreen}
         onSelectTab={onSelectTab}
         onCloseTab={onCloseTab}
+        onTogglePin={onTogglePin}
         onMoveTab={onMoveTab}
         groupCount={groupCount}
         onDropOnTabBar={onDropOnTabBar}

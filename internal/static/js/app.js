@@ -92,6 +92,7 @@ function App() {
   const [knownSessionsMap, setKnownSessionsMap] = useState({});
   const [sidebarSortedSessions, setSidebarSortedSessions] = useState([]);
   const [mobileActivePane, setMobileActivePane] = useState('primary');
+  const [mobileSessionList, setMobileSessionList] = useState(false);
   const [creating, setCreating] = useState(false);
   const [composerPrefill, setComposerPrefill] = useState(null);
   const [authed, setAuthed]   = useState(false);
@@ -155,6 +156,7 @@ function App() {
   const handleCreated = useCallback((s) => {
     setCreating(false);
     if (!s || !s.id) return;
+    setMobileSessionList(false);
     setKnownSessionsMap((prev) => ({ ...prev, [s.id]: s }));
     const targetGroup = isSplit && activePane === 'secondary' ? 1 : 0;
     dispatchTabGroups({ type: 'open', sessionId: s.id, groupIndex: targetGroup });
@@ -164,7 +166,8 @@ function App() {
     setCreating(false);
     if (!s) {
       if (!isWideScreen) {
-        dispatchTabGroups({ type: 'clear' });
+        // Returning to the mobile list must not discard the desktop's pinned tabs.
+        setMobileSessionList(true);
       } else {
         const currActive = tabGroups.groups[0]?.active;
         if (currActive) {
@@ -173,6 +176,7 @@ function App() {
       }
       return;
     }
+    setMobileSessionList(false);
 
     if (s.id) {
       setKnownSessionsMap((prev) => ({ ...prev, [s.id]: s }));
@@ -473,7 +477,7 @@ function App() {
       if (creating) {
         return <NewSessionComposer prefill={composerPrefill} onCreated={handleCreated} onCancel={closeComposer} />;
       }
-      if (session) {
+      if (session && !mobileSessionList) {
         if (isSplit) {
           const effectiveSecondary = secondarySession || (Array.isArray(sidebarSortedSessions) ? sidebarSortedSessions.find((s) => s.id !== session.id) : null);
           if (effectiveSecondary) {
@@ -639,6 +643,8 @@ function App() {
                 <SessionGroupFrame
                   groupIndex={0}
                   group={tabGroups.groups[0]}
+                  pinnedTabs={tabGroups.pinnedTabs}
+                  onTogglePin={tabId => dispatchTabGroups({ type: tabGroups.pinnedTabs?.includes(tabId) ? 'unpin' : 'pin', sessionId: tabId })}
                   isFocused={activePane === 'primary'}
                   allSessions={sidebarSortedSessions}
                   groupCount={tabGroups.groups.length}
@@ -678,6 +684,8 @@ function App() {
                 <SessionGroupFrame
                   groupIndex={1}
                   group={tabGroups.groups[1]}
+                  pinnedTabs={tabGroups.pinnedTabs}
+                  onTogglePin={tabId => dispatchTabGroups({ type: tabGroups.pinnedTabs?.includes(tabId) ? 'unpin' : 'pin', sessionId: tabId })}
                   isFocused={activePane === 'secondary'}
                   allSessions={sidebarSortedSessions}
                   groupCount={tabGroups.groups.length}

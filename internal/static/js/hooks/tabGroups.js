@@ -6,6 +6,7 @@ const LEGACY_SPLIT_STORAGE_KEY = 'miniapp_split_chat_state';
 
 const DEFAULT_TAB_GROUPS_STATE = Object.freeze({
   groups: Object.freeze([Object.freeze({ tabs: Object.freeze([]), active: null })]),
+  pinnedTabs: Object.freeze([]),
   focused: 0,
   orientation: 'horizontal',
   ratio: 0.5,
@@ -14,6 +15,7 @@ const DEFAULT_TAB_GROUPS_STATE = Object.freeze({
 function createDefaultTabGroupsState() {
   return {
     groups: [{ tabs: [], active: null }],
+    pinnedTabs: [],
     focused: 0,
     orientation: 'horizontal',
     ratio: 0.5,
@@ -32,6 +34,18 @@ function pickNextActiveTab(tabs, removedIndex) {
   return tabs[0] || null;
 }
 
+function sortPinnedSessionTabs(tabs, pinnedTabs = []) {
+  return [...tabs.filter(id => pinnedTabs.includes(id)), ...tabs.filter(id => !pinnedTabs.includes(id))];
+}
+
+// tabs excludes the dragged tab; UI previews and reducer must use the same boundary.
+function sessionTabInsertIndex(tabs, pinnedTabs = [], sessionId, index) {
+  const boundary = tabs.filter(id => pinnedTabs.includes(id)).length;
+  const pinned = pinnedTabs.includes(sessionId);
+  const end = pinned ? boundary : tabs.length;
+  return Math.max(pinned ? 0 : boundary, Math.min(end, Number.isFinite(index) ? Math.trunc(index) : end));
+}
+
 function tabGroupsReducer(state, action) {
   if (!state || !Array.isArray(state.groups)) {
     state = createDefaultTabGroupsState();
@@ -39,6 +53,24 @@ function tabGroupsReducer(state, action) {
   if (!action || !action.type) return state;
 
   switch (action.type) {
+    case 'pin':
+    case 'unpin': {
+      const { sessionId } = action;
+      const groupIndex = state.groups.findIndex(group => group.tabs.includes(sessionId));
+      const pins = state.pinnedTabs || [];
+      if (groupIndex < 0 || pins.includes(sessionId) === (action.type === 'pin')) return state;
+      const pinnedTabs = action.type === 'pin' ? [...pins, sessionId] : pins.filter(id => id !== sessionId);
+      const remaining = state.groups[groupIndex].tabs.filter(id => id !== sessionId);
+      const boundary = remaining.filter(id => pinnedTabs.includes(id)).length;
+      return {
+        ...state,
+        pinnedTabs,
+        groups: state.groups.map((group, i) => i === groupIndex
+          ? { ...group, tabs: [...remaining.slice(0, boundary), sessionId, ...remaining.slice(boundary)] }
+          : group),
+      };
+    }
+
     case 'open': {
       const { sessionId, groupIndex, insertIndex } = action;
       if (!sessionId) return state;
@@ -68,16 +100,8 @@ function tabGroupsReducer(state, action) {
           : (state.focused >= 0 && state.focused < state.groups.length ? state.focused : 0);
 
       const targetGroup = state.groups[targetGroupIdx];
-      let nextTabs;
-      if (typeof insertIndex === 'number' && insertIndex >= 0 && insertIndex <= targetGroup.tabs.length) {
-        nextTabs = [
-          ...targetGroup.tabs.slice(0, insertIndex),
-          sessionId,
-          ...targetGroup.tabs.slice(insertIndex),
-        ];
-      } else {
-        nextTabs = [...targetGroup.tabs, sessionId];
-      }
+      const index = sessionTabInsertIndex(targetGroup.tabs, state.pinnedTabs, sessionId, insertIndex);
+      const nextTabs = [...targetGroup.tabs.slice(0, index), sessionId, ...targetGroup.tabs.slice(index)];
 
       return {
         ...state,
@@ -91,6 +115,7 @@ function tabGroupsReducer(state, action) {
     case 'close': {
       const { sessionId, groupIndex } = action;
       if (!sessionId) return state;
+      if (state.pinnedTabs?.includes(sessionId)) return state;
 
       let targetGroupIdx = -1;
       let tabIdx = -1;
@@ -172,10 +197,7 @@ function tabGroupsReducer(state, action) {
       if (fromGroup === targetGroupIdx) {
         const grp = state.groups[fromGroup];
         const remainingTabs = grp.tabs.filter((_, i) => i !== fromIndex);
-        const targetIndex = Math.max(
-          0,
-          Math.min(remainingTabs.length, typeof toIndex === 'number' ? toIndex : remainingTabs.length)
-        );
+        const targetIndex = sessionTabInsertIndex(remainingTabs, state.pinnedTabs, sessionId, toIndex);
         const nextTabs = [
           ...remainingTabs.slice(0, targetIndex),
           sessionId,
@@ -201,10 +223,7 @@ function tabGroupsReducer(state, action) {
       }
 
       const destRemainingTabs = destGroup.tabs.filter((id) => id !== sessionId);
-      const targetIndex = Math.max(
-        0,
-        Math.min(destRemainingTabs.length, typeof toIndex === 'number' ? toIndex : destRemainingTabs.length)
-      );
+      const targetIndex = sessionTabInsertIndex(destRemainingTabs, state.pinnedTabs, sessionId, toIndex);
       const destNextTabs = [
         ...destRemainingTabs.slice(0, targetIndex),
         sessionId,
@@ -293,7 +312,7 @@ function tabGroupsReducer(state, action) {
         const mergedActive = group0.active || group1.active || (mergedTabs[0] || null);
         return {
           ...state,
-          groups: [{ tabs: mergedTabs, active: mergedActive }],
+          groups: [{ tabs: sortPinnedSessionTabs(mergedTabs, state.pinnedTabs), active: mergedActive }],
           focused: 0,
         };
       }
@@ -361,6 +380,7 @@ function tabGroupsReducer(state, action) {
       return {
         ...state,
         groups: [{ tabs: [], active: null }],
+        pinnedTabs: [],
         focused: 0,
       };
     }
@@ -392,6 +412,7 @@ function pruneTabGroupsState(state, validSessionIds) {
     return {
       ...state,
       groups: [{ tabs: [], active: null }],
+      pinnedTabs: [],
       focused: 0,
     };
   }
@@ -400,6 +421,7 @@ function pruneTabGroupsState(state, validSessionIds) {
   return {
     ...state,
     groups: prunedGroups,
+    pinnedTabs: (state.pinnedTabs || []).filter(id => prunedGroups.some(group => group.tabs.includes(id))),
     focused: nextFocused,
   };
 }
@@ -411,6 +433,7 @@ function migrateLegacySplitState(legacyState, primarySessionId) {
   if (!legacyState || typeof legacyState !== 'object') {
     return {
       groups: [{ tabs: primarySessionId ? [primarySessionId] : [], active: primarySessionId || null }],
+      pinnedTabs: [],
       focused: 0,
       orientation: defaultOrientation,
       ratio: 0.5,
@@ -438,6 +461,7 @@ function migrateLegacySplitState(legacyState, primarySessionId) {
     };
     return {
       groups: [group0, group1],
+      pinnedTabs: [],
       focused: 0,
       orientation,
       ratio,
@@ -446,6 +470,7 @@ function migrateLegacySplitState(legacyState, primarySessionId) {
 
   return {
     groups: [group0],
+    pinnedTabs: [],
     focused: 0,
     orientation,
     ratio,
@@ -459,6 +484,7 @@ function serializeTabGroupsState(state) {
       tabs: Array.isArray(g.tabs) ? [...g.tabs] : [],
       active: g.active || null,
     })),
+    pinnedTabs: state.pinnedTabs || [],
     focused: state.focused === 1 ? 1 : 0,
     orientation: state.orientation === 'vertical' ? 'vertical' : 'horizontal',
     ratio: clampRatio(state.ratio),
@@ -497,9 +523,12 @@ function deserializeTabGroupsState(raw) {
     const focused = parsed.focused === 1 && groups.length > 1 ? 1 : 0;
     const orientation = parsed.orientation === 'vertical' ? 'vertical' : 'horizontal';
     const ratio = clampRatio(parsed.ratio);
+    const pinnedTabs = Array.isArray(parsed.pinnedTabs)
+      ? [...new Set(parsed.pinnedTabs.filter(id => typeof id === 'string' && seenTabs.has(id)))] : [];
 
     return {
-      groups,
+      groups: groups.map(group => ({ ...group, tabs: sortPinnedSessionTabs(group.tabs, pinnedTabs) })),
+      pinnedTabs,
       focused,
       orientation,
       ratio,

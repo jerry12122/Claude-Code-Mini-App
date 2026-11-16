@@ -326,6 +326,7 @@ function deepFreeze(obj) {
   // 正常序列化與反序列化
   const state = {
     groups: [{ tabs: ['A', 'B'], active: 'A' }, { tabs: ['C'], active: 'C' }],
+    pinnedTabs: [],
     focused: 1,
     orientation: 'vertical',
     ratio: 0.45,
@@ -667,6 +668,65 @@ function deepFreeze(obj) {
     [[], null, 'Home', null],
     [['A'], 'A', 'Tab', null],
   ]) assert.equal(sessionTabKeyboardTarget(tabs, active, key), expected);
+}
+
+// Pinning preserves selection, constrains drag insertion, and survives every layout/storage path.
+{
+  const plain = value => JSON.parse(JSON.stringify(value));
+  const initial = deepFreeze({ ...createDefaultTabGroupsState(), groups: [{ tabs: ['A', 'B', 'C'], active: 'A' }] });
+  const pin = (s, id) => tabGroupsReducer(s, { type: 'pin', sessionId: id });
+  let s = pin(pin(initial, 'C'), 'B');
+  assert.deepEqual(s.groups[0].tabs, ['C', 'B', 'A']);
+  assert.equal(s.groups[0].active, 'A');
+  assert.equal(s.focused, initial.focused);
+  assert.equal(pin(s, 'B'), s);
+  assert.equal(pin(s, 'unknown'), s);
+  assert.equal(tabGroupsReducer(s, { type: 'close', sessionId: 'C' }), s, 'all close entry points use the reducer guard');
+  assert.deepEqual(initial.groups[0].tabs, ['A', 'B', 'C']);
+  s = tabGroupsReducer(s, { type: 'unpin', sessionId: 'C' });
+  assert.deepEqual(s.groups[0].tabs, ['B', 'C', 'A']);
+  assert.deepEqual(s.pinnedTabs, ['B']);
+  assert.equal(tabGroupsReducer(s, { type: 'unpin', sessionId: 'C' }), s);
+
+  s = tabGroupsReducer(s, { type: 'open', sessionId: 'D', insertIndex: 0 });
+  assert.deepEqual(s.groups[0].tabs, ['B', 'D', 'C', 'A']);
+  s = tabGroupsReducer(s, { type: 'move', sessionId: 'B', toGroup: 0, toIndex: 99 });
+  assert.deepEqual(s.groups[0].tabs, ['B', 'D', 'C', 'A']);
+  s = tabGroupsReducer(s, { type: 'move', sessionId: 'A', toGroup: 0, toIndex: 0 });
+  assert.deepEqual(s.groups[0].tabs, ['B', 'A', 'D', 'C']);
+
+  s = tabGroupsReducer(s, { type: 'splitDrop', sessionId: 'B', edge: 'right' });
+  assert.deepEqual(s.pinnedTabs, ['B']);
+  s = pin(s, 'D');
+  const split = s;
+  s = tabGroupsReducer(s, { type: 'toggleSplit' });
+  assert.deepEqual(s.groups[0].tabs, ['D', 'B', 'A', 'C'], 'merge partitions stably across panes');
+  const moved = tabGroupsReducer(split, { type: 'move', sessionId: 'B', toGroup: 0 });
+  assert.equal(moved.groups.length, 1);
+  assert.deepEqual(moved.groups[0].tabs, ['D', 'B', 'A', 'C']);
+  assert.deepEqual(moved.pinnedTabs, ['B', 'D']);
+  const toggled = tabGroupsReducer(tabGroupsReducer(s, { type: 'open', sessionId: 'D' }), { type: 'toggleSplit' });
+  assert.deepEqual(toggled.pinnedTabs, ['B', 'D']);
+  assert.deepEqual(plain(deserializeTabGroupsState(serializeTabGroupsState(toggled))), plain(toggled));
+
+  const pruned = pruneTabGroupsState(s, ['A', 'B', 'C']);
+  assert.deepEqual(pruned.pinnedTabs, ['B']);
+  assert.deepEqual(pruneTabGroupsState(s, []).pinnedTabs, []);
+  assert.deepEqual(tabGroupsReducer(s, { type: 'clear' }).pinnedTabs, []);
+  const old = deserializeTabGroupsState(JSON.stringify({ groups: [{ tabs: ['A'], active: 'A' }] }));
+  assert.deepEqual(old.pinnedTabs, [], 'v1 storage without pins remains valid');
+  for (const pins of [null, 'A', {}, 42]) {
+    assert.deepEqual(deserializeTabGroupsState(JSON.stringify({ ...old, pinnedTabs: pins })).pinnedTabs, []);
+  }
+  const repaired = deserializeTabGroupsState(JSON.stringify({
+    ...old, groups: [{ tabs: ['A', 'B', 'C'], active: 'A' }], pinnedTabs: ['C', 'C', 42, 'missing', 'B'],
+  }));
+  assert.deepEqual(repaired.pinnedTabs, ['C', 'B']);
+  assert.deepEqual(repaired.groups[0].tabs, ['B', 'C', 'A']);
+  assert.equal(repaired.groups[0].active, 'A');
+  assert.equal(context.sessionTabInsertIndex(['P', 'U'], ['P', 'Q'], 'Q'), 1);
+  assert.equal(context.sessionTabInsertIndex(['P', 'U'], ['P'], 'new', 0), 1);
+  assert.equal(context.sessionTabInsertIndex(['P', 'U'], ['P', 'Q'], 'Q', 99), 1);
 }
 
 console.log('tab-groups checks passed');

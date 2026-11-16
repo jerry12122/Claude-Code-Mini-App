@@ -7,8 +7,8 @@ const read = (file) => fs.readFileSync(path.join(__dirname, '../internal/static/
 
 test('分頁列：tablist 子層只有 tab，關閉鈕僅供指標，鍵盤改用 Delete 關閉', () => {
   const tabs = read('ui/SessionTabs.js');
-  assert.match(tabs, /aria-keyshortcuts="Delete"/);
-  assert.match(tabs, /e\.key === 'Delete'[\s\S]{0,160}onCloseTab\?\.\(tabId\)/);
+  assert.match(tabs, /aria-keyshortcuts=\{isPinned \? undefined : 'Delete'\}/);
+  assert.match(tabs, /e\.key === 'Delete'[\s\S]{0,160}if \(!isPinned\)[\s\S]{0,80}onCloseTab\?\.\(tabId\)/);
   const close = tabs.slice(tabs.indexOf('// tablist 的子層只能是 tab'));
   assert.match(close.slice(0, 300), /tabIndex=\{-1\}\s+aria-hidden="true"/);
 });

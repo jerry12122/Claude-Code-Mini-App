@@ -61,6 +61,24 @@ assert.equal(flashed, 1, 'respect reduced motion');
 context.revealSessionTab('closed');
 assert.doesNotThrow(() => frames.shift()(), 'closed tabs and mobile layouts have no target');
 
+// Revealing either zone must not scroll its sibling, the pane, or the document.
+let zoneScroll;
+const zone = {
+  scrollLeft: 100,
+  getBoundingClientRect: () => ({ left: 200, right: 400 }),
+  scrollTo: options => { zoneScroll = options; },
+};
+const zoneTab = {
+  closest: () => zone,
+  getBoundingClientRect: () => ({ left: 380, right: 524 }),
+  scrollIntoView: () => assert.fail('must scroll only the local zone'),
+};
+context.scrollSessionTabIntoView(zoneTab);
+assert.equal(zoneScroll.left, 224);
+context.scrollSessionTabIntoView(zoneTab, { inline: 'center', behavior: 'smooth' });
+assert.equal(zoneScroll.left, 252);
+assert.equal(zoneScroll.behavior, 'smooth');
+
 const sessionSource = fs.readFileSync(path.join(root, 'js/session/SessionView.js'), 'utf8');
 const sidebarActions = [];
 const sidebarContext = vm.createContext({
