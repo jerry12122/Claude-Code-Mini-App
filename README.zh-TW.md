@@ -75,6 +75,17 @@
 
 專為本機或受信任區網環境設計。敏感功能（主機 Shell、網頁共享、MCP server）預設關閉，須手動開啟。請勿在公開網路上以 `no_auth: true` 執行。白名單與規則：[`docs/features.zh-TW.md`](docs/features.zh-TW.md) · [`docs/spec/shell-allowlist-schema.md`](docs/spec/shell-allowlist-schema.md)。
 
+## 🌐 瀏覽器支援
+
+| 瀏覽器 | 最低版本 |
+|---|---|
+| Chrome／Edge／Android WebView（含 Telegram Android） | 111 |
+| Safari／iOS（含 Telegram iOS） | 15.6 |
+| Firefox | 121 |
+| 桌面版（WebView2） | 隨系統更新 |
+
+低於這些版本不保證可用，可能出現沒有配色或對話框失效。細節見 [`CLAUDE.md`](CLAUDE.md#瀏覽器支援政策-browser-support)。
+
 ## 📚 文件
 
 | 主題 | 路徑 |

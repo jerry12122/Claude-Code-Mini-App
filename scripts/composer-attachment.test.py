@@ -304,7 +304,9 @@ with tempfile.TemporaryDirectory(prefix="composer-check-") as tmp, sync_playwrig
                 assert close.bounding_box()['width'] >= 44 and close.bounding_box()['height'] >= 44
                 page.get_by_role('button', name='權限', exact=True).scroll_into_view_if_needed()
                 expect(close).to_be_in_viewport()
-                assert page.evaluate("getComputedStyle(document.documentElement).overflow==='hidden'")
+                # 背景不捲動：驗證實際行為而不是某個 CSS 值。原本靠 html { overflow: hidden }，
+                # modern-web-guidance「dialog」禁止這種寫法；版面本身（.h-app）讓根元素不可捲動。
+                assert page.evaluate("(()=>{scrollTo(0,0);scrollBy(0,400);const y=scrollY;scrollTo(0,0);return y===0 && document.documentElement.scrollHeight<=innerHeight})()")
                 page.get_by_role('button', name='思考強度', exact=True).click()
                 page.get_by_role('radio', name='max', exact=True).scroll_into_view_if_needed()
                 expect(close).to_be_in_viewport()

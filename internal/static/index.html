@@ -309,7 +309,27 @@
       border-color: rgba(180, 83, 9, 0.45);
     }
     .ra-composer-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
-    html:has(.ra-composer-sheet[open]) { overflow: hidden; }
+    /* 原生 modal 的滾動遏止（modern-web-guidance「dialog」，兩條都是必要的：::backdrop 本身不是
+       捲動容器，不設 overflow 就會忽略 overscroll-behavior）。不可改用 html／body 的
+       overflow: hidden，那會移除根捲軸並造成版面位移。Safari 尚未支援，屬漸進增強。 */
+    dialog:modal { overscroll-behavior: contain; }
+    dialog::backdrop { overflow: hidden; overscroll-behavior: contain; }
+    /* 快速跳轉（Ctrl/Cmd+P）：只覆蓋 UA 的定位與尺寸預設，外觀仍走元素上的 Tailwind class */
+    .ra-quick-switcher { width: min(36rem, calc(100vw - 2rem)); max-width: none; max-height: 70dvh; margin: 15vh auto auto; padding: 0; }
+    .ra-quick-switcher[open] { display: flex; flex-direction: column; }
+    .ra-quick-switcher::backdrop { background: #0008; }
+    /* 原生 modal 共用重設：UA 預設的 max-width/max-height/padding/border 會蓋掉元素上的 Tailwind，統一清掉。
+       視覺（圓角、邊框、底色、陰影）仍由各元件的 class 決定。 */
+    .ra-dialog { max-width: none; max-height: none; margin: auto; padding: 0; border: 0; color: inherit; }
+    .ra-dialog::backdrop { background: #0009; backdrop-filter: blur(2px); }
+    .ra-dialog-forward { width: min(42rem, calc(100vw - 2rem)); max-height: min(92vh, 48rem); }
+    .ra-dialog-forward[open] { display: block; }
+    .ra-dialog-share { width: min(32rem, calc(100vw - 2rem)); max-height: 88vh; }
+    .ra-dialog-share[open] { display: flex; flex-direction: column; }
+    .ra-dialog-settings { width: min(64rem, calc(100vw - 2rem)); height: min(85vh, 44rem); }
+    .ra-dialog-settings[open] { display: flex; }
+    /* 手機版設定佔滿視窗（原本是 inset-0 的全螢幕容器） */
+    .ra-dialog-settings.mobile { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; }
     .ra-composer-plus, .ra-tools-icon { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; flex-shrink: 0; border: 0; border-radius: 12px; background: transparent; color: oklch(var(--ra-t3)); cursor: pointer; }
     .ra-composer-plus { grid-column: 1; grid-row: 1; align-self: end; }
     .ra-chat-composer .ra-cmd-bar:has(> .ra-composer-plus) { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: end; border-radius: 16px; gap: 0 4px; padding: 4px; }

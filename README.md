@@ -75,6 +75,17 @@ Each user message spawns a short-lived subprocess. Details: [`docs/spec/plan.md`
 
 Designed for local and trusted network environments. Sensitive capabilities (direct host shell, web sharing, and MCP server) are opt-in and disabled by default. Never run with `no_auth: true` over public networks. Details & allowlist: [`docs/features.md`](docs/features.md) · [`docs/spec/shell-allowlist-schema.md`](docs/spec/shell-allowlist-schema.md).
 
+## 🌐 Browser support
+
+| Browser | Minimum |
+|---|---|
+| Chrome / Edge / Android WebView (incl. Telegram for Android) | 111 |
+| Safari / iOS (incl. Telegram for iOS) | 15.6 |
+| Firefox | 121 |
+| Desktop app (WebView2) | always current |
+
+Older versions are not supported and may render without colors or with broken dialogs. Details: [`CLAUDE.md`](CLAUDE.md#瀏覽器支援政策-browser-support).
+
 ## 📚 Documentation
 
 | Topic | Path |

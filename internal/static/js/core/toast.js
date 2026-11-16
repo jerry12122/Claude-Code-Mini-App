@@ -67,10 +67,10 @@ function showToast(message, { error = false, action = null, duration = 1600 } = 
   }
   Object.assign(el.style, {
     position: 'fixed',
-    left: '50%',
-    bottom: 'calc(88px + env(safe-area-inset-bottom))',
+    // popover 的 UA 樣式是 inset:0 + margin:auto（置中），要先清掉才能用 bottom 定位
+    inset: 'auto auto calc(88px + env(safe-area-inset-bottom)) 50%',
+    margin: '0',
     transform: 'translateX(-50%)',
-    zIndex: '300',
     maxWidth: '80vw',
     padding: '8px 14px',
     borderRadius: '999px',
@@ -84,7 +84,23 @@ function showToast(message, { error = false, action = null, duration = 1600 } = 
     opacity: '0',
     transition: 'opacity 0.18s',
   });
-  document.body.appendChild(el);
+  // popover="manual" 讓 toast 進入 top layer，蓋在原生 modal 之上（modern-web-guidance「persistent-toast-notifications」）。
+  // 兩個實測過的限制：
+  // 1. 必須掛在最上層 modal 底下。掛在 body 時雖然也在 top layer，但 body 已被 modal 設成 inert，動作鈕按不到。
+  // 2. 不能只用一般的 fixed 子元素：<dialog> 會成為它的包含區塊並裁切它，toast 落在對話框外就被切掉。
+  // modal 關閉時把 toast 移回 body；移動節點會關掉 popover，所以要重新 showPopover()。
+  // ponytail: 指南建議 modal 開著時不要顯示 toast；這裡的 toast 多是 modal 內動作的回饋（「已複製連結」），所以仍顯示。
+  el.setAttribute('popover', 'manual');
+  const show = () => { try { el.showPopover(); } catch (_) { /* 已卸載或不支援 popover：退回一般 fixed 元素 */ } };
+  const modals = document.querySelectorAll('dialog:modal');
+  const host = modals[modals.length - 1];
+  if (host) {
+    host.appendChild(el);
+    host.addEventListener('close', () => { if (el.parentNode) { document.body.appendChild(el); show(); } }, { once: true });
+  } else {
+    document.body.appendChild(el);
+  }
+  show();
   requestAnimationFrame(() => { el.style.opacity = '1'; });
   setTimeout(dismiss, duration);
 }

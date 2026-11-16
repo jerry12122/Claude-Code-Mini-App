@@ -175,14 +175,14 @@ function ShareModal({ session, onClose }) {
     return () => clearInterval(t);
   }, [load]);
 
-  useEffect(() => {
-    const h = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [onClose]);
-
   const dialogRef = useRef(null);
-  useDialogFocus(dialogRef);
+  // 原生 modal 提供對話框語意、焦點容納、Esc 關閉與關閉後的焦點還原。
+  // 不要加 role="dialog"／aria-modal／焦點陷阱／Esc handler（見 docs/spec/frontend-architecture.md 第 5 節）。
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current;
+    dialog.showModal();
+    return () => dialog.close();
+  }, []);
 
   const pickRole = (r) => {
     setRole(r);
@@ -232,23 +232,26 @@ function ShareModal({ session, onClose }) {
     : 'border-ra-line bg-ra-card text-ra-t3 hover:border-ra-line-strong'}`;
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-[2px]" onClick={onClose} role="presentation">
-      <div
-        ref={dialogRef}
-        tabIndex={-1}
-        className="w-full max-w-lg max-h-[88vh] flex flex-col overflow-hidden rounded-2xl border border-ra-line bg-ra-bg shadow-2xl shadow-black/50 focus:outline-none"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label="分享聊天室"
-      >
-        <div className="shrink-0 flex items-center justify-between px-5 pt-4 pb-3">
-          <div className="min-w-0">
-            <div className="text-sm font-semibold text-ra-t1">分享聊天室</div>
-            <div className="text-xs text-ra-t4 truncate">{session.name || '未命名'}</div>
-          </div>
-          <button type="button" onClick={onClose} className="text-ra-t4 hover:text-ra-t1 text-lg leading-none px-1" aria-label="關閉">×</button>
+    <dialog
+      ref={dialogRef}
+      className="ra-dialog ra-dialog-share overflow-hidden rounded-2xl border border-ra-line bg-ra-bg shadow-2xl shadow-black/50"
+      aria-label="分享聊天室"
+      onClose={onClose}
+      onClick={(e) => {
+        // 點 backdrop 時 target 也是 <dialog>（它的 padding 與子元素間隙同理），所以測指標位置而不是 target
+        if (e.target !== e.currentTarget) return;
+        const r = e.currentTarget.getBoundingClientRect();
+        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) e.currentTarget.close();
+      }}
+    >
+      <div className="shrink-0 flex items-center justify-between px-5 pt-4 pb-3">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-ra-t1">分享聊天室</div>
+          <div className="text-xs text-ra-t4 truncate">{session.name || '未命名'}</div>
         </div>
+        {/* 走原生 close()，onClose 由 close 事件觸發，瀏覽器才會把焦點還給開啟者 */}
+        <button type="button" onClick={() => dialogRef.current?.close()} className="text-ra-t4 hover:text-ra-t1 text-lg leading-none px-1" aria-label="關閉">×</button>
+      </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto app-scroll px-5 pb-5 space-y-4">
           <div className="space-y-3 rounded-xl border border-ra-line-soft p-3">
@@ -316,7 +319,6 @@ function ShareModal({ session, onClose }) {
             )}
           </div>
         </div>
-      </div>
-    </div>
+    </dialog>
   );
 }

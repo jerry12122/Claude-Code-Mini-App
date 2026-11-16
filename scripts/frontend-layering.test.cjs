@@ -13,6 +13,7 @@ const KNOWN_VIOLATIONS = {
   R4_ws: [],
   R5_kebab: [],
   R6_size: ['chat/ChatView.js', 'hooks/useChatSocket.js'],
+  R7_custom_dialog: [],
 };
 
 // <head> 載入的獨立腳本，不屬於 React 應用，不受命名與分層規則約束
@@ -104,6 +105,18 @@ for (const f of appFiles) {
   const lines = f.src.split('\n').length;
   if (lines > MAX_LINES) {
     check(allowed('R6_size', f.rel), `R6 ${f.rel} ${lines} 行，超過 ${MAX_LINES} 行上限`);
+  }
+}
+
+// R7 不得新增自製 modal：原生 <dialog> + showModal() 已提供語意、焦點與 Esc
+// 比對原始碼而非 stripNoise 後的內容，因為 role="dialog" 是 JSX 屬性字串；
+// ponytail: 只濾掉整行註解，行尾註解提到這些 token 仍會誤報，必要時用白名單處理
+const CUSTOM_DIALOG = /role="dialog"|aria-modal|DIALOG_FOCUSABLE/;
+const withoutCommentLines = (src) =>
+  src.split('\n').filter((l) => !/^\s*(\/\/|\/\*|\*)/.test(l)).join('\n');
+for (const f of appFiles) {
+  if (CUSTOM_DIALOG.test(withoutCommentLines(f.src))) {
+    check(allowed('R7_custom_dialog', f.rel), `R7 ${f.rel} 自製 modal，應改用原生 <dialog> + showModal()`);
   }
 }
 

@@ -357,30 +357,23 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
     }
   }, [updateOpenNonce]);
 
-  useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const h = (e) => {
-      if (e.key !== 'Escape') return;
-      if (mobile && mobileDetail) { e.preventDefault(); setMobileDetail(false); }
-      else onClose();
-    };
-    window.addEventListener('keydown', h);
-    return () => {
-      document.body.style.overflow = prev;
-      window.removeEventListener('keydown', h);
-    };
-  }, [open, onClose, mobile, mobileDetail]);
-
   const dialogRef = useRef(null);
-  useDialogFocus(dialogRef, open);
-  useEffect(() => {
-    if (!open) return;
+  // 原生 modal 提供對話框語意、焦點容納、Esc 關閉與關閉後的焦點還原。
+  // 不要加 role="dialog"／aria-modal／焦點陷阱／Esc handler（見 docs/spec/frontend-architecture.md 第 5 節）。
+  // 手機第二層的 Esc 要「返回分類」而不是關閉，改由 onCancel 攔截。
+  useLayoutEffect(() => {
+    if (!open) return undefined;
     const dialog = dialogRef.current;
-    const target = mobile ? (mobileDetail ? backRef.current
-      : dialog?.querySelector(`[data-settings-section="${section}"]`))
-      : (!dialog?.contains(document.activeElement) ? dialog : null);
+    dialog.showModal();
+    return () => dialog.close();
+  }, [open]);
+
+  // 手機版的刻意焦點轉移（進第二層移到返回鍵、回第一層移到剛才的分類）。
+  // 桌面不處理：原生 modal 自己會把焦點放進對話框。
+  useEffect(() => {
+    if (!open || !mobile) return;
+    const dialog = dialogRef.current;
+    const target = mobileDetail ? backRef.current : dialog?.querySelector(`[data-settings-section="${section}"]`);
     target?.focus({ preventScroll: true });
   }, [open, mobile, mobileDetail]);
 
@@ -412,21 +405,23 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
   const enterSection = (id) => { setSection(id); setMobileDetail(true); };
 
   return (
-    <div
-      className={`fixed inset-0 z-[100] flex items-center justify-center ${mobile ? '' : 'p-4'} bg-black/60 backdrop-blur-[2px]`}
-      onClick={onClose}
-      role="presentation"
+    <dialog
+      ref={dialogRef}
+      className={`ra-dialog ra-dialog-settings overflow-hidden bg-ra-bg shadow-2xl shadow-black/50 ${mobile ? 'mobile flex-col' : 'rounded-2xl border border-ra-line'}`}
+      style={mobile ? { paddingBottom: 'max(env(safe-area-inset-bottom, 0px), var(--tg-safe-area-inset-bottom, 0px))' } : undefined}
+      aria-labelledby="settings-modal-title"
+      onClose={onClose}
+      onCancel={(e) => {
+        // 手機第二層：Esc／返回手勢先回到分類清單，不關閉整個設定
+        if (mobile && mobileDetail) { e.preventDefault(); setMobileDetail(false); }
+      }}
+      onClick={(e) => {
+        // 點 backdrop 時 target 也是 <dialog>（它的 padding 與子元素間隙同理），所以測指標位置而不是 target
+        if (e.target !== e.currentTarget) return;
+        const r = e.currentTarget.getBoundingClientRect();
+        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) e.currentTarget.close();
+      }}
     >
-      <div
-        ref={dialogRef}
-        tabIndex={-1}
-        className={`w-full flex overflow-hidden bg-ra-bg shadow-2xl shadow-black/50 focus:outline-none ${mobile ? 'h-full flex-col' : 'max-w-5xl h-[min(85vh,44rem)] rounded-2xl border border-ra-line'}`}
-        style={mobile ? { paddingBottom: 'max(env(safe-area-inset-bottom, 0px), var(--tg-safe-area-inset-bottom, 0px))' } : undefined}
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="settings-modal-title"
-      >
         {mobile && <header className="flex shrink-0 items-center gap-2 border-b border-ra-line-soft px-3 pb-2"
           style={{ paddingTop: 'calc(max(8px, env(safe-area-inset-top, 0px), var(--tg-safe-area-inset-top, 0px)) + var(--tg-content-safe-top, 0px))' }}>
           {mobileDetail && <button type="button" ref={backRef} aria-label="返回設定分類"
@@ -435,7 +430,7 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m14 6-6 6 6 6" /></svg>
           </button>}
           <h2 id="settings-modal-title" className="flex-1 px-2 text-base font-semibold text-ra-t1">{mobileDetail ? sections.find(s => s.id === section)?.label : '設定'}</h2>
-          <button type="button" aria-label="關閉設定" onClick={onClose}
+          <button type="button" aria-label="關閉設定" onClick={() => dialogRef.current?.close()}
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-ra-t2 hover:bg-ra-raised">
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6" /></svg>
           </button>
@@ -514,7 +509,8 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
               {!saveError && savedFlash && <span className="text-xs text-emerald-400">已儲存</span>}
               <button
                 type="button"
-                onClick={onClose}
+                // 走原生 close()，onClose 由 close 事件觸發，瀏覽器才會把焦點還給開啟者
+                onClick={() => dialogRef.current?.close()}
                 className="px-3 py-1.5 bg-ra-raised hover:bg-ra-raised text-ra-t2 rounded-lg text-xs font-medium transition-colors"
               >
                 關閉
@@ -532,7 +528,6 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
             </div>
           </div>
         </div>}
-      </div>
-    </div>
+    </dialog>
   );
 }

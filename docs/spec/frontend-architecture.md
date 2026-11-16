@@ -1,7 +1,10 @@
 # 前端架構規範 (Frontend Architecture)
 
 本文件是 `internal/static/` 的分層與命名約定。規則以 `scripts/frontend-layering.test.cjs` 自動驗證，
-已知的既存違規列在該腳本的例外清單與本文第 7 節，**例外只能減少，不得新增**。
+已知的既存違規列在該腳本的例外清單與本文第 8 節，**例外只能減少，不得新增**。
+
+**分工**：檔案放哪、怎麼命名、依賴往哪個方向，看本文件。HTML／CSS／client-side JS
+該用哪個平台 API，看第 5 節指向的 `modern-web-guidance`。兩者正交，衝突時先問，不要自行取捨。
 
 ---
 
@@ -23,7 +26,11 @@
 
 **後果**：新增檔案時忘記在 `index.html` 註冊、或註冊位置排錯，錯誤只會在執行時以
 `X is not defined` 出現。任何一支檔案有語法錯誤，整個 `js/app.bundle.js` 會回 500，整頁空白。
-這是上述取捨的既定代價，由第 6 節的檢查守住。
+這是上述取捨的既定代價，由第 7 節的檢查守住。
+
+**另一個後果**：沒有 npm 與 bundler，所以 `modern-web-guidance` 建議的
+`import('@oddbird/popover-polyfill')` 這類條件載入 polyfill 一律無法直接採用。
+瀏覽器支援政策見 `CLAUDE.md`。
 
 ---
 
@@ -48,6 +55,11 @@ app.js         ← 組裝與路由
 `index.html` 的 `<head>` 只放與 React 無關的獨立腳本（`wails-runtime-ready.js`、
 `devtool-easter-egg.js`）與 vendor；應用層腳本全部在 `<body>`。
 
+**採用新的平台能力時，重新檢查這個方向。** 原生 API 常要求一個 DOM 容器或一個
+掛載點，而容器通常由上層渲染——這會把依賴方向弄反。做法是把「觸發的 API」留在下層、
+「容器的渲染」交給上層，下層只查找容器（找不到時有保守退路），不要為此讓 `core/`
+或 `hooks/` 引用上層符號。
+
 ---
 
 ## 2. 各層職責
@@ -66,6 +78,10 @@ app.js         ← 組裝與路由
 * 不含 React 的純 DOM 工具：`showToast`、`copyText`、`hapticTap`（在 `core/toast.js`）
 
 目前有兩支檔案：`core/core.js`（平台、認證、API／WS、Markdown、偏好）與 `core/toast.js`。
+
+`core/toast.js` 已用 `popover="manual"`。日後若依 `persistent-toast-notifications` 加上共用的
+`<div role="region" aria-label="通知">` 容器，容器由 `app.js` 渲染，`core/toast.js`
+只查找容器（查不到時退回 `document.body`）。不要為了容器讓 `core/` 引用上層符號，理由見第 1 節末。
 
 **不放**：任何 JSX、任何只有單一功能用得到的邏輯。
 
@@ -141,20 +157,70 @@ app.js         ← 組裝與路由
 
 ---
 
-## 5. 新增檔案的步驟
+## 5. 平台能力優先
 
-1. 依第 1、2 節決定目錄，依第 3 節命名。
-2. 在 `index.html` 的 `<body>` 加 `<script type="text/babel" data-presets="react-classic" src="./js/<dir>/<file>.js"></script>`。
-   **位置**：排在它引用的所有檔案之後、引用它的所有檔案之前。
-   `type` 屬性不影響實際行為（bundler 只看 `src="./js/..."`），沿用既有寫法保持一致即可。
-   現有 `chat/HTMLPreview.js`、`chat/MermaidBlock.js` 用普通 `<script>`，一樣會被編進 bundle。
-3. 非 trivial 的邏輯在 `scripts/` 留一支 `*.test.cjs`，沿用既有慣例：
-   `node:assert/strict` + `node:fs` + `node:vm` 讀原始檔執行，無框架、無 `package.json`。
-4. 跑 `node scripts/frontend-layering.test.cjs`。
+寫或改任何 UI、CSS 版面／動畫、client-side JS（日期時區、消毒、效能、無障礙）之前，
+先查 `modern-web-guidance` skill，**動手前查，不要憑記憶**。瀏覽器 API 變動快，
+訓練資料裡的寫法通常已經過時。
+
+**不要把指南內容抄進本文件。** 它是 retrieval-first 的工具，Baseline 日期與 fallback
+建議會變；抄一份進 repo 就是製造一份會過期的真相。本文件只記錄指向，以及專案自己的決策
+（瀏覽器支援政策在 `CLAUDE.md`、既存例外在第 8 節）。
+
+### 已知的偏離
+
+這些是審視過、確認與指南衝突的既存實作，不是可以照抄的範例：
+
+| 項目 | 指南 | 現況 |
+|---|---|---|
+| `showToast` | `persistent-toast-notifications` | 已改用 `popover="manual"`，modal 開著時也在最上層（見下方「陷阱」）。仍缺共用 `role="region"` 容器與 `ariaNotify()`；計時移除時不檢查焦點是否落在 toast 的動作按鈕上 |
+| `:root { color-scheme: dark }` | `dark-mode-toggle` | 指南要求基底宣告必須保持 `light dark`，覆寫走 `<meta name="color-scheme">`；現況硬寫 dark 且預設不跟隨系統，JS 沒跑就固定深色 |
+| `SelectionQuotePopover` | `dialog`（Rule 3） | 手算 px 座標，未用 `popover` 屬性與 anchor positioning。**決定不改**：anchor positioning 只有 Safari 支援，改了等於讓 Chrome／Firefox 壞掉 |
+
+四個 modal（`ui/QuickSwitcher.js`、`ui/SettingsModal.js`、`share/ShareModal.js`、`chat/ForwardModal.js`）
+與 `chat/ComposerTools.js` 都已改為原生 `<dialog>` + `showModal()`，是現在的正確範例。
+新的浮層照它們寫，不要重建 `role="dialog"`／`aria-modal`／焦點陷阱／Esc handler。
+
+共用樣式已在 `index.html`：全域的 `dialog:modal` 與 `dialog::backdrop` 滾動遏止，
+以及 `.ra-dialog`（清掉 UA 的 `max-width`／`max-height`／`padding`／`border`，讓元素上的
+Tailwind 生效）。新 dialog 套 `.ra-dialog` 再加自己的尺寸類別即可。
+
+### 原生 dialog 在 React 裡的兩個陷阱
+
+這兩個問題單獨測元件時不會出現，是在完整 app 裡實測才發現的：
+
+1. **按鈕要呼叫 `dialogRef.current.close()`，不能直接呼叫 `onClose`。** 直接呼叫會讓 React 先把
+   還開著的 `<dialog>` 從 DOM 移除，瀏覽器就不會把焦點還給開啟者，焦點掉到 `body`。
+   `onClose` 只接在 `<dialog onClose>` 上，由 close 事件觸發。
+2. **開啟後若內容會整段換掉，焦點要放在 dialog 容器。** `showModal()` 會聚焦第一個可聚焦元素；
+   如果那個元素隨即被卸載（例如 Forward 先顯示「載入會話…」），焦點會掉到 `body`。
+   做法是 `tabIndex={-1}` 加開啟後 `dialog.focus()`。Chrome 不採用 `<dialog>` 自身的 `autofocus`。
+
+另外，modal 開著時 `body` 底下的內容會被 top layer 蓋住並變成 inert。`core/toast.js` 因此用
+`popover="manual"`，有 modal 時掛在最上層的 dialog 底下（掛在 `body` 的 popover 雖在 top layer，
+但 inert 讓動作鈕按不到；一般 fixed 子元素則會被 dialog 裁切），關閉時移回 `body` 並重新 `showPopover()`。
+
+行為驗證：`node scripts/dialog-focus.test.cjs`（靜態斷言，8 項）。
+
+反例也記在檢查腳本的 R7 白名單裡，只能減少。
 
 ---
 
-## 6. 驗證
+## 6. 新增檔案的步驟
+
+1. 依第 1、2 節決定目錄，依第 3 節命名。
+2. 若會寫到 UI、CSS 或 client-side 行為，先做第 5 節的查詢。
+3. 在 `index.html` 的 `<body>` 加 `<script type="text/babel" data-presets="react-classic" src="./js/<dir>/<file>.js"></script>`。
+   **位置**：排在它引用的所有檔案之後、引用它的所有檔案之前。
+   `type` 屬性不影響實際行為（bundler 只看 `src="./js/..."`），沿用既有寫法保持一致即可。
+   現有 `chat/HTMLPreview.js`、`chat/MermaidBlock.js` 用普通 `<script>`，一樣會被編進 bundle。
+4. 非 trivial 的邏輯在 `scripts/` 留一支 `*.test.cjs`，沿用既有慣例：
+   `node:assert/strict` + `node:fs` + `node:vm` 讀原始檔執行，無框架、無 `package.json`。
+5. 跑 `node scripts/frontend-layering.test.cjs`。
+
+---
+
+## 7. 驗證
 
 ```bash
 node scripts/frontend-layering.test.cjs
@@ -170,18 +236,29 @@ node scripts/frontend-layering.test.cjs
 | R4 | 裸 `fetch(` 只在 `core/`；`new WebSocket` 只在連線擁有者 | 第 2 節 |
 | R5 | `js/` 下無 kebab-case 檔名 | 第 3 節 |
 | R6 | 單檔 ≤ 850 行 | 第 4 節 |
+| R7 | 不得新增自製 modal（`role="dialog"`、`aria-modal`、手寫焦點陷阱） | 第 5 節 |
+
+R7 只是攔截網，不是替代品：它擋得住自製 dialog，擋不住其他過時寫法。
+那部分靠第 5 節的查詢，沒有自動化。
 
 腳本內的 `KNOWN_VIOLATIONS` 是既存違規白名單。**新增檔案不得寫進去**；
 處理掉一項就從清單刪一項。
 
 ---
 
-## 7. 現存例外（待遷移）
+## 8. 現存例外（待遷移）
 
 | 檔案 | 違反 | 處理方向 |
 |---|---|---|
 | `chat/ChatView.js`（1843 行） | R6 | 拆出 `LiveActivity`、`QuestionCard`、`PermToolDetail`、`QueuedMessages`、`ChatImageLightbox`、`TelegramOlderControl` 成同目錄獨立檔 |
 | `hooks/useChatSocket.js`（901 行） | R6 | 僅略超，低優先 |
+
+R7 已無例外。另見第 5 節「已知的偏離」：`showToast`、`:root` 的 `color-scheme`、
+`SelectionQuotePopover` 也與指南衝突，但無法靜態檢查，未列入白名單。
+
+composer sheet 的 `html:has(.ra-composer-sheet[open]) { overflow: hidden }` 已移除。實測根元素在此版面
+本來就不可捲動（`scrollHeight` 等於視窗高度，有沒有這條規則都一樣），它只是違反指南的冗餘規則。
+`scripts/composer-attachment.test.py` 原本斷言這個 CSS 值，已改成直接測「背景捲不動」的行為。
 
 改名需同步更新 `index.html` 與 `docs/spectra/specs/*/spec.md` 內的路徑記錄。
 
@@ -191,7 +268,7 @@ node scripts/frontend-layering.test.cjs
 
 | 目的地 | 符號數 | 內容 |
 |---|---|---|
-| `ui/uiAtoms.js` | 41 | 真正的 UI 原子與元件（下拉、晶片、badge、`ShellOutput`、`useDialogFocus` 等） |
+| `ui/uiAtoms.js` | 41 | 真正的 UI 原子與元件（下拉、晶片、badge、`ShellOutput` 等）。原先一併留在這裡的 `useDialogFocus`／`DIALOG_FOCUSABLE` 已隨四個 modal 改用原生 `<dialog>` 刪除 |
 | `hooks/composerDrafts.js` | 15 | 草稿與待送輸入的持久化、每個 session 的輸入模式 |
 | `hooks/quotaMetrics.js` | 10 | quota 版型表與數值計算（顏色函式留在 ui） |
 | `hooks/messageRows.js` | 6 | `mapMessageRow` 與 SQLite datetime 解析／時間格式 |

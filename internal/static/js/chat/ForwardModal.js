@@ -20,13 +20,6 @@ function ForwardModal({
 
   useEffect(() => {
     if (!payload) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, [payload]);
-
-  useEffect(() => {
-    if (!payload) return;
     setNote('');
     setErrText('');
     setBusy(false);
@@ -71,19 +64,25 @@ function ForwardModal({
     newForm.applyFromSession(s);
   }, [copyFromId, sessionsList]);
 
-  useEffect(() => {
-    if (!payload) return;
-    const h = (e) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [payload, onClose]);
-
   const dialogRef = useRef(null);
-  useDialogFocus(dialogRef, !!payload);
+  // 原生 modal 提供對話框語意、焦點容納、Esc 關閉與關閉後的焦點還原。
+  // 不要加 role="dialog"／aria-modal／焦點陷阱／Esc handler（見 docs/spec/frontend-architecture.md 第 5 節）。
+  useLayoutEffect(() => {
+    if (!payload) return undefined;
+    const dialog = dialogRef.current;
+    dialog.showModal();
+    // ponytail: 初始焦點放在容器。沒帶入會話清單時會先進「載入會話…」，showModal() 聚焦的第一顆按鈕
+    // 隨即被卸載，焦點掉到 body。Chrome 不採用 <dialog> 自身的 autofocus，所以這裡手動聚焦；
+    // 若日後改成載入時不卸載清單，就能刪掉這行改回瀏覽器預設。
+    dialog.focus({ preventScroll: true });
+    return () => dialog.close();
+  }, [payload]);
 
   if (!payload) return null;
+
+  // 關閉一律走原生 close()，onClose 由 close 事件觸發。直接呼叫 onClose 會讓 React 先把開著的 <dialog>
+  // 從 DOM 移除才跑 cleanup，瀏覽器就不會把焦點還給開啟者（實測會掉到 body）。
+  const close = () => dialogRef.current?.close();
 
   const targets = sessionsList.filter((s) => s.id !== currentSessionId && s.agent_type !== 'kiro');
   const messageContent = String(payload.messageContent || '');
@@ -103,7 +102,7 @@ function ForwardModal({
         const target = sessionsList.find((s) => s.id === selectedId);
         if (!target) throw new Error('找不到目標會話');
         onForwarded({ messageKey: payload.messageKey, targetSession: target, jump: false });
-        onClose();
+        close();
         return;
       }
       if (!newForm.name.trim()) {
@@ -122,7 +121,7 @@ function ForwardModal({
       const created = await res.json();
       const sent = await sendFirstPromptOrDraft(created.id, composed);
       onForwarded({ messageKey: payload.messageKey, targetSession: created, jump: true, sent });
-      onClose();
+      close();
     } catch (e) {
       setErrText(e.message || String(e));
     } finally {
@@ -131,23 +130,22 @@ function ForwardModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-[2px]"
-      onClick={onClose}
-      role="presentation"
+    <dialog
+      ref={dialogRef}
+      tabIndex={-1}
+      className="ra-dialog ra-dialog-forward overflow-y-auto app-scroll rounded-2xl border border-slate-700 bg-slate-950/95 shadow-2xl shadow-black/50 p-4 md:p-6 space-y-3 md:space-y-4 focus:outline-none"
+      aria-labelledby="forward-modal-title"
+      onClose={onClose}
+      onClick={(e) => {
+        // 點 backdrop 時 target 也是 <dialog>（它的 padding 與子元素間隙同理），所以測指標位置而不是 target
+        if (e.target !== e.currentTarget) return;
+        const r = e.currentTarget.getBoundingClientRect();
+        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) e.currentTarget.close();
+      }}
     >
-      <div
-        ref={dialogRef}
-        tabIndex={-1}
-        className="max-w-md sm:max-w-xl md:max-w-2xl w-full max-h-[min(90vh,32rem)] md:max-h-[min(92vh,48rem)] overflow-y-auto app-scroll rounded-2xl border border-slate-700 bg-slate-950/95 shadow-2xl shadow-black/50 p-4 md:p-6 space-y-3 md:space-y-4 focus:outline-none"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="forward-modal-title"
-      >
-        <div id="forward-modal-title" className="text-sm md:text-base font-semibold text-slate-100">
-          Forward 到其他會話
-        </div>
+      <div id="forward-modal-title" className="text-sm md:text-base font-semibold text-slate-100">
+        Forward 到其他會話
+      </div>
         {loadingSessions ? (
           <div className="text-xs text-slate-500 py-4 text-center">載入會話…</div>
         ) : (
@@ -321,7 +319,7 @@ function ForwardModal({
             <div className="flex flex-wrap gap-2 justify-end pt-1">
               <button
                 type="button"
-                onClick={onClose}
+                onClick={close}
                 disabled={busy}
                 className="px-3 py-2 rounded-xl text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-600 disabled:opacity-40"
               >
@@ -338,8 +336,7 @@ function ForwardModal({
             </div>
           </>
         )}
-      </div>
-    </div>
+    </dialog>
   );
 }
 

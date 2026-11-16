@@ -12,14 +12,13 @@ index = (root / 'index.html').read_text(encoding='utf-8')
 styles = '\n'.join(re.findall(r'<style[^>]*>(.*?)</style>', index, re.S))
 config = re.search(r'<script>\s*(tailwind.config = .*?)</script>', index, re.S)[1]
 core = (root / 'js/core/core.js').read_text(encoding='utf-8')
-atoms = (root / 'js/ui/uiAtoms.js').read_text(encoding='utf-8')
 source = (root / 'js/ui/SettingsModal.js').read_text(encoding='utf-8')
 compiled = subprocess.run(
     ['go', 'run', 'github.com/evanw/esbuild/cmd/esbuild', '--loader=jsx', '--target=es2020'],
     input=source, encoding='utf-8', capture_output=True, cwd=repo, check=True,
 ).stdout
 setup = r"""
-const {useState,useEffect,useRef,useMemo}=React;
+const {useState,useEffect,useLayoutEffect,useRef,useMemo}=React;
 const APPEARANCE_DEFAULTS={headingColor:'#ffaa55',boldColor:'#88bb99',codeColor:'#aa88ff',customCss:''};
 const GENERAL_DEFAULTS={vscodeNoAdmin:false},CHAT_FS_DEFAULT=14,CHAT_FS_MIN=12,CHAT_FS_MAX=24;
 let stored={...APPEARANCE_DEFAULTS};
@@ -40,7 +39,6 @@ function Fixture(){
 }
 """
 media_hook = core[core.index('function useMediaQuery('):core.index('/**', core.index('function useMediaQuery('))]
-focus_hook = atoms[atoms.index('const DIALOG_FOCUSABLE'):]
 screens = repo / '.spectra/design-cache/mobile-settings'
 screens.mkdir(parents=True, exist_ok=True)
 errors = []
@@ -59,7 +57,7 @@ with tempfile.TemporaryDirectory(prefix='settings-check-') as tmp, sync_playwrig
             for vendor in ['tailwind.js', 'react.production.min.js', 'react-dom.production.min.js']:
                 page.add_script_tag(path=str(root / 'js/vendor' / vendor))
             page.add_script_tag(content=config)
-            page.add_script_tag(content=setup + media_hook + focus_hook + compiled)
+            page.add_script_tag(content=setup + media_hook + compiled)
             page.add_script_tag(content="ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(Fixture))")
             opener = page.get_by_role('button', name='開啟設定', exact=True)
             opener.click()

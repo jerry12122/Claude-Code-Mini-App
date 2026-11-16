@@ -1,107 +1,84 @@
+// 四個浮層都必須用原生 <dialog> + showModal()，不得自己重建對話框語意與焦點管理。
+// 規則見 docs/spec/frontend-architecture.md 第 5 節（來源：modern-web-guidance「dialog」）。
+// 原本此檔測試 useDialogFocus（手寫焦點陷阱）；該 hook 已隨改用原生 dialog 刪除。
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const vm = require('node:vm');
 
-const source = fs.readFileSync(path.join(__dirname, '../internal/static/js/ui/uiAtoms.js'), 'utf8');
-const start = source.indexOf('// 對話框焦點管理');
-assert.ok(start >= 0, 'useDialogFocus must exist in uiAtoms.js');
+const JS = path.join(__dirname, '../internal/static/js');
+const read = (file) => fs.readFileSync(path.join(JS, file), 'utf8');
+// 整行註解不算（規範本身會在註解裡提到這些 token 當反例提醒）
+const code = (file) => read(file).split('\n').filter((l) => !/^\s*(\/\/|\/\*|\*)/.test(l)).join('\n');
 
-// 假 DOM：只實作 hook 用到的 contains／focus／querySelectorAll／offsetParent
-function setup({ openerConnected = true, openerIsBody = false } = {}) {
-  const doc = { activeElement: null, listeners: {}, body: { id: 'body' } };
-  doc.addEventListener = (type, fn) => { doc.listeners[type] = fn; };
-  doc.removeEventListener = (type) => { delete doc.listeners[type]; };
-  const el = (name) => ({ name, offsetParent: {}, focus() { doc.activeElement = this; } });
-  const items = [el('first'), el('middle'), el('last')];
-  const dialog = {
-    name: 'dialog',
-    focus() { doc.activeElement = this; },
-    contains(node) { return node === this || items.includes(node); },
-    querySelectorAll: () => items,
-  };
-  const opener = { name: 'opener', isConnected: openerConnected, focus() { doc.activeElement = this; } };
-  doc.activeElement = openerIsBody ? doc.body : opener;
-  let cleanup;
-  const context = vm.createContext({
-    document: doc,
-    useEffect: (fn) => { cleanup = fn(); },
-  });
-  vm.runInContext(source.slice(start) + '\nthis.useDialogFocus = useDialogFocus;', context);
-  const run = (active = true) => context.useDialogFocus({ current: dialog }, active);
-  const press = (shiftKey) => {
-    const e = { key: 'Tab', shiftKey, prevented: false, preventDefault() { this.prevented = true; } };
-    doc.listeners.keydown(e);
-    return e;
-  };
-  return { doc, dialog, items, opener, run, press, close: () => cleanup && cleanup() };
-}
+const MODALS = ['ui/SettingsModal.js', 'share/ShareModal.js', 'chat/ForwardModal.js', 'ui/QuickSwitcher.js'];
 
-test('開啟時焦點移到對話框容器，不直接落在第一個控制項', () => {
-  const { doc, dialog, run } = setup();
-  run();
-  assert.equal(doc.activeElement, dialog);
-});
-
-test('Tab 在最後一個控制項時繞回第一個；Shift+Tab 在第一個時繞到最後一個', () => {
-  const { doc, items, run, press } = setup();
-  run();
-  doc.activeElement = items[2];
-  assert.ok(press(false).prevented);
-  assert.equal(doc.activeElement, items[0]);
-  assert.ok(press(true).prevented);
-  assert.equal(doc.activeElement, items[2]);
-});
-
-test('框內中間的 Tab 交給瀏覽器處理；容器上 Shift+Tab 不會跳出對話框', () => {
-  const { doc, dialog, items, run, press } = setup();
-  run();
-  doc.activeElement = items[1];
-  assert.ok(!press(false).prevented);
-  assert.ok(!press(true).prevented);
-  doc.activeElement = dialog;
-  assert.ok(press(true).prevented);
-  assert.equal(doc.activeElement, items[2]);
-});
-
-test('焦點跑到對話框外時，下一次 Tab 把它拉回框內', () => {
-  const { doc, opener, items, run, press } = setup();
-  run();
-  doc.activeElement = opener;
-  press(false);
-  assert.equal(doc.activeElement, items[0]);
-});
-
-test('關閉後把焦點還原到開啟者；開啟者已卸載或是 body 時不搶焦點', () => {
-  const normal = setup();
-  normal.run();
-  normal.close();
-  assert.equal(normal.doc.activeElement, normal.opener);
-  assert.equal(normal.doc.listeners.keydown, undefined, '關閉後要移除 keydown 監聽');
-
-  const gone = setup({ openerConnected: false });
-  gone.run();
-  gone.close();
-  assert.notEqual(gone.doc.activeElement, gone.opener);
-
-  const body = setup({ openerIsBody: true });
-  body.run();
-  body.close();
-  assert.equal(body.doc.activeElement, body.dialog);
-});
-
-test('未開啟時不做任何事', () => {
-  const { doc, opener, run } = setup();
-  run(false);
-  assert.equal(doc.activeElement, opener);
-  assert.equal(doc.listeners.keydown, undefined);
-});
-
-test('三個自製對話框都接上 useDialogFocus 並設定 ref 與 tabIndex', () => {
-  for (const file of ['ui/SettingsModal.js', 'share/ShareModal.js', 'chat/ForwardModal.js']) {
-    const text = fs.readFileSync(path.join(__dirname, '../internal/static/js', file), 'utf8');
-    assert.match(text, /useDialogFocus\(dialogRef/, `${file} 缺少 useDialogFocus`);
-    assert.match(text, /ref=\{dialogRef\}\s+tabIndex=\{-1\}/, `${file} 缺少 ref／tabIndex`);
+test('用原生 <dialog> 與 showModal()，而不是自製浮層', () => {
+  for (const file of MODALS) {
+    const src = code(file);
+    assert.match(src, /<dialog\b/, `${file} 應使用原生 <dialog>`);
+    assert.match(src, /\.showModal\(\)/, `${file} 應以 showModal() 開啟（不可用 show() 或 open 屬性）`);
+    assert.doesNotMatch(src, /\bopen=\{/, `${file} 不可用 open 屬性開啟 modal`);
   }
 });
+
+test('不重建瀏覽器已提供的語意與行為', () => {
+  for (const file of MODALS) {
+    const src = code(file);
+    assert.doesNotMatch(src, /role="dialog"/, `${file} 原生 modal 不需要 role="dialog"`);
+    assert.doesNotMatch(src, /aria-modal/, `${file} 原生 modal 不需要 aria-modal`);
+    assert.doesNotMatch(src, /key === 'Escape'/, `${file} 不需要自寫 Esc handler`);
+    assert.doesNotMatch(src, /body\.style\.overflow/, `${file} 不可用 body overflow 鎖滾動`);
+  }
+});
+
+test('每個對話框都有可及名稱，且關閉由 onClose 同步回 React state', () => {
+  for (const file of MODALS) {
+    const src = code(file);
+    assert.match(src, /aria-label(ledby)?=/, `${file} 缺少 aria-label 或 aria-labelledby`);
+    assert.match(src, /onClose=\{/, `${file} 需要 onClose 把關閉同步回 state`);
+  }
+});
+
+test('light dismiss 比對指標座標，而非 event.target', () => {
+  // <dialog> 自身也是它 padding 與子元素間隙的 target，用 target 判斷會誤關
+  for (const file of MODALS) {
+    const src = code(file);
+    assert.match(src, /getBoundingClientRect\(\)/, `${file} 應以 rect 比對指標位置`);
+    assert.match(src, /clientX < r\.left/, `${file} 應檢查指標是否落在對話框外`);
+  }
+});
+
+test('手寫焦點陷阱已完全移除', () => {
+  const atoms = read('ui/uiAtoms.js');
+  assert.doesNotMatch(atoms, /useDialogFocus|DIALOG_FOCUSABLE/, 'uiAtoms.js 仍留有手寫焦點陷阱');
+  for (const file of MODALS) {
+    assert.doesNotMatch(code(file), /useDialogFocus/, `${file} 仍在呼叫 useDialogFocus`);
+  }
+});
+
+test('設定頁手機第二層用 cancel 攔截 Esc，而不是自寫鍵盤事件', () => {
+  const src = code('ui/SettingsModal.js');
+  assert.match(src, /onCancel=\{/, 'SettingsModal 應以 onCancel 攔截 Esc／返回手勢');
+  assert.match(src, /preventDefault\(\)/, 'onCancel 需要 preventDefault 才能留在對話框內');
+});
+
+test('對話框內的按鈕走原生 close()，不直接呼叫 onClose', () => {
+  // 直接呼叫 onClose 會讓 React 先卸載還開著的 <dialog>，瀏覽器就不會把焦點還給開啟者（實測掉到 body）。
+  // onClose 只能接在 <dialog onClose> 上，由 close 事件觸發。
+  for (const file of MODALS) {
+    const src = code(file);
+    assert.doesNotMatch(src, /onClick=\{onClose\}/, `${file} 的按鈕應呼叫 dialog.close()，不可直接 onClose`);
+    const direct = src.split('\n').filter((l) => /\bonClose\(\)/.test(l));
+    assert.deepEqual(direct, [], `${file} 不可直接呼叫 onClose()：\n${direct.join('\n')}`);
+  }
+});
+
+test('modal 開著時 toast 掛進最上層 dialog，關閉後移回 body', () => {
+  // 掛在 body 會被 top layer 蓋住且變成 inert：看不見，「復原」之類的動作鈕也按不到。
+  const toast = read('core/toast.js');
+  assert.match(toast, /querySelectorAll\('dialog:modal'\)/, 'showToast 應找出開著的 modal');
+  assert.match(toast, /addEventListener\('close'/, 'modal 關閉後應把 toast 移回 body，避免跟著卸載');
+});
+
+console.log('native dialog tests passed');

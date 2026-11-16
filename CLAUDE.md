@@ -83,6 +83,39 @@ claude -p "<prompt>" \
 
 ---
 
+## 瀏覽器支援政策 (Browser Support)
+
+前端跑在三種環境：Wails WebView2（Windows 桌面，Edge Chromium，隨系統更新）、
+Telegram 內建 WebView（Android System WebView／iOS WKWebView，版本跟隨 OS）、
+一般瀏覽器（LAN 或反向代理）。
+
+- **允許 Baseline Widely available 與 Newly available**，不需 fallback。
+  含 Dialog、Popover（Baseline 2025-01-27）、Invoker Commands（2025-12-12）。
+- **Limited availability 功能只做漸進增強**，缺了要能優雅降級。
+  例如 `closedby="any"`（Safari 未支援）缺失時，`Esc` 與返回手勢仍可關閉；
+  anchor positioning 缺失時不要無條件寫 `inset: auto`／`margin: 0`。
+- **不引入 polyfill 套件**。沒有 npm，Go 端的 esbuild 只做逐檔 JSX 轉換再串接、不解析 `import`
+  （見 `docs/spec/frontend-architecture.md` 第 0 節），所以 `modern-web-guidance` 建議的
+  `import('@oddbird/popover-polyfill')` 一律無法採用。只接受 20 行以內、無外部依賴的自訂 fallback；超過就改設計。
+
+### 最低支援版本
+
+| 瀏覽器 | 最低版本 | 卡在哪個功能 |
+|---|---|---|
+| Chrome／Edge／Android WebView（含 Telegram Android） | 111 | `oklch()`：全站配色都用它，不支援時整頁失色 |
+| Safari／iOS WKWebView（含 Telegram iOS） | 15.6 | `:modal`（`oklch()`、`:has()`、`<dialog>` 為 15.4） |
+| Firefox | 121 | `:has()` |
+| Wails WebView2（桌面版） | 隨系統自動更新，不受限 | — |
+
+數字取自 MDN browser-compat-data（2026-11-16 查詢），是各瀏覽器在 `oklch()`、`:has()`、`:modal`、
+`dvh`、`<dialog>.showModal()`、`crypto.randomUUID()` 之中最晚支援的那一個。**目前只寫明限制、不做降級**：
+低於這些版本不保證可用。新增功能若會把底線往上推，要同步更新這張表與 README 的「瀏覽器支援」。
+
+`overscroll-behavior`（Chrome 144／Safari 16／Firefox 150）與 `interactive-widget` 屬於漸進增強，
+不支援時只是少了捲動遏止或鍵盤版面調整，不列入底線。
+
+---
+
 ## stream-json 事件處理
 
 ### 關鍵頂層 type
