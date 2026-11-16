@@ -97,6 +97,22 @@ const onPlain = onButton(plainButton);
 binding.onContextMenu(onPlain);
 assert.equal(onPlain.prevented, undefined, 'other nested buttons keep the native menu');
 assert.match(tabsSource.slice(tabsSource.indexOf('{/* 關閉按鈕 */}'), tabsSource.indexOf('title="關閉分頁"')), /data-context-surface/);
+// 滾動：只有「含錨點的捲動容器」或整頁捲動才關選單；選單自己或無關區域（例如串流中的聊天）不關
+const anchorEl = {}, menuEl = { contains: node => node === menuInner };
+const menuInner = { nodeType: 1, contains: () => false };
+assert.equal(context.contextMenuScrollCloses({ nodeType: 9 }, menuEl, anchorEl), true, 'page scroll closes');
+assert.equal(context.contextMenuScrollCloses({ nodeType: 1, contains: node => node === anchorEl }, menuEl, anchorEl), true, 'anchor scroller closes');
+assert.equal(context.contextMenuScrollCloses({ nodeType: 1, contains: () => false }, menuEl, anchorEl), false, 'unrelated scroller keeps menu');
+assert.equal(context.contextMenuScrollCloses(menuInner, menuEl, anchorEl), false, 'scrolling the menu itself keeps it');
+// Esc：選單用 capture 階段攔截，才不會讓 app.js 的連按兩次 Esc 關分頁把這次 Esc 算進去
+const menuSrc = menuSource.slice(menuSource.indexOf('function ContextMenu('));
+assert.match(menuSrc, /window\.addEventListener\('keydown', key, true\)/);
+assert.match(menuSrc, /window\.removeEventListener\('keydown', key, true\)/);
+// 會話列的「⋯」按鈕右鍵也要開自訂選單
+const viewSrc = read('session/SessionView.js');
+const dotsAt = viewSrc.indexOf('aria-haspopup="menu"');
+assert.ok(dotsAt > 0);
+assert.match(viewSrc.slice(dotsAt - 120, dotsAt + 120), /data-context-surface/);
 selection = { anchorNode: 'selected', focusNode: 'selected', toString: () => 'Hello' };
 binding.onContextMenu(event({}));
 assert.equal(opened.at(-1).selectedText, 'Hello');

@@ -475,7 +475,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
                 {s.name || '未命名'}
               </span>
               {s.pinned && <span className="shrink-0 text-[10px] text-violet-400" title="已釘選">釘選</span>}
-              <button type="button" aria-label={`更多操作：${s.name || '未命名'}`} aria-haspopup="menu"
+              <button type="button" data-context-surface aria-label={`更多操作：${s.name || '未命名'}`} aria-haspopup="menu"
                 className="shrink-0 min-w-[32px] min-h-[32px] rounded-lg text-ra-t4 hover:bg-ra-raised hover:text-ra-t1 focus-visible:ring-2 focus-visible:ring-violet-400"
                 onClick={event => { event.stopPropagation(); setSessionMenu(openContextPayload(event, { sessionId: s.id }, !isWideScreen)); }}>⋯</button>
               {statusClass ? (

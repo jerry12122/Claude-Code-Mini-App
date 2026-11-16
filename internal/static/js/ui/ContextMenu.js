@@ -17,6 +17,11 @@ function contextMenuNext(items, current, key) {
   return enabled[(index + (key === 'ArrowDown' ? 1 : -1) + enabled.length) % enabled.length];
 }
 
+function contextMenuScrollCloses(target, menuEl, anchorEl) {
+  if (!target || menuEl?.contains?.(target)) return false;
+  return target.nodeType === 9 || !!target.contains?.(anchorEl);
+}
+
 function contextTabCloseIds(tabs, id, mode) {
   const index = tabs.indexOf(id);
   if (index < 0) return [];
@@ -79,17 +84,18 @@ function ContextMenu({ menu, items, onClose, label = '操作選單' }) {
     if (!menu) return;
     const outside = event => { if (!ref.current?.contains(event.target)) close(); };
     const key = event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); } };
+    const scroll = event => { if (contextMenuScrollCloses(event.target, ref.current, menu.el)) close(); };
     document.addEventListener('pointerdown', outside, true);
-    window.addEventListener('scroll', outside, true);
+    window.addEventListener('scroll', scroll, true);
     window.addEventListener('resize', close);
     window.addEventListener('blur', close);
-    window.addEventListener('keydown', key);
+    window.addEventListener('keydown', key, true);
     return () => {
       document.removeEventListener('pointerdown', outside, true);
-      window.removeEventListener('scroll', outside, true);
+      window.removeEventListener('scroll', scroll, true);
       window.removeEventListener('resize', close);
       window.removeEventListener('blur', close);
-      window.removeEventListener('keydown', key);
+      window.removeEventListener('keydown', key, true);
     };
   }, [menu, onClose]);
   if (!menu) return null;
