@@ -2,12 +2,16 @@
 
 回合進行中，後端把「要不要收下這則 agent 事件」和「收到之後怎麼改狀態、寫庫、廣播」寫在同一個 `runner.Run` 回呼裡；前端也把每一種 WebSocket 訊息的處理排成一長串 `msg.type` 判斷。這次只把兩段搬開，讓現有行為有明確入口。插件的攔截點、註冊表和槽位參數還沒有第一個實際插件，現在定死會把下一版卡在錯誤的接縫上。
 
+本變更建立後，倉庫新增了 `docs/spec/backend-architecture.md` 與 `docs/spec/frontend-architecture.md` 兩份分層規範，並新增了平行的 `ws-message-dispatch-split` 變更。原計畫有兩處與現狀不符（前端檔名已被規範禁止、`chat-header.js` 已改名），另有一處需要宣告與 `ws-message-dispatch-split` 的邊界，故一併更新。
+
 ## What Changes
 
 - 將 `runner.Run` 回呼裡的 `switch e.Type` 搬成 `applyRunEvent`。回呼仍負責非 `delta` 的內容沖洗，以及中止後只放行既有種類。此函式是搬家，不新增攔截清單，也不成為之後唯一的插件入口。
 - 這次回合既有的 `broadcast` 維持原樣，包含 `runner.Run` 返回之後的錯誤、交接與逗留通知。不新增第二種送訊函式。
 - 將 `useChatSocket` 裡依 `msg.type` 更新畫面狀態的判斷收成連線內部的分派表。`sync` 與 `status` 仍先做耗時校正；只有訪客的 `error` 會提示。這張表不對外註冊。
 - 在 `ChatSessionHeader` 的桌面操作列與手機展開後的操作列各放一個 `HeaderSlot`。它固定回傳 `null`，不提供註冊函式，也不產生節點。
+- 新增的前端檔案命名為 `internal/static/js/ui/headerSlot.js`（camelCase）。原計畫的 `header-slot.js` 違反 `docs/spec/frontend-architecture.md` 的 R5（`js/` 下不得使用 kebab-case 檔名），且 `scripts/frontend-layering.test.cjs` 的 `KNOWN_VIOLATIONS.R5_kebab` 目前為空清單，新增檔案不得寫入該清單。
+- 掛載目標的檔案為 `internal/static/js/chat/ChatHeader.js`。原計畫寫的 `chat-header.js` 已不存在，該檔在前端 R5 整理時改名，`internal/static/index.html` 現於第 608 行載入 `./js/chat/ChatHeader.js`。
 
 ## Non-Goals
 
@@ -19,12 +23,15 @@
 - 權限、佇列、shell、交接與寫庫仍留在 `applyRunEvent` 裡。
 - 不把 Mermaid、HTML 預覽、訊息操作或分享改成插件。
 - 不改變使用者看得到的聊天、授權、串流或標題列行為。
+- 不碰 `NewHandler` 的 `switch msg.Type`（前端送來訊息的分派）。那段屬於 `ws-message-dispatch-split` 變更，本變更只處理 `runner.Run` 的事件回呼。
+- 不承諾把 `NewHandler` 降到 `docs/spec/backend-architecture.md` R8 的 150 行以下；本變更只搬走事件回呼這一段。
 
 ## Impact
 
 - Affected specs: none
 - Affected code:
-  - New: internal/static/js/ui/header-slot.js、scripts/header-slot.test.cjs
-  - Modified: internal/ws/handler.go、internal/static/js/hooks/useChatSocket.js、internal/static/js/chat/chat-header.js、internal/static/index.html
+  - New: internal/static/js/ui/headerSlot.js、scripts/header-slot.test.cjs
+  - Modified: internal/ws/handler.go、internal/static/js/hooks/useChatSocket.js、internal/static/js/chat/ChatHeader.js、internal/static/index.html
   - Removed: (none)
 - Compatibility: no capability-level observable behavior changes
+
