@@ -35,11 +35,12 @@ async function main() {
     localStorage: { getItem: id => storage.get(id), setItem: (id, value) => storage.set(id, value), removeItem: id => storage.delete(id) },
     window: { dispatchEvent() {} }, CustomEvent: class {}, URL: { revokeObjectURL() {} },
   });
-  for (const name of ['newInputRequestID', 'notifyPendingInput', 'beginPendingInput', 'sendPendingInput', 'sendPromptViaEphemeralWS']) {
-    vm.runInContext(readFunction('ui/ui-atoms.js', name), ctx);
+  for (const name of ['newInputRequestID', 'notifyPendingInput', 'beginPendingInput', 'sendPendingInput']) {
+    vm.runInContext(readFunction('hooks/composerDrafts.js', name), ctx);
   }
-  vm.runInContext(readFunction('ui/ui-atoms.js', 'restoreComposerDraft'), ctx);
-  vm.runInContext(readFunction('ui/ui-atoms.js', 'recoverPendingInput'), ctx);
+  vm.runInContext(readFunction('hooks/forwardPrompt.js', 'sendPromptViaEphemeralWS'), ctx);
+  vm.runInContext(readFunction('hooks/composerDrafts.js', 'restoreComposerDraft'), ctx);
+  vm.runInContext(readFunction('hooks/composerDrafts.js', 'recoverPendingInput'), ctx);
   vm.runInContext(readFunction('core/core.js', 'fetchWithTimeout'), ctx);
 
   let accepted = false;

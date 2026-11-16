@@ -56,11 +56,11 @@ code:
   - internal/static/js/session/NewSessionComposer.js
   - CHANGELOG.md
   - internal/version/version.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - scripts/theme.test.cjs
   - internal/mcp/tools.go
   - README.md
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/static/js/share/ShareModal.js
   - internal/static/js/ui/SessionTabs.js
   - internal/static/js/ui/DesktopUpdateSection.js
@@ -118,11 +118,11 @@ code:
   - internal/static/js/session/NewSessionComposer.js
   - CHANGELOG.md
   - internal/version/version.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - scripts/theme.test.cjs
   - internal/mcp/tools.go
   - README.md
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/static/js/share/ShareModal.js
   - internal/static/js/ui/SessionTabs.js
   - internal/static/js/ui/DesktopUpdateSection.js
@@ -179,11 +179,11 @@ code:
   - internal/static/js/session/NewSessionComposer.js
   - CHANGELOG.md
   - internal/version/version.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - scripts/theme.test.cjs
   - internal/mcp/tools.go
   - README.md
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/static/js/share/ShareModal.js
   - internal/static/js/ui/SessionTabs.js
   - internal/static/js/ui/DesktopUpdateSection.js

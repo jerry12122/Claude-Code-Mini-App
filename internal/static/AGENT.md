@@ -18,7 +18,13 @@
 | # | 檔案 | 內容 |
 |---|------|------|
 | 1 | `js/core/core.js` | 第一行 `const { useState, ... } = React;`（全域 hook 別名，所有元件都靠這行）。Telegram WebApp 初始化、localStorage 偏好、API base 推算（`resolveApiUrl`）、session 過期/401 處理、`wsURL`、`parseMarkdown`、基礎 hooks（`useMediaQuery`）、label 工具。 |
-| 2 | `js/ui/ui-atoms.js` | 小型展示元件與相鄰工具：`SessionStateChip`、各種 Badge/Chip、`PermMode`/`Model`/`Effort` Select、`QuotaBadge`、`ShellOutput`、`InputModeTab`、`ModeToggleBtn`、`MessageCopyButton`、複製與提示工具（`copyText`、`showToast`、`hapticTap`）、cli-arg 解析、input-mode 儲存等。 |
+| 2 | `js/ui/uiAtoms.js` | 小型展示元件：`SessionStateChip`、各種 Badge/Chip、`PermMode`/`Model`/`Effort` Select、`QuotaBadge`、`ShellOutput`、`InputModeTab`、`ModeToggleBtn`、`MessageCopyButton` 等 41 個 UI 原子。原本同檔的非 UI 工具已依 `docs/spec/frontend-architecture.md` 第 2 節拆出（見 1a 至 1f）。 |
+| 1a | `js/core/toast.js` | `showToast`／`copyText`／`hapticTap` 等純 DOM 工具。放 `core/` 而非 `ui/` 是因為 `hooks/composerDrafts.js` 需要它，留在 `ui/` 會形成 hooks → ui 的反向依賴。 |
+| 1b | `js/hooks/composerDrafts.js` | 草稿與待送輸入的持久化、每個 session 的輸入模式。 |
+| 1c | `js/hooks/cliArgs.js` | 自訂 CLI 引數解析與 `--model` 取出／合併。 |
+| 1d | `js/hooks/messageRows.js` | `mapMessageRow` 與 SQLite datetime 解析／時間格式。 |
+| 1e | `js/hooks/quotaMetrics.js` | quota 版型表與數值計算（顏色函式留在 `ui/uiAtoms.js`）。 |
+| 1f | `js/hooks/forwardPrompt.js` | 轉送、第一則訊息的短命 WS 送出（連線擁有者）、接手草稿。 |
 | 2a | `js/ui/SessionTabs.js` | 桌面版（≥1024px）會話分頁：`SessionTabBar`（分頁列：名稱、agent 圖示、狀態點、關閉鈕、中鍵關閉、分頁拖曳與放置插入指示線）與 `SessionGroupFrame`（群組外框：分頁列 + 內容區，內容區拖放預覽覆蓋層）。依賴 `tabGroups.js` 的拖放純函式，載入於 `SplitLayout.js` 之後。 |
 | 2b | `js/hooks/tabGroups.js` | 分頁群組的純邏輯（無 React 依賴）：`tabGroupsReducer`（`open`/`close`/`move`/`splitDrop`/`focus`/`setRatio`/`setOrientation`/`toggleSplit`/`prune`/`clear`）、持久化與舊鍵 `miniapp_split_chat_state` 遷移（`miniapp_tab_groups_v1`）、拖放輔助（`calculateDropRegion`、`calculateTabInsertIndex`、`resolveDropAction`）與快捷鍵對應 `resolveTabShortcut`。測試：`scripts/tab-groups.test.cjs`（`node --test scripts/*.test.cjs`，以 `vm` 載入此檔）。 |
 | 2f | `js/hooks/telegramTimeline.js` | Telegram 時間線合併的純函式（無 React 依賴）：`tgMergeList`／`tgUpsert`（依穩定識別 account:peer:message_id 或本機 ID 合併，待傳以 `replaces_client_message_id` 取代）、`tgApplyDelivery`、`tgApplySync`（只併入最新有界頁、改綁時丟棄舊 scope）。必須在 `useChatSocket.js` 之前載入。測試：`scripts/telegram-chat.test.cjs`。 |
@@ -26,12 +32,12 @@
 | 4 | `js/hooks/useNewSessionForm.js` | `SessionView` 建立表單與 `ForwardModal` 新建會話共用的表單狀態＋payload 組裝邏輯。 |
 | 5 | `js/chat/ForwardModal.js` | `ForwardModal` 元件。 |
 | 6 | `js/session/SessionView.js` | `SessionView`（session 列表畫面）。 |
-| 7 | `js/chat/chat-header.js` | `SlashCommandMenu` + `ChatSessionHeader`。 |
+| 7 | `js/chat/ChatHeader.js` | `SlashCommandMenu` + `ChatSessionHeader`。 |
 | 8 | `js/chat/MentionMenu.js` | `@mention` 選單、上方 chips、送出時 `[miniapp]` 展開（詢問／討論，不是 Forward）。 |
 | 9 | `js/chat/MessageActions.js` | 訊息長按：`useLongPress`、浮動小選單 `MessageContextMenu`（複製／轉發，樣式參考 Claude iOS）、容器 `MessageActionsHost`。觸控裝置上 `.msg-lp` 會關閉原生選字，由此接手。 |
 | 9a | `js/chat/ComposerTools.js` | 手機 Plus、原生工具 dialog、設定單選頁與返回／焦點生命週期；桌面沿用內嵌工具。 |
 | 10 | `js/chat/ChatView.js` | `ChatView`（聊天主畫面，render + 操作 handler；WS 邏輯已移至 `useChatSocket`）。 |
-| 2c | `js/ui/desktop-update.js` | 桌面更新的純函式（狀態文字、錯誤代碼對應文字、`busyReason` 說明）與 `window.__desktopUpdater` 橋接；非桌面環境不掛載。測試：`scripts/desktop-update.test.cjs`。 |
+| 2c | `js/ui/desktopUpdate.js` | 桌面更新的純函式（狀態文字、錯誤代碼對應文字、`busyReason` 說明）與 `window.__desktopUpdater` 橋接；非桌面環境不掛載。測試：`scripts/desktop-update.test.cjs`。 |
 | 2d | `js/ui/DesktopUpdateSection.js` | 設定與系統匣共用的「桌面更新」區塊：版本／SHA、可用版本、純文字更新內容（不執行 HTML）、進度、下載、稍後、重新啟動並更新、重試。 |
 | 2e | `js/hooks/useDesktopUpdate.js` | 訂閱 `desktop-update-state` 事件的 hook，回傳最新快照與 `request(action)`；只送出 check／download／restart／status。 |
 

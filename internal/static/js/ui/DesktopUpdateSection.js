@@ -1,8 +1,8 @@
 // ── 桌面更新區塊（設定頁「更新」分類；系統匣「檢查更新」開啟的也是同一區）────
 // 只在桌面 bridge 存在時由 SettingsModal 渲染。其他文字以 React 文字節點呈現；release notes 是唯一用
 // innerHTML 的地方，且只吃 desktopUpdateRenderNotes 的輸出：使用者文字先逐字跳脫、標籤只由程式產生
-// （白名單與屬性見 desktop-update.js，另有不變量測試），所以 notes 內的 HTML／script 只會顯示成文字。
-// 純邏輯（狀態文字、動作模型、notes 渲染）在 desktop-update.js。
+// （白名單與屬性見 desktopUpdate.js，另有不變量測試），所以 notes 內的 HTML／script 只會顯示成文字。
+// 純邏輯（狀態文字、動作模型、notes 渲染）在 desktopUpdate.js。
 
 function DesktopUpdateSection({ status, laterVersion = '', request, later, showOffer }) {
   const st = status || { state: 'idle' };

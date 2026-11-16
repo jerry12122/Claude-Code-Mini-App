@@ -86,7 +86,7 @@ code:
   - internal/static/index.html
   - docs/features.zh-TW.md
   - internal/static/assets.go
-  - internal/static/js/ui/desktop-update.js
+  - internal/static/js/ui/desktopUpdate.js
   - scripts/e2e/run_e2e.py
   - scripts/release/check-version.sh
   - README.md
@@ -172,7 +172,7 @@ code:
   - internal/static/index.html
   - docs/features.zh-TW.md
   - internal/static/assets.go
-  - internal/static/js/ui/desktop-update.js
+  - internal/static/js/ui/desktopUpdate.js
   - scripts/e2e/run_e2e.py
   - scripts/release/check-version.sh
   - README.md
@@ -268,7 +268,7 @@ code:
   - internal/static/index.html
   - docs/features.zh-TW.md
   - internal/static/assets.go
-  - internal/static/js/ui/desktop-update.js
+  - internal/static/js/ui/desktopUpdate.js
   - scripts/e2e/run_e2e.py
   - scripts/release/check-version.sh
   - README.md
@@ -359,7 +359,7 @@ code:
   - internal/static/index.html
   - docs/features.zh-TW.md
   - internal/static/assets.go
-  - internal/static/js/ui/desktop-update.js
+  - internal/static/js/ui/desktopUpdate.js
   - scripts/e2e/run_e2e.py
   - scripts/release/check-version.sh
   - README.md
@@ -440,7 +440,7 @@ code:
   - internal/static/index.html
   - docs/features.zh-TW.md
   - internal/static/assets.go
-  - internal/static/js/ui/desktop-update.js
+  - internal/static/js/ui/desktopUpdate.js
   - scripts/e2e/run_e2e.py
   - scripts/release/check-version.sh
   - README.md
@@ -557,7 +557,7 @@ code:
   - internal/static/index.html
   - docs/features.zh-TW.md
   - internal/static/assets.go
-  - internal/static/js/ui/desktop-update.js
+  - internal/static/js/ui/desktopUpdate.js
   - scripts/e2e/run_e2e.py
   - scripts/release/check-version.sh
   - README.md
@@ -663,7 +663,7 @@ code:
   - internal/static/index.html
   - docs/features.zh-TW.md
   - internal/static/assets.go
-  - internal/static/js/ui/desktop-update.js
+  - internal/static/js/ui/desktopUpdate.js
   - scripts/e2e/run_e2e.py
   - scripts/release/check-version.sh
   - README.md

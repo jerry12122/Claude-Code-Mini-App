@@ -12,7 +12,7 @@ index = (root / 'index.html').read_text(encoding='utf-8')
 styles = '\n'.join(re.findall(r'<style[^>]*>(.*?)</style>', index, re.S))
 config = re.search(r'<script>\s*(tailwind.config = .*?)</script>', index, re.S)[1]
 core = (root / 'js/core/core.js').read_text(encoding='utf-8')
-atoms = (root / 'js/ui/ui-atoms.js').read_text(encoding='utf-8')
+atoms = (root / 'js/ui/uiAtoms.js').read_text(encoding='utf-8')
 source = (root / 'js/ui/SettingsModal.js').read_text(encoding='utf-8')
 compiled = subprocess.run(
     ['go', 'run', 'github.com/evanw/esbuild/cmd/esbuild', '--loader=jsx', '--target=es2020'],

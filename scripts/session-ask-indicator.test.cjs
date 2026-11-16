@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const root = path.join(__dirname, '../internal/static');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
-const atoms = read('js/ui/ui-atoms.js');
+const atoms = read('js/ui/uiAtoms.js');
 const src = atoms.slice(atoms.indexOf('function sessionStatusDotClass'), atoms.indexOf('/** 回傳 session 顯示用的 agent_type'));
 const ctx = vm.createContext({});
 vm.runInContext(src, ctx);

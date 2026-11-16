@@ -53,7 +53,7 @@ code:
   - internal/static/js/app.js
   - scripts/composer-attachment.test.py
   - docs/prototypes/mobile-composer-sheet.dc.html
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/quota/codex.go
   - internal/agent/factory.go
   - internal/api/upload.go
@@ -110,13 +110,13 @@ code:
   - internal/quota/claude.go
   - internal/static/AGENT.md
   - internal/quota/cursor.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/quota/antigravity.go
   - internal/server/server.go
   - internal/quota/codex.go
   - internal/quota/result.go
   - internal/static/js/chat/ChatView.js
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/static/js/hooks/tabGroups.js
   - CLAUDE.md
   - internal/ws/handler.go
@@ -161,13 +161,13 @@ code:
   - internal/quota/claude.go
   - internal/static/AGENT.md
   - internal/quota/cursor.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/quota/antigravity.go
   - internal/server/server.go
   - internal/quota/codex.go
   - internal/quota/result.go
   - internal/static/js/chat/ChatView.js
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/static/js/hooks/tabGroups.js
   - CLAUDE.md
   - internal/ws/handler.go
@@ -212,13 +212,13 @@ code:
   - internal/quota/claude.go
   - internal/static/AGENT.md
   - internal/quota/cursor.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/quota/antigravity.go
   - internal/server/server.go
   - internal/quota/codex.go
   - internal/quota/result.go
   - internal/static/js/chat/ChatView.js
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/static/js/hooks/tabGroups.js
   - CLAUDE.md
   - internal/ws/handler.go
@@ -258,13 +258,13 @@ code:
   - internal/quota/claude.go
   - internal/static/AGENT.md
   - internal/quota/cursor.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/quota/antigravity.go
   - internal/server/server.go
   - internal/quota/codex.go
   - internal/quota/result.go
   - internal/static/js/chat/ChatView.js
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/static/js/hooks/tabGroups.js
   - CLAUDE.md
   - internal/ws/handler.go
@@ -329,7 +329,7 @@ code:
   - internal/static/js/app.js
   - scripts/composer-attachment.test.py
   - docs/prototypes/mobile-composer-sheet.dc.html
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/quota/codex.go
   - internal/agent/factory.go
   - internal/api/upload.go
@@ -380,13 +380,13 @@ code:
   - internal/quota/claude.go
   - internal/static/AGENT.md
   - internal/quota/cursor.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/quota/antigravity.go
   - internal/server/server.go
   - internal/quota/codex.go
   - internal/quota/result.go
   - internal/static/js/chat/ChatView.js
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/static/js/hooks/tabGroups.js
   - CLAUDE.md
   - internal/ws/handler.go

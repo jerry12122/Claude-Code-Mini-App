@@ -77,7 +77,7 @@ code:
   - internal/db/message.go
   - internal/api/telegram_history.go
   - internal/db/session.go
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/tgclient/history.go
   - internal/static/js/chat/ChatView.js
   - internal/static/AGENT.md

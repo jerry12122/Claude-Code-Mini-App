@@ -59,7 +59,7 @@ code:
   - internal/api/session.go
   - internal/api/upload.go
   - internal/ws/handler.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/ui/SessionTabs.js
   - cmd/desktop/desktop.rc
   - config.example.yaml
@@ -141,7 +141,7 @@ code:
   - internal/api/session.go
   - internal/api/upload.go
   - internal/ws/handler.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/ui/SessionTabs.js
   - cmd/desktop/desktop.rc
   - config.example.yaml
@@ -213,7 +213,7 @@ code:
   - internal/api/session.go
   - internal/api/upload.go
   - internal/ws/handler.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/ui/SessionTabs.js
   - cmd/desktop/desktop.rc
   - config.example.yaml
@@ -268,7 +268,7 @@ code:
   - internal/api/session.go
   - internal/api/upload.go
   - internal/ws/handler.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/ui/SessionTabs.js
   - cmd/desktop/desktop.rc
   - config.example.yaml
@@ -318,7 +318,7 @@ code:
   - internal/api/session.go
   - internal/api/upload.go
   - internal/ws/handler.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/ui/SessionTabs.js
   - cmd/desktop/desktop.rc
   - config.example.yaml
@@ -374,7 +374,7 @@ code:
   - internal/api/session.go
   - internal/api/upload.go
   - internal/ws/handler.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/ui/SessionTabs.js
   - cmd/desktop/desktop.rc
   - config.example.yaml
@@ -441,7 +441,7 @@ code:
   - internal/api/session.go
   - internal/api/upload.go
   - internal/ws/handler.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/ui/SessionTabs.js
   - cmd/desktop/desktop.rc
   - config.example.yaml
@@ -508,7 +508,7 @@ code:
   - internal/api/session.go
   - internal/api/upload.go
   - internal/ws/handler.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/ui/SessionTabs.js
   - cmd/desktop/desktop.rc
   - config.example.yaml
@@ -568,7 +568,7 @@ code:
   - internal/api/session.go
   - internal/api/upload.go
   - internal/ws/handler.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/ui/SessionTabs.js
   - cmd/desktop/desktop.rc
   - config.example.yaml
@@ -621,7 +621,7 @@ code:
   - internal/api/session.go
   - internal/api/upload.go
   - internal/ws/handler.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/ui/SessionTabs.js
   - cmd/desktop/desktop.rc
   - config.example.yaml

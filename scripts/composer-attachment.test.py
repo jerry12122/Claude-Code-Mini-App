@@ -10,7 +10,7 @@ repo = Path(__file__).resolve().parents[1]
 root = repo / "internal/static"
 styles = "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", (root / "index.html").read_text(encoding="utf-8"), re.S))
 tailwind_config = re.search(r"<script>\s*(tailwind.config = .*?)</script>", (root / "index.html").read_text(encoding="utf-8"), re.S)[1]
-files = ["hooks/tabGroups.js", "ui/SplitLayout.js", "ui/ui-atoms.js", "hooks/useChatComposer.js", "chat/AttachmentCards.js", "chat/chat-header.js", "chat/ChatView.js"]
+files = ["hooks/tabGroups.js", "ui/SplitLayout.js", "core/toast.js", "hooks/composerDrafts.js", "hooks/cliArgs.js", "hooks/messageRows.js", "hooks/quotaMetrics.js", "hooks/forwardPrompt.js", "ui/uiAtoms.js", "hooks/useChatComposer.js", "chat/AttachmentCards.js", "chat/ChatHeader.js", "chat/ChatView.js"]
 if (root / "js/chat/ComposerTools.js").exists():
     files.insert(-1, "chat/ComposerTools.js")
 source = "\n".join((root / "js" / f).read_text(encoding="utf-8") for f in files)

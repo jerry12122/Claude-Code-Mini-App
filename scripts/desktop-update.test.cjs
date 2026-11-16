@@ -4,7 +4,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 // 桌面更新的純函式（無 React 依賴）：快照 → 顯示文字／按鈕模型。
-const targetFile = path.join(__dirname, '../internal/static/js/ui/desktop-update.js');
+const targetFile = path.join(__dirname, '../internal/static/js/ui/desktopUpdate.js');
 const source = fs.readFileSync(targetFile, 'utf8');
 const context = vm.createContext({
   window: {},

@@ -174,7 +174,7 @@
       max-height: min(40vh, 240px);
     }
     .ra-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
-    /* 桌面更新視窗的更新說明（Markdown 子集，標籤與 class 皆由 desktop-update.js 產生） */
+    /* 桌面更新視窗的更新說明（Markdown 子集，標籤與 class 皆由 desktopUpdate.js 產生） */
     .ra-notes { font-size: 12.5px; line-height: 1.65; color: oklch(var(--ra-t2)); overflow-wrap: anywhere; }
     .ra-notes > :first-child { margin-top: 0; }
     .ra-notes > :last-child { margin-bottom: 0; }
@@ -577,8 +577,14 @@
 
 <script src="./js/chat/HTMLPreview.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/core/core.js"></script>
+<script type="text/babel" data-presets="react-classic" src="./js/core/toast.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/hooks/composerFiles.js"></script>
-<script type="text/babel" data-presets="react-classic" src="./js/ui/ui-atoms.js"></script>
+<script type="text/babel" data-presets="react-classic" src="./js/hooks/composerDrafts.js"></script>
+<script type="text/babel" data-presets="react-classic" src="./js/hooks/cliArgs.js"></script>
+<script type="text/babel" data-presets="react-classic" src="./js/hooks/messageRows.js"></script>
+<script type="text/babel" data-presets="react-classic" src="./js/hooks/quotaMetrics.js"></script>
+<script type="text/babel" data-presets="react-classic" src="./js/hooks/forwardPrompt.js"></script>
+<script type="text/babel" data-presets="react-classic" src="./js/ui/uiAtoms.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/ui/ContextMenu.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/ui/SplitLayout.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/ui/SessionTabs.js"></script>
@@ -586,7 +592,7 @@
 <script type="text/babel" data-presets="react-classic" src="./js/share/ShareModal.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/share/SharesSection.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/share/JoinView.js"></script>
-<script type="text/babel" data-presets="react-classic" src="./js/ui/desktop-update.js"></script>
+<script type="text/babel" data-presets="react-classic" src="./js/ui/desktopUpdate.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/ui/DesktopUpdateSection.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/ui/SettingsModal.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/ui/QuickSwitcher.js"></script>
@@ -599,7 +605,7 @@
 <script type="text/babel" data-presets="react-classic" src="./js/chat/ForwardModal.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/session/SessionView.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/session/NewSessionComposer.js"></script>
-<script type="text/babel" data-presets="react-classic" src="./js/chat/chat-header.js"></script>
+<script type="text/babel" data-presets="react-classic" src="./js/chat/ChatHeader.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/chat/MentionMenu.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/chat/MessageActions.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/chat/AttachmentCards.js"></script>

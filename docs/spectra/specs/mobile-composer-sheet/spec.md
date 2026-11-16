@@ -53,7 +53,7 @@ code:
   - internal/static/js/app.js
   - scripts/composer-attachment.test.py
   - docs/prototypes/mobile-composer-sheet.dc.html
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/quota/codex.go
   - internal/agent/factory.go
   - internal/api/upload.go
@@ -140,7 +140,7 @@ code:
   - internal/static/js/app.js
   - scripts/composer-attachment.test.py
   - docs/prototypes/mobile-composer-sheet.dc.html
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/quota/codex.go
   - internal/agent/factory.go
   - internal/api/upload.go
@@ -227,7 +227,7 @@ code:
   - internal/static/js/app.js
   - scripts/composer-attachment.test.py
   - docs/prototypes/mobile-composer-sheet.dc.html
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/quota/codex.go
   - internal/agent/factory.go
   - internal/api/upload.go
@@ -319,7 +319,7 @@ code:
   - internal/static/js/app.js
   - scripts/composer-attachment.test.py
   - docs/prototypes/mobile-composer-sheet.dc.html
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/quota/codex.go
   - internal/agent/factory.go
   - internal/api/upload.go
@@ -406,7 +406,7 @@ code:
   - internal/static/js/app.js
   - scripts/composer-attachment.test.py
   - docs/prototypes/mobile-composer-sheet.dc.html
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/quota/codex.go
   - internal/agent/factory.go
   - internal/api/upload.go
@@ -487,7 +487,7 @@ code:
   - internal/static/js/app.js
   - scripts/composer-attachment.test.py
   - docs/prototypes/mobile-composer-sheet.dc.html
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/quota/codex.go
   - internal/agent/factory.go
   - internal/api/upload.go

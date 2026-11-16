@@ -37,8 +37,8 @@ code:
   - internal/static/js/ui/SessionTabs.js
   - internal/static/js/devtool-easter-egg.js
   - internal/static/js/chat/ForwardModal.js
-  - internal/static/js/ui/ui-atoms.js
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/ui/uiAtoms.js
+  - internal/static/js/chat/ChatHeader.js
   - build.bat
   - internal/static/js/hooks/useChatSocket.js
   - internal/api/session.go
@@ -91,8 +91,8 @@ code:
   - internal/static/js/ui/SessionTabs.js
   - internal/static/js/devtool-easter-egg.js
   - internal/static/js/chat/ForwardModal.js
-  - internal/static/js/ui/ui-atoms.js
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/ui/uiAtoms.js
+  - internal/static/js/chat/ChatHeader.js
   - build.bat
   - internal/static/js/hooks/useChatSocket.js
   - internal/api/session.go
@@ -145,8 +145,8 @@ code:
   - internal/static/js/ui/SessionTabs.js
   - internal/static/js/devtool-easter-egg.js
   - internal/static/js/chat/ForwardModal.js
-  - internal/static/js/ui/ui-atoms.js
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/ui/uiAtoms.js
+  - internal/static/js/chat/ChatHeader.js
   - build.bat
   - internal/static/js/hooks/useChatSocket.js
   - internal/api/session.go
@@ -194,8 +194,8 @@ code:
   - internal/static/js/ui/SessionTabs.js
   - internal/static/js/devtool-easter-egg.js
   - internal/static/js/chat/ForwardModal.js
-  - internal/static/js/ui/ui-atoms.js
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/ui/uiAtoms.js
+  - internal/static/js/chat/ChatHeader.js
   - build.bat
   - internal/static/js/hooks/useChatSocket.js
   - internal/api/session.go
@@ -265,10 +265,10 @@ code:
   - internal/static/js/chat/SelectionQuotePopover.js
   - internal/static/js/setup/SetupWizard.js
   - internal/static/js/share/SharesSection.js
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/ui/SettingsModal.js
   - internal/static/js/session/NewSessionComposer.js
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - scripts/theme.test.cjs
   - internal/static/js/chat/MessageActions.js
 tests:
@@ -311,8 +311,8 @@ code:
   - internal/static/js/ui/SessionTabs.js
   - internal/static/js/devtool-easter-egg.js
   - internal/static/js/chat/ForwardModal.js
-  - internal/static/js/ui/ui-atoms.js
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/ui/uiAtoms.js
+  - internal/static/js/chat/ChatHeader.js
   - build.bat
   - internal/static/js/hooks/useChatSocket.js
   - internal/api/session.go

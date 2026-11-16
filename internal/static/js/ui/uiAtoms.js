@@ -1,3 +1,4 @@
+
 function SessionStateChip({ state, className = '' }) {
   const label = SESSION_STATE_LABEL[state] || state;
   const dot =
@@ -27,10 +28,6 @@ function AgentIconChip({ agentType, className = '' }) {
   );
 }
 
-const INPUT_MODE_STORAGE_PREFIX = 'cc_input_mode:';
-/** 舊版單一全域鍵，僅在該 session 尚無專用紀錄時作為向後相容讀取 */
-const INPUT_MODE_LEGACY_KEY = 'cc_input_mode';
-
 /** 輸入框 `/` 觸發之 slash 命令清單（可選 `modes` 限定 inputMode，省略則全部顯示） */
 const SLASH_COMMANDS = [
   {
@@ -42,133 +39,6 @@ const SLASH_COMMANDS = [
     description: '清除對話 context（等同 /reset）',
   },
 ];
-
-function inputModeStorageKey(sessionId) {
-  return INPUT_MODE_STORAGE_PREFIX + String(sessionId || '');
-}
-
-const DRAFT_INPUT_STORAGE_PREFIX = 'cc_draft_input:';
-// Text uses localStorage; attachment Files are backed up in IndexedDB.
-const composerDrafts = new Map();
-
-function restoreComposerDraft(sessionId, text, attachments = [], mentions = []) {
-  const current = composerDrafts.get(sessionId) || {};
-  let existing = current.text || '';
-  try {
-    existing = localStorage.getItem(draftInputStorageKey(sessionId)) ?? existing;
-  } catch (_) {}
-  const restored = existing === text ? text : [text, existing].filter(Boolean).join('\n\n');
-  try { localStorage.setItem(draftInputStorageKey(sessionId), restored); } catch (_) {}
-  composerDrafts.set(sessionId, {
-    ...current,
-    text: restored,
-    attachments: [...new Map([...attachments, ...(current.attachments || [])].map(a => [a.id, a])).values()],
-    mentions: [...new Map([...mentions, ...(current.mentions || [])].map(s => [s.id, s])).values()],
-  });
-  // Do not overwrite a backup this page has not successfully read yet.
-  if (current.filesRestored) {
-    writeComposerFiles(draftInputStorageKey(sessionId), composerDrafts.get(sessionId).attachments)
-      .catch(() => showToast('附件草稿尚未備份，請保留此頁並稍後重試', { error: true, duration: 5000 }));
-  }
-  window.dispatchEvent(new CustomEvent('miniapp:draft-restored', { detail: { sessionId, composer: true, text: restored } }));
-}
-
-function draftInputStorageKey(sessionId) {
-  const scope = isGuestMode ? `share:${SHARE_TOKEN_FROM_URL}:${readGuestAuth()?.nickname || ''}:` : '';
-  return DRAFT_INPUT_STORAGE_PREFIX + scope + String(sessionId || '');
-}
-
-function pendingInputStorageKey(sessionId) {
-  return draftInputStorageKey(sessionId) + ':pending';
-}
-
-function recoverPendingInput(sessionId) {
-  if (composerDrafts.get(sessionId)?.pending) return false;
-  try {
-    const stored = localStorage.getItem(pendingInputStorageKey(sessionId));
-    if (!stored) return false;
-    let record;
-    try { record = JSON.parse(stored); } catch (_) {}
-    if (record?.requestId && typeof record.data === 'string' && Array.isArray(record.attachmentIds)) {
-      composerDrafts.set(sessionId, { ...composerDrafts.get(sessionId), pending: record });
-    } else {
-      // Legacy drafts have no stable ID, so only their text can be recovered.
-      localStorage.removeItem(pendingInputStorageKey(sessionId));
-      restoreComposerDraft(sessionId, stored);
-    }
-    return true;
-  } catch (_) { return false; }
-}
-
-function newInputRequestID() {
-  return `input-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function notifyPendingInput(sessionId) {
-  window.dispatchEvent(new CustomEvent('miniapp:pending-input', { detail: { sessionId } }));
-}
-
-function beginPendingInput(sessionId, { data, text = data, attachments = [], mentions = [] }) {
-  recoverPendingInput(sessionId);
-  const previous = composerDrafts.get(sessionId)?.pending;
-  const attachmentIds = attachments.map(a => a.attachmentId);
-  if (previous) {
-    if (previous.data === data && JSON.stringify(previous.attachmentIds) === JSON.stringify(attachmentIds)) return previous;
-    throw new Error('此會話尚有訊息未確認，請先在聊天室重試確認');
-  }
-  const record = { requestId: newInputRequestID(), data, text, attachmentIds, attachments, mentions };
-  // File/Blob previews stay in memory. Uploaded IDs and the exact payload survive reload.
-  const stored = { ...record, attachments: attachments.map(({ file, previewUrl, ...a }) => a) };
-  composerDrafts.set(sessionId, { ...composerDrafts.get(sessionId), pending: record });
-  try { localStorage.setItem(pendingInputStorageKey(sessionId), JSON.stringify(stored)); } catch (_) {}
-  notifyPendingInput(sessionId);
-  return record;
-}
-
-async function sendPendingInput(sessionId, record, submit) {
-  if (record.inFlight) throw new Error('訊息正在確認中');
-  record.inFlight = true;
-  notifyPendingInput(sessionId);
-  const clear = () => {
-    if (composerDrafts.get(sessionId)?.pending?.requestId !== record.requestId) return;
-    delete composerDrafts.get(sessionId).pending;
-    try {
-      const key = pendingInputStorageKey(sessionId);
-      if (JSON.parse(localStorage.getItem(key))?.requestId === record.requestId) localStorage.removeItem(key);
-    } catch (_) {}
-  };
-  try {
-    await submit(record.data, record.attachmentIds, record.requestId);
-    clear();
-    record.attachments?.forEach(a => a.previewUrl && URL.revokeObjectURL(a.previewUrl));
-  } catch (err) {
-    if (err.rejected) {
-      clear();
-      restoreComposerDraft(sessionId, record.text, record.attachments, record.mentions);
-    }
-    throw err;
-  } finally {
-    record.inFlight = false;
-    notifyPendingInput(sessionId);
-  }
-}
-
-function clearDraftInputForSession(sessionId) {
-  try {
-    localStorage.removeItem(draftInputStorageKey(sessionId));
-  } catch (_) {}
-}
-
-/** 依 session 從 localStorage 讀取輸入模式；該 session 未設定或無效時預設 agent */
-function readInputModeForSession(sessionId) {
-  try {
-    const v = localStorage.getItem(inputModeStorageKey(sessionId));
-    if (v === 'shell' || v === 'agent') return v;
-    const legacy = localStorage.getItem(INPUT_MODE_LEGACY_KEY);
-    if (legacy === 'shell' || legacy === 'agent') return legacy;
-  } catch (_) {}
-  return 'agent';
-}
 
 /**
  * 依 agent_type 回傳可用的 permission_mode 下拉選項。
@@ -201,118 +71,6 @@ function permModeOptionsFor(agentType) {
     { value: 'acceptEdits', label: '自動編輯' },
     { value: 'bypassPermissions', label: '跳過授權 ⚠️' },
   ];
-}
-
-/**
- * 建立 Session 時「自訂 CLI 引數」：每行一個 argv，trim 後略過空行。
- * 路徑含空格時請整段寫在同一行（勿用空格拆成多段）。
- */
-function parseCliExtraArgs(text) {
-  if (text == null || !String(text).trim()) return [];
-  return String(text)
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-}
-
-function extractModelFromCliArgs(parts) {
-  if (!Array.isArray(parts)) return '';
-  for (let i = 0; i < parts.length; i++) {
-    if (parts[i] === '--model' || parts[i] === '-m') return String(parts[i + 1] || '').trim();
-  }
-  return '';
-}
-
-function cliArgsWithoutModel(parts) {
-  if (!Array.isArray(parts)) return [];
-  const out = [];
-  for (let i = 0; i < parts.length; i++) {
-    if (parts[i] === '--model' || parts[i] === '-m') {
-      i++;
-      continue;
-    }
-    out.push(parts[i]);
-  }
-  return out;
-}
-
-function mergeModelIntoCliExtraLines(cliText, modelVal) {
-  const baseParts = parseCliExtraArgs(cliText);
-  const stripped = [];
-  for (let i = 0; i < baseParts.length; i++) {
-    if (baseParts[i] === '--model' || baseParts[i] === '-m') {
-      i++;
-      continue;
-    }
-    stripped.push(baseParts[i]);
-  }
-  const m = String(modelVal || '').trim();
-  if (m) {
-    stripped.push('--model', m);
-  }
-  return stripped.join('\n');
-}
-
-function buildForwardUserPrompt(note, originalBody) {
-  const n = String(note || '').trim();
-  const o = String(originalBody || '').trim();
-  if (!n) return o;
-  return `${n}\n\n---\n（以下為規劃內容）\n\n${o}`;
-}
-
-function sendPromptViaEphemeralWS(sessionId, text) {
-  const record = beginPendingInput(sessionId, { data: text });
-  return sendPendingInput(sessionId, record, (data, attachmentIds, requestId) => new Promise((resolve, reject) => {
-    let settled = false;
-    const settle = (fn) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      fn();
-      try { ws.close(); } catch (_) {}
-    };
-    const ws = new WebSocket(wsURL(sessionId, { historyLimit: 1 }));
-    const timer = setTimeout(() => {
-      settle(() => reject(new Error('尚未收到送出確認，請確認目標會話後再重試')));
-    }, 20000);
-    ws.onopen = () => {
-      try {
-        ws.send(JSON.stringify({ type: 'input', data, attachment_ids: attachmentIds, request_id: requestId }));
-      } catch (e) {
-        settle(() => reject(e));
-        try {
-          ws.close();
-        } catch (_) {}
-        return;
-      }
-    };
-    ws.onmessage = (event) => {
-      let msg;
-      try { msg = JSON.parse(event.data); } catch (_) { return; }
-      if (msg.request_id === requestId && msg.type === 'input_accepted') settle(resolve);
-      else if (msg.type === 'error' || (msg.request_id === requestId && msg.type === 'input_rejected')) {
-        settle(() => reject(Object.assign(new Error(msg.content || '訊息未送出'), { rejected: msg.type === 'input_rejected' && !['update_in_progress', 'retry_input'].includes(msg.code) })));
-      }
-    };
-    ws.onerror = () => settle(() => reject(new Error('WebSocket 錯誤')));
-    ws.onclose = () => {
-      settle(() => reject(new Error('連線中斷，尚未確認訊息送出')));
-    };
-  }));
-}
-
-/**
- * 新建 session 後送第一則訊息。失敗時 session 已存在，不能讓使用者重按（會重複建立）也不能丟訊息，
- * 保留原訊息與 ID，進聊天室後可安全重試確認。回傳是否送成功。
- */
-async function sendFirstPromptOrDraft(sessionId, text) {
-  try {
-    await sendPromptViaEphemeralWS(sessionId, text);
-    return true;
-  } catch (err) {
-    showToast(`${err.message || '送出未確認'}；內容已保留，請進聊天室重試確認`, { error: true, duration: 5000 });
-    return false;
-  }
 }
 
 /** 切換 agent_type 時，若舊的 mode 在新 agent 下不合法，退回 default。 */
@@ -406,6 +164,7 @@ const selectCompactClass = (danger) => [
 
 /** compact 時的外層/select class；未傳 compact 維持既有輸出 */
 const selectWrapClass = (compact, className) => compact ? 'relative shrink-0 min-w-0' : `relative min-w-0 ${className || 'w-full'}`;
+
 const selectClass = (compact, danger, className) => compact ? selectCompactClass(danger) : `${selectBaseClass(danger)} ${className || ''}`;
 
 /** 權限模式：窄螢幕（app 版）用下拉選單，與 PermModeSwitch 選項一致。danger 值會套用琥珀邊框（與分段按鈕語意一致）。 */
@@ -612,24 +371,6 @@ function AgentBadgeIcon({ agentType, session }) {
   );
 }
 
-function formatQuotaAge(iso) {
-  if (!iso) return '';
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return '';
-  const sec = Math.max(0, Math.floor((Date.now() - t) / 1000));
-  if (sec < 60) return '剛剛更新';
-  const min = Math.floor(sec / 60);
-  if (min < 60) return min + ' 分鐘前';
-  return Math.floor(min / 60) + ' 小時前';
-}
-
-/** display_text 內取最大的 N% 數字（無則回 null） */
-function extractMaxQuotaPercent(text) {
-  const matches = String(text || '').match(/(\d+(?:\.\d+)?)%/g);
-  if (!matches) return null;
-  return Math.max(...matches.map((m) => parseFloat(m)));
-}
-
 /** quota 文字顏色：error > 100%/80% 警示 > stale > 預設。segmentText 未帶 % 時退回整體 quota.display_text 判斷 */
 function quotaTextColorClass(quota, segmentText) {
   const pct = extractMaxQuotaPercent(segmentText !== undefined ? segmentText : quota && quota.display_text);
@@ -655,63 +396,6 @@ function QuotaSegments({ quota, text, className = '' }) {
   ));
 }
 
-/**
- * 結構化用量（quota.windows）：各 runner 的版型設定表。bars 依 window key 對應，對不到的略過；
- * tip 是 tooltip 要列的窗口（含不畫條的，例如 Cursor 的 Auto/API）；showPct 控制條旁是否帶標籤與百分比。
- */
-const QUOTA_LAYOUTS = (() => {
-  const fiveWeek = { groups: [{ bars: [{ key: 'session', label: '5h' }, { key: 'weekly', label: 'Week' }] }], tip: [['session', '5h'], ['weekly', 'Week']], showPct: true };
-  const kiro = { groups: [{ bars: [{ key: 'credits', label: 'Credits' }] }], tip: [['credits', 'Credits']], showPct: true, showUsed: true };
-  return {
-    claude: fiveWeek,
-    codex: fiveWeek,
-    cursor: { groups: [{ bars: [{ key: 'billing_total', label: 'Total' }] }], tip: [['billing_total', 'Total'], ['billing_auto', 'Auto'], ['billing_api', 'API']], showPct: true },
-    kiro,
-    kiroacp: kiro,
-    antigravity: {
-      groups: [
-        { label: 'Gemini', bars: [{ key: 'session', label: '5h' }, { key: 'weekly', label: 'Week' }] },
-        { label: 'Claude/GPT', bars: [{ key: 'session_claude', label: '5h' }, { key: 'weekly_claude', label: 'Week' }] },
-      ],
-      tip: [['session', 'Gemini 5h'], ['weekly', 'Gemini Week'], ['session_claude', 'Claude/GPT 5h'], ['weekly_claude', 'Claude/GPT Week']],
-      showPct: false,
-    },
-  };
-})();
-
-function quotaLayoutFor(agentType) {
-  const t = String(agentType || '').toLowerCase();
-  return QUOTA_LAYOUTS[t === 'gemini' ? 'antigravity' : t] || null;
-}
-
-function quotaWinPercent(w) {
-  if (!w) return null;
-  if (typeof w.percent === 'number' && Number.isFinite(w.percent)) return w.percent;
-  if (typeof w.used === 'number' && typeof w.limit === 'number' && w.limit > 0) return (w.used / w.limit) * 100;
-  return null;
-}
-
-function quotaFmtNum(n) {
-  return Math.abs(n - Math.round(n)) < 0.05 ? String(Math.round(n)) : n.toFixed(1);
-}
-
-/** 對應 layout 的窗口；windows 缺失／空／全是未知 key 時回 null（呼叫端退回文字顯示） */
-function resolveQuotaBars(quota, agentType) {
-  const layout = quotaLayoutFor(agentType);
-  if (!layout || !quota || !Array.isArray(quota.windows)) return null;
-  const byKey = {};
-  quota.windows.forEach((w) => { if (w && w.key && !(w.key in byKey)) byKey[w.key] = w; });
-  const groups = layout.groups
-    .map((g) => ({
-      label: g.label,
-      bars: g.bars
-        .map((b) => ({ ...b, win: byKey[b.key], pct: quotaWinPercent(byKey[b.key]) }))
-        .filter((b) => b.pct !== null),
-    }))
-    .filter((g) => g.bars.length > 0);
-  return groups.length ? { layout, groups, byKey } : null;
-}
-
 /** 進度條顏色：error 琥珀 > ≥100 紅 > ≥80 橘 > stale 灰 > 預設（與文字版 quotaTextColorClass 同順序） */
 function quotaBarTone(quota, pct) {
   if (quota.error) return { bg: 'bg-amber-400', text: 'text-ra-warn' };
@@ -719,42 +403,6 @@ function quotaBarTone(quota, pct) {
   if (pct >= 80) return { bg: 'bg-orange-400', text: 'text-orange-200' };
   if (quota.stale) return { bg: 'bg-gray-500', text: 'text-ra-t3' };
   return { bg: 'bg-violet-400', text: 'text-gray-400' };
-}
-
-/** resets_at（ISO）→ "Resets in 3 hr 25 min"；解析失敗或已過期回空字串 */
-function quotaResetCountdown(iso) {
-  const t = Date.parse(iso || '');
-  if (!Number.isFinite(t)) return '';
-  const mins = Math.round((t - Date.now()) / 60000);
-  if (mins <= 0) return '';
-  if (mins < 60) return 'Resets in ' + mins + ' min';
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return 'Resets in ' + h + ' hr' + (m ? ' ' + m + ' min' : '');
-}
-
-/** tooltip：各窗口名稱／百分比／倒數，最後附完整 display_text */
-function quotaTooltip(quota, agentType) {
-  const layout = quotaLayoutFor(agentType);
-  const lines = [];
-  if (layout && Array.isArray(quota.windows)) {
-    layout.tip.forEach(([key, name]) => {
-      const w = quota.windows.find((x) => x && x.key === key);
-      const pct = quotaWinPercent(w);
-      if (pct === null) return;
-      let line = name + ' ' + Math.round(pct * 10) / 10 + '%';
-      if (typeof w.used === 'number' && typeof w.limit === 'number') line += ' (' + quotaFmtNum(w.used) + '/' + quotaFmtNum(w.limit) + ')';
-      const left = quotaResetCountdown(w.resets_at);
-      if (left) line += ' · ' + left;
-      lines.push(line);
-    });
-  }
-  if (quota.plan) lines.push('方案 ' + quota.plan);
-  const age = formatQuotaAge(quota.updated_at);
-  if (age) lines.push(age);
-  if (quota.error) lines.push(quota.error);
-  if (quota.display_text && quota.display_text !== '—') lines.push(quota.display_text);
-  return lines.join('\n');
 }
 
 function QuotaBar({ quota, pct, bar, className = 'w-12' }) {
@@ -790,14 +438,6 @@ function QuotaUsage({ quota, agentType }) {
       ))}
     </span>
   );
-}
-
-/** 手機晶片用：版型內所有已知窗口中 percent 最高者；對不到回 null */
-function quotaPeakPercent(quota, agentType) {
-  const layout = quotaLayoutFor(agentType);
-  if (!layout || !quota || !Array.isArray(quota.windows)) return null;
-  const pcts = layout.tip.map(([key]) => quotaWinPercent(quota.windows.find((x) => x && x.key === key))).filter((p) => p !== null);
-  return pcts.length ? Math.max(...pcts) : null;
 }
 
 /** 帳戶 quota %（後端已組好 display_text） */
@@ -877,55 +517,6 @@ function GitBranchBadge({ branch, compact = false }) {
       <span className="truncate">{branch}</span>
     </span>
   );
-}
-
-/** 解析 API 回傳的 last_active（SQLite datetime 字串）為毫秒時間戳 */
-function sessionLastActiveMs(s) {
-  if (!s || !s.last_active) return 0;
-  const raw = String(s.last_active).trim();
-  const t = Date.parse(raw.includes('T') ? raw : raw.replace(' ', 'T'));
-  return Number.isNaN(t) ? 0 : t;
-}
-
-/**
- * 產生 optimistic update 用的「現在」字串，格式對齊 SQLite datetime('now')（YYYY-MM-DD HH:MM:SS）。
- * 用本地時間（不加時區標記），因為 sessionLastActiveMs／isUnread 都是以 Date.parse 忽略時區的方式解析，
- * 需與既有解析假設一致，否則本地樂觀值與後端值的比較會偏差。
- */
-function formatSqliteNow() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
-/** 解析訊息 created_at（SQLite datetime / ISO）為 Date；無效則回 null */
-function parseMessageCreatedAt(raw) {
-  if (raw == null || raw === '') return null;
-  const s = String(raw).trim();
-  // SQLite datetime('now') 為 UTC 且無時區後綴；補 Z 以免被當成本地時間
-  let normalized = s;
-  if (!s.includes('T')) normalized = s.replace(' ', 'T');
-  if (!/[zZ]|[+-]\d{2}:?\d{2}$/.test(normalized)) normalized += 'Z';
-  const t = Date.parse(normalized);
-  if (Number.isNaN(t)) return null;
-  return new Date(t);
-}
-
-/** 聊天氣泡下方時間：今日僅 HH:mm；昨日「昨天 HH:mm」；同年 M/D HH:mm；跨年 YYYY/M/D HH:mm */
-function formatMessageTime(raw) {
-  const d = parseMessageCreatedAt(raw);
-  if (!d) return '';
-  const now = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  const startOfDay = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const dayDiff = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
-  if (dayDiff === 0) return hm;
-  if (dayDiff === 1) return `昨天 ${hm}`;
-  if (d.getFullYear() === now.getFullYear()) {
-    return `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
-  }
-  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${hm}`;
 }
 
 /** 目錄分組標頭：顯示路徑最後兩段，避免過長 */
@@ -1023,11 +614,6 @@ function sortSessionsByWorkDirThenName(sessions) {
   });
 }
 
-function parseShellExitCode(content) {
-  const m = content.match(/\[exit (-?\d+)\]\n?$/);
-  return m ? parseInt(m[1], 10) : null;
-}
-
 function ShellOutput({ content, exitCode, streaming }) {
   const strippedContent = content.replace(/\n?\[exit -?\d+\]\n?$/, '');
   const resolvedExitCode = exitCode != null ? exitCode : (!streaming ? parseShellExitCode(content) : null);
@@ -1109,131 +695,6 @@ function ModeToggleBtn({ value, onChange, disabled, showLabel = false, agentLabe
   );
 }
 
-/** 將 API / sync 的訊息列轉成 ChatView 用的物件（含 pending 串流） */
-function mapMessageRow(m) {
-  const role = (m.role === 'assistant' || m.role === 'telegram') ? 'claude' : m.role;
-  const status = m.status || 'done';
-  const pending = status === 'pending';
-  const resultText = m.result_text || '';
-  const content = (m.content || '').trim() || resultText;
-  return {
-    id: m.id,
-    role,
-    content,
-    attachments: Array.isArray(m.attachments) ? m.attachments : [],
-    resultText,
-    status,
-    createdAt: m.created_at || m.createdAt || null,
-    author: m.author || '', // 分享聊天室／Telegram：空字串＝擁有者；有值＝說話者暱稱
-    // Telegram 時間線：穩定識別、送達狀態與取代關係（其他 agent 為空值）。
-    telegram: m.telegram || null,
-    delivery: m.delivery || '',
-    clientMessageId: m.client_message_id || m.clientMessageId || '',
-    replacesClientMessageId: m.replaces_client_message_id || m.replacesClientMessageId || '',
-    deliveryError: m.deliveryError || '',
-    html: role === 'claude' ? (content ? parseMarkdown(content) : null) : null,
-    streaming: pending,
-    exitCode: role === 'shell' ? parseShellExitCode(content) : undefined,
-  };
-}
-
-/**
- * 以 document.execCommand('copy') 複製純文字（相容非安全上下文，不使用 navigator.clipboard）。
- */
-function copyTextExecCommand(text) {
-  const t = text == null ? '' : String(text);
-  if (!t) return false;
-  let ta;
-  try {
-    ta = document.createElement('textarea');
-    ta.value = t;
-    ta.setAttribute('readonly', '');
-    ta.style.position = 'fixed';
-    ta.style.left = '-9999px';
-    ta.style.top = '0';
-    document.body.appendChild(ta);
-    // 16px 避免 iOS 聚焦時自動放大；iOS 的 select() 對 textarea 不一定生效，需再補 setSelectionRange。
-    ta.style.fontSize = '16px';
-    ta.focus();
-    ta.select();
-    ta.setSelectionRange(0, t.length);
-    return document.execCommand('copy');
-  } catch (e) {
-    return false;
-  } finally {
-    if (ta && ta.parentNode) ta.parentNode.removeChild(ta);
-  }
-}
-
-/**
- * 複製純文字：安全環境（HTTPS／Telegram）優先用 Clipboard API，失敗再退回 execCommand。
- * 回傳 Promise<boolean>。
- */
-async function copyText(text) {
-  const t = text == null ? '' : String(text);
-  if (!t) return false;
-  if (navigator.clipboard && window.isSecureContext) {
-    try {
-      await navigator.clipboard.writeText(t);
-      return true;
-    } catch (_) { /* 權限被拒或失去手勢，改走 fallback */ }
-  }
-  return copyTextExecCommand(t);
-}
-
-/** 輕量 Toast（不需 Provider）：畫面下方浮出一行字，預設約 1.6 秒後淡出。
- *  action={label,onClick} 會多一顆可點的按鈕（如「復原」），此時 duration 通常要拉長。 */
-function showToast(message, { error = false, action = null, duration = 1600 } = {}) {
-  const el = document.createElement('div');
-  el.setAttribute('role', 'status');
-  const text = document.createElement('span');
-  text.textContent = message;
-  el.appendChild(text);
-  const dismiss = () => {
-    el.style.opacity = '0';
-    setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 220);
-  };
-  if (action) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.textContent = action.label;
-    Object.assign(btn.style, { marginLeft: '12px', fontWeight: '600', color: 'oklch(0.8 0.12 275)', cursor: 'pointer' });
-    btn.onclick = () => { dismiss(); action.onClick(); };
-    el.appendChild(btn);
-  }
-  Object.assign(el.style, {
-    position: 'fixed',
-    left: '50%',
-    bottom: 'calc(88px + env(safe-area-inset-bottom))',
-    transform: 'translateX(-50%)',
-    zIndex: '300',
-    maxWidth: '80vw',
-    padding: '8px 14px',
-    borderRadius: '999px',
-    fontSize: '13px',
-    lineHeight: '1.3',
-    color: error ? 'oklch(0.9 0.08 25)' : 'oklch(0.95 0.01 264)',
-    background: error ? 'oklch(0.3 0.1 25 / 0.95)' : 'oklch(0.28 0.02 264 / 0.95)',
-    border: '1px solid oklch(0.38 0.02 264)',
-    boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-    pointerEvents: action ? 'auto' : 'none',
-    opacity: '0',
-    transition: 'opacity 0.18s',
-  });
-  document.body.appendChild(el);
-  requestAnimationFrame(() => { el.style.opacity = '1'; });
-  setTimeout(dismiss, duration);
-}
-
-/** 觸覺回饋：Telegram 內用原生 Haptic，其餘退回 vibrate（iOS Safari 不支援則無動作）。 */
-function hapticTap() {
-  try {
-    const h = window.Telegram?.WebApp?.HapticFeedback;
-    if (h && typeof h.impactOccurred === 'function') { h.impactOccurred('medium'); return; }
-    if (navigator.vibrate) navigator.vibrate(15);
-  } catch (_) { /* 無觸覺裝置，忽略 */ }
-}
-
 /** 訊息氣泡用複製按鈕（複製 m.content 原始文字） */
 function MessageCopyButton({ text, className }) {
   const [copied, setCopied] = useState(false);
@@ -1269,59 +730,10 @@ function MessageCopyButton({ text, className }) {
   );
 }
 
-// 接手草稿：MCP 讀原歷史，否則帶入有限歷史；最後需求始終完整。
-function buildHandoffDraftMessage(handoff, historyMessages) {
-  const h = handoff || {};
-  const lastPrompt = String(h.last_prompt || '').trim();
-  const reason = String(h.reason || '').trim();
-  const head = `原會話（miniapp session_id=${h.old_session_id || ''}，名稱「${h.old_name || ''}」）的 ${h.agent_type || ''} 這次執行失敗（${reason}），需要你接手。\n接手前請先確認 git／檔案現況，避免重做已完成的步驟。`;
-
-  let historyBlock;
-  if (h.mcp_enabled) {
-    historyBlock = `有 miniapp MCP：請先呼叫 get_messages（session_id="${h.old_session_id || ''}"）讀取舊會話完整歷史，弄清楚進度。`;
-  } else {
-    const all = (Array.isArray(historyMessages) ? historyMessages : [])
-      .filter((m) => m && (m.role === 'user' || m.role === 'claude') && String(m.content || m.resultText || '').trim());
-    const countTruncated = all.length > 20;
-    const lines = all.slice(-20);
-    if (lines.length === 0) {
-      historyBlock = 'MCP 未啟用，且目前讀不到舊會話的歷史訊息，請只依下方「最後需求」處理。';
-    } else {
-      let remaining = 20000;
-      let charTruncated = false;
-      const kept = [];
-      // ponytail: 最近 20 則、文字最多 20,000 字元，優先保留最新尾段；完整歷史由 MCP 讀取。
-      for (let i = lines.length - 1; i >= 0; i--) {
-        if (remaining === 0) {
-          charTruncated = true;
-          break;
-        }
-        const m = lines[i];
-        const full = String(m.role === 'claude' ? (m.resultText || m.content || '') : (m.content || '')).trim();
-        if (!full) continue;
-        charTruncated ||= full.length > remaining;
-        const text = full.slice(-remaining);
-        remaining -= text.length;
-        kept.unshift(`[${m.role === 'user' ? '使用者' : h.agent_type || 'agent'}] ${text}`);
-      }
-      const noteParts = [];
-      if (countTruncated) noteParts.push(`僅最近 20 則，共 ${all.length} 則，有限裁切`);
-      if (charTruncated) noteParts.push('已達字數上限，較舊內容已截斷');
-      const note = noteParts.length ? `（${noteParts.join('；')}）` : '';
-      historyBlock = `MCP 未啟用，附上現有聊天室的有限歷史${note}：\n---\n${kept.join('\n---\n')}\n---`;
-    }
-  }
-
-  const tail = lastPrompt
-    ? `請完成使用者最後這則需求：\n---\n${lastPrompt}`
-    : '原會話沒有可接續的最後需求文字。';
-
-  return `${head}\n${historyBlock}\n${tail}`;
-}
-
 // 對話框焦點管理（role="dialog" 的自製浮層用）：開啟時把焦點移到對話框、Tab 在框內循環、關閉後還原到開啟前的元素。
 // 焦點先放在容器而非第一個控制項，讀屏會先念出對話框名稱，也不會讓滑鼠開啟時冒出焦點環。
 const DIALOG_FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
 function useDialogFocus(dialogRef, active = true) {
   useEffect(() => {
     const dialog = dialogRef.current;

@@ -35,7 +35,7 @@ source: quota-usage-bars
 updated: 2026-10-16
 code:
   - internal/quota/cursor.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/hooks/useChatSocket.js
   - internal/quota/kiro.go
   - internal/version/version.go
@@ -45,7 +45,7 @@ code:
   - internal/quota/result.go
   - internal/static/js/ui/SessionTabs.js
   - internal/static/js/app.js
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/static/js/core/core.js
   - internal/static/js/ui/SettingsModal.js
   - AGENTS.md
@@ -101,7 +101,7 @@ source: quota-usage-bars
 updated: 2026-10-16
 code:
   - internal/quota/cursor.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/hooks/useChatSocket.js
   - internal/quota/kiro.go
   - internal/version/version.go
@@ -111,7 +111,7 @@ code:
   - internal/quota/result.go
   - internal/static/js/ui/SessionTabs.js
   - internal/static/js/app.js
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/static/js/core/core.js
   - internal/static/js/ui/SettingsModal.js
   - AGENTS.md
@@ -152,7 +152,7 @@ source: quota-usage-bars
 updated: 2026-10-16
 code:
   - internal/quota/cursor.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/hooks/useChatSocket.js
   - internal/quota/kiro.go
   - internal/version/version.go
@@ -162,7 +162,7 @@ code:
   - internal/quota/result.go
   - internal/static/js/ui/SessionTabs.js
   - internal/static/js/app.js
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/static/js/core/core.js
   - internal/static/js/ui/SettingsModal.js
   - AGENTS.md
@@ -203,7 +203,7 @@ source: quota-usage-bars
 updated: 2026-10-16
 code:
   - internal/quota/cursor.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/hooks/useChatSocket.js
   - internal/quota/kiro.go
   - internal/version/version.go
@@ -213,7 +213,7 @@ code:
   - internal/quota/result.go
   - internal/static/js/ui/SessionTabs.js
   - internal/static/js/app.js
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/static/js/core/core.js
   - internal/static/js/ui/SettingsModal.js
   - AGENTS.md
@@ -249,7 +249,7 @@ source: quota-usage-bars
 updated: 2026-10-16
 code:
   - internal/quota/cursor.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/hooks/useChatSocket.js
   - internal/quota/kiro.go
   - internal/version/version.go
@@ -259,7 +259,7 @@ code:
   - internal/quota/result.go
   - internal/static/js/ui/SessionTabs.js
   - internal/static/js/app.js
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/static/js/core/core.js
   - internal/static/js/ui/SettingsModal.js
   - AGENTS.md
@@ -299,7 +299,7 @@ source: quota-usage-bars
 updated: 2026-10-16
 code:
   - internal/quota/cursor.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/hooks/useChatSocket.js
   - internal/quota/kiro.go
   - internal/version/version.go
@@ -309,7 +309,7 @@ code:
   - internal/quota/result.go
   - internal/static/js/ui/SessionTabs.js
   - internal/static/js/app.js
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/static/js/core/core.js
   - internal/static/js/ui/SettingsModal.js
   - AGENTS.md

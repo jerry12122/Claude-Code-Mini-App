@@ -51,7 +51,7 @@ function loadContext() {
     setTimeout, clearTimeout,
   });
   vm.runInContext(read('hooks/telegramTimeline.js'), ctx);
-  vm.runInContext(sliceFunction(read('ui/ui-atoms.js'), 'mapMessageRow'), ctx);
+  vm.runInContext(sliceFunction(read('hooks/messageRows.js'), 'mapMessageRow'), ctx);
   return ctx;
 }
 

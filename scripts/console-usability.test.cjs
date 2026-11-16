@@ -82,7 +82,9 @@ const countStart = sessionSource.indexOf('  const unreadCount =');
 vm.runInContext(sessionSource.slice(countStart, sessionSource.indexOf('  const hasUnread', countStart)) + '\nthis.count = unreadCount;', sidebarContext);
 assert.equal(sidebarContext.count, 1, 'an active chat can still have unread results while the app is in the background');
 
-const shared = fs.readFileSync(path.join(root, 'js/ui/ui-atoms.js'), 'utf8');
+// quota 的顏色函式在 ui 層，數值計算在 hooks/quotaMetrics.js（見 docs/spec/frontend-architecture.md）
+const shared = fs.readFileSync(path.join(root, 'js/ui/uiAtoms.js'), 'utf8')
+  + '\n' + fs.readFileSync(path.join(root, 'js/hooks/quotaMetrics.js'), 'utf8');
 const quotaContext = vm.createContext({});
 const core = fs.readFileSync(path.join(root, 'js/core/core.js'), 'utf8');
 const stateStart = core.indexOf('function sessionStateChipClass(');

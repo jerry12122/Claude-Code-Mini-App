@@ -26,7 +26,7 @@ The UI SHALL render two chat panes either side-by-side (horizontal orientation) 
 source: split-view-orientation
 updated: 2026-10-12
 code:
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/session/SessionView.js
   - CLAUDE.md
   - .spectra.yaml
@@ -73,7 +73,7 @@ The split view divider SHALL support mouse and touch drag to adjust pane dimensi
 source: split-view-orientation
 updated: 2026-10-12
 code:
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/session/SessionView.js
   - CLAUDE.md
   - .spectra.yaml
@@ -126,7 +126,7 @@ code:
   - .cursorrules
   - .agents/skills/spectra-verify/SKILL.md
   - .agents/skills/spectra-discuss/SKILL.md
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - .spectra.yaml
   - internal/static/js/session/SessionView.js
   - README.md
@@ -168,7 +168,7 @@ code:
   - .cursorrules
   - .agents/skills/spectra-verify/SKILL.md
   - .agents/skills/spectra-discuss/SKILL.md
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - .spectra.yaml
   - internal/static/js/session/SessionView.js
   - README.md
@@ -201,7 +201,7 @@ The UI SHALL provide intuitive orientation toggle controls to switch between hor
 source: split-view-orientation
 updated: 2026-10-12
 code:
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/session/SessionView.js
   - CLAUDE.md
   - .spectra.yaml
@@ -239,7 +239,7 @@ The UI SHALL persist the split orientation setting in local storage and restore 
 source: split-view-orientation
 updated: 2026-10-12
 code:
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/session/SessionView.js
   - CLAUDE.md
   - .spectra.yaml

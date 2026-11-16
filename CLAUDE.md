@@ -131,6 +131,7 @@ claude -p "<prompt>" \
 ---
 
 ## 參考文件
+- `docs/spec/frontend-architecture.md` — 前端分層、命名與檔案大小規範（以 `node scripts/frontend-layering.test.cjs` 驗證）
 - `docs/spec/claude-code-cli.md` — CLI 旗標完整參考
 - `docs/spec/headless.md` — `-p` 模式與 stream-json 用法
 - `docs/spec/plan.md` — 完整規格書（Schema、WebSocket 格式、Roadmap）

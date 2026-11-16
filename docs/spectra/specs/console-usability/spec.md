@@ -27,9 +27,9 @@ updated: 2026-11-06
 code:
   - internal/static/index.html
   - internal/static/js/chat/ChatView.js
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/core/core.js
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
 tests:
   - scripts/console-usability.test.cjs
   - scripts/theme.test.cjs
@@ -89,7 +89,7 @@ code:
   - internal/static/js/app.js
   - scripts/composer-attachment.test.py
   - docs/prototypes/mobile-composer-sheet.dc.html
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/quota/codex.go
   - internal/agent/factory.go
   - internal/api/upload.go
@@ -150,9 +150,9 @@ updated: 2026-11-06
 code:
   - internal/static/index.html
   - internal/static/js/chat/ChatView.js
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/core/core.js
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
 tests:
   - scripts/console-usability.test.cjs
   - scripts/theme.test.cjs
@@ -185,9 +185,9 @@ updated: 2026-11-06
 code:
   - internal/static/index.html
   - internal/static/js/chat/ChatView.js
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/js/core/core.js
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
 tests:
   - scripts/console-usability.test.cjs
   - scripts/theme.test.cjs

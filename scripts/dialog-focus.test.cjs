@@ -4,9 +4,9 @@ const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 
-const source = fs.readFileSync(path.join(__dirname, '../internal/static/js/ui/ui-atoms.js'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '../internal/static/js/ui/uiAtoms.js'), 'utf8');
 const start = source.indexOf('// 對話框焦點管理');
-assert.ok(start >= 0, 'useDialogFocus must exist in ui-atoms.js');
+assert.ok(start >= 0, 'useDialogFocus must exist in uiAtoms.js');
 
 // 假 DOM：只實作 hook 用到的 contains／focus／querySelectorAll／offsetParent
 function setup({ openerConnected = true, openerIsBody = false } = {}) {

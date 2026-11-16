@@ -26,7 +26,7 @@ code:
   - internal/static/js/hooks/tabGroups.js
   - internal/quota/kiro.go
   - docs/getting-started.md
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/antigravity/models.go
   - README.zh-TW.md
   - internal/ws/handler.go
@@ -53,7 +53,7 @@ code:
   - CLAUDE.md
   - internal/static/js/ui/SplitLayout.js
   - internal/quota/result.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/index.html
   - internal/static/js/chat/ChatView.js
 tests:
@@ -93,7 +93,7 @@ code:
   - .cursorrules
   - .agents/skills/spectra-verify/SKILL.md
   - .agents/skills/spectra-discuss/SKILL.md
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - .spectra.yaml
   - internal/static/js/session/SessionView.js
   - README.md
@@ -136,7 +136,7 @@ code:
   - .cursorrules
   - .agents/skills/spectra-verify/SKILL.md
   - .agents/skills/spectra-discuss/SKILL.md
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - .spectra.yaml
   - internal/static/js/session/SessionView.js
   - README.md
@@ -172,7 +172,7 @@ code:
   - internal/static/js/hooks/tabGroups.js
   - internal/quota/kiro.go
   - docs/getting-started.md
-  - internal/static/js/ui/ui-atoms.js
+  - internal/static/js/ui/uiAtoms.js
   - internal/antigravity/models.go
   - README.zh-TW.md
   - internal/ws/handler.go
@@ -199,7 +199,7 @@ code:
   - CLAUDE.md
   - internal/static/js/ui/SplitLayout.js
   - internal/quota/result.go
-  - internal/static/js/chat/chat-header.js
+  - internal/static/js/chat/ChatHeader.js
   - internal/static/index.html
   - internal/static/js/chat/ChatView.js
 tests:
