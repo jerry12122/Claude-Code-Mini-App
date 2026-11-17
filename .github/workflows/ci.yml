@@ -28,8 +28,12 @@ jobs:
       - name: gofmt
         run: test -z "$(gofmt -l internal cmd)"
 
+      # docs/spec/backend-architecture.md 第 7 節的驗證清單
+      - name: go vet
+        run: go vet ./internal/... ./cmd/...
+
       - name: 後端測試（含 internal/arch 分層檢查）
-        run: go test ./internal/...
+        run: go test ./internal/... ./cmd/...
 
       - name: 後端測試（production 標籤，前端嵌入）
         run: go test -tags production ./internal/...
