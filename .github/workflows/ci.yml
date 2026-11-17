@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # 與 release.yml 同為 Windows runner，避免「CI 綠、發版紅」的平台差異
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # .gitattributes 已固定 eol=lf，檢出後 gofmt 不應有差異
+      - name: gofmt
+        run: test -z "$(gofmt -l internal cmd)"
+
+      - name: 後端測試（含 internal/arch 分層檢查）
+        run: go test ./internal/...
+
+      - name: 後端測試（production 標籤，前端嵌入）
+        run: go test -tags production ./internal/...
+
+      - name: 前端分層檢查
+        run: node scripts/frontend-layering.test.cjs
+
+      - name: 前端單元測試
+        run: node --test scripts/*.test.cjs
+
+      # scripts/*.test.py 需要 Playwright 與本機瀏覽器，不在 CI 跑（見 CONTRIBUTING.md）
