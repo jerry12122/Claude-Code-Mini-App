@@ -1,0 +1,2 @@
+-r requirements.txt
+browserstack-sdk==1.51.2

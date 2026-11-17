@@ -84,3 +84,8 @@ docs/spectra/.vector-search.db*
 
 # Telegram 登入 session（帳號憑證）
 /telegram.session
+
+# 瀏覽器測試與 BrowserStack SDK 的本機產物
+/test-results/
+/log/
+/browserstack-sdk.log
