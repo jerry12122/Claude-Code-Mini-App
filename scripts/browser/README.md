@@ -9,7 +9,7 @@
 
 ```powershell
 python -m pip install -r scripts/browser/requirements.txt
-python -m pytest scripts/browser -q --browser-channel msedge --tracing retain-on-failure --screenshot only-on-failure --junitxml=test-results/local.xml
+python -m pytest scripts/browser/test_regression.py -q --browser-channel msedge --tracing retain-on-failure --screenshot only-on-failure --junitxml=test-results/local.xml
 ```
 
 ## GitHub Actions
@@ -44,3 +44,6 @@ python -m pytest scripts/browser/test_ui_review.py -q --junitxml=test-results/ui
 檢查登入、列表、深淺色設定、新會話、長標題、草稿、手機工具／模型、權限提示、歷史及分享。
 截圖會停用動畫；狀態先等待預期畫面，不用固定 sleep。UI 問題會讓 job 失敗，仍上傳完整 artifact。
 截圖必須另做人工視覺檢查；這不是自動像素差異核准，也不能以測試綠燈取代畫面驗收。
+
+真機 iOS 使用支援的 locator 等待與明確狀態斷言；本次 Python bridge 的 `expect(...).to_be_visible()` 在可見登入欄位上回報空白 AssertionError。
+macOS WebKit 的 HTTP 可用，但本次 Local tunnel 的 WebSocket 握手未完成，因此聊天流程會失敗，不能視為已驗收。

@@ -6,7 +6,7 @@ from urllib.parse import quote
 import uuid
 
 import pytest
-from playwright.sync_api import expect, sync_playwright
+from playwright.sync_api import sync_playwright
 
 PROFILE = os.environ.get("UI_PROFILE", "local-edge")
 PLATFORMS = {
@@ -33,7 +33,7 @@ def page(app, request):
                 key = os.environ["BROWSERSTACK_ACCESS_KEY"]
                 tunnel = Local()
                 tunnel.start(key=key, localIdentifier=identifier)
-                # Safari 的本機網址與 WebSocket 必須使用 BrowserStack Local 的專用主機名。
+                # Safari Local 依官方建議使用 bs-local.com；仍須另驗證 WebSocket。
                 app["url"] = app["url"].replace("127.0.0.1", "bs-local.com")
                 caps = {
                     **PLATFORMS[PROFILE],
@@ -116,30 +116,33 @@ def test_ui_review(page, app, viewport):
     folder = Path("test-results/ui") / PROFILE / size
     folder.mkdir(parents=True, exist_ok=True)
     issues = []
-    page.context.clear_cookies()
-    page.goto(app["url"])
-    page.evaluate("() => { localStorage.clear(); localStorage.setItem('cc_theme_v1', 'dark'); }")
-    page.reload()
+    if PROFILE != "ios":
+        page.context.clear_cookies()
+        # Reset before app startup so the previous viewport cannot restore a chat.
+        page.add_init_script("localStorage.clear(); localStorage.setItem('cc_theme_v1', 'dark');")
+    # iOS bridge may return before the document has left about:blank.
+    page.goto(app["url"], wait_until="domcontentloaded", timeout=60000)
+    page.wait_for_function("document.getElementById('root')?.childElementCount > 0")
     password = page.locator('input[type="password"]')
-    expect(password).to_be_visible()
+    password.wait_for(state="visible")
     capture(page, folder, "01-login-dark", issues, page.get_by_role("button", name="進入", exact=True))
     password.fill(app["password"])
     page.get_by_role("button", name="進入", exact=True).click()
-    expect(page.get_by_role("button", name="建立新 Session", exact=True)).to_be_visible()
-    expect(page.get_by_text("載入會話中…", exact=True)).to_have_count(0, timeout=30000)
+    page.get_by_role("button", name="建立新 Session", exact=True).wait_for(state="visible")
+    page.get_by_text("載入會話中…", exact=True).wait_for(state="hidden", timeout=30000)
     capture(page, folder, "02-sessions-dark", issues)
 
     page.get_by_role("button", name="設定", exact=True).click()
     dialog = page.get_by_role("dialog")
-    expect(dialog).to_be_visible()
+    dialog.wait_for(state="visible")
     capture(page, folder, "03-settings-dark", issues)
     dialog.get_by_role("button", name="外觀", exact=True).click()
     capture(page, folder, "04-appearance-dark", issues)
     dialog.get_by_role("radio", name="淺色", exact=True).click()
-    expect(page.locator("html")).to_have_attribute("data-theme", "light")
+    page.wait_for_function("document.documentElement.dataset.theme === 'light'")
     capture(page, folder, "05-appearance-light", issues)
     dialog.get_by_role("button", name="關閉", exact=True).click()
-    expect(dialog).to_have_count(0)
+    dialog.wait_for(state="hidden")
     capture(page, folder, "06-sessions-light", issues)
     page.get_by_role("button", name="設定", exact=True).click()
     dialog.get_by_role("button", name="外觀", exact=True).click()
@@ -152,8 +155,9 @@ def test_ui_review(page, app, viewport):
     capture(page, folder, "07-new-session-dark", issues)
     page.get_by_role("button", name="建立", exact=True).click()
     draft = page.locator("textarea[data-chat-input]")
-    expect(draft).to_be_enabled()
-    expect(page.get_by_text("載入對話中…", exact=True)).to_have_count(0, timeout=30000)
+    draft.wait_for(state="visible")
+    assert draft.is_enabled()
+    page.get_by_text("載入對話中…", exact=True).wait_for(state="hidden", timeout=30000)
     page.evaluate("() => document.activeElement?.blur()")
     capture(page, folder, "08-chat-empty-dark", issues, draft)
     if page.evaluate("innerWidth < 1024") and not page.get_by_role("button", name="回到會話列表", exact=True).is_visible():
@@ -165,28 +169,39 @@ def test_ui_review(page, app, viewport):
     tools = page.get_by_role("button", name="聊天工具", exact=True)
     if tools.is_visible():
         tools.click()
-        expect(page.get_by_role("dialog")).to_be_visible()
+        page.get_by_role("dialog").wait_for(state="visible")
         capture(page, folder, "10-tools-dark", issues, page.get_by_role("button", name="關閉聊天工具"))
         page.get_by_role("button", name="模型", exact=True).click()
-        expect(page.get_by_role("heading", name="選擇模型", exact=True)).to_be_visible()
+        page.get_by_role("heading", name="選擇模型", exact=True).wait_for(state="visible")
         capture(page, folder, "11-models-dark", issues)
         page.get_by_role("button", name="關閉聊天工具", exact=True).click()
-        expect(draft).to_have_value("這是一份應保留的多行草稿\n第二行測試中文輸入")
+        assert draft.input_value() == "這是一份應保留的多行草稿\n第二行測試中文輸入"
     draft.fill("PERM")
     page.get_by_role("button", name="送出", exact=True).click()
-    expect(page.get_by_text("需要授權", exact=True)).to_be_visible(timeout=45000)
+    page.get_by_text("需要授權", exact=True).wait_for(state="visible", timeout=45000)
     capture(page, folder, "12-permission-dark", issues, page.get_by_role("button", name="拒絕", exact=True))
     page.get_by_role("button", name="拒絕", exact=True).click()
-    expect(page.get_by_text("需要授權", exact=True)).to_have_count(0)
-    expect(page.get_by_role("button", name="送出", exact=True)).to_be_disabled(timeout=15000)
+    page.get_by_text("需要授權", exact=True).wait_for(state="hidden")
+    page.wait_for_function("[...document.querySelectorAll('button')].some(b => b.getAttribute('aria-label') === '送出' && b.disabled)", timeout=15000)
     capture(page, folder, "13-chat-history-dark", issues, draft)
     details = page.locator("details.ra-mobile-session-details")
     if details.is_visible():
         details.locator("summary").click()
     page.get_by_role("button", name="分享這個聊天室", exact=True).click()
     share = page.get_by_role("dialog", name="分享聊天室", exact=True)
-    expect(share).to_be_visible()
+    share.wait_for(state="visible")
     capture(page, folder, "14-share-dark", issues, share.get_by_role("button", name="關閉", exact=True))
+    # A visible close button alone does not prove the scrollable form is usable.
+    share_layout = page.evaluate("""() => {
+      const dialog = document.querySelector('dialog.ra-dialog-share[open]');
+      const body = dialog.children[1];
+      const create = [...body.querySelectorAll('button')].find(b => b.textContent.trim() === '建立分享連結');
+      return {dialogHeight: dialog.clientHeight, bodyHeight: body.clientHeight,
+        bodyScrollHeight: body.scrollHeight, createHeight: create.getBoundingClientRect().height};
+    }""")
+    (folder / "14-share-layout.json").write_text(json.dumps(share_layout, indent=2), encoding="utf-8")
+    if share_layout["bodyHeight"] + 1 < share_layout["createHeight"]:
+        issues.append("14-share-dark: 分享內容區高度不足以完整呈現建立分享按鈕")
     share.get_by_role("button", name="關閉", exact=True).click()
     (folder / "issues.json").write_text(json.dumps(issues, ensure_ascii=False, indent=2), encoding="utf-8")
     assert not issues, issues
