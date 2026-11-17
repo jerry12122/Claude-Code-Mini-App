@@ -89,3 +89,4 @@ docs/spectra/.vector-search.db*
 /test-results/
 /log/
 /browserstack-sdk.log
+/local.log
