@@ -4,6 +4,12 @@
 
 發版流程：更新 `VERSION`、`internal/version/version.go`、README 版本徽章與本檔 → commit → 打 `vX.Y.Z` tag 並 push，GitHub Actions 會自動建置並發佈 Release（說明文字取自本檔對應段落）。Release 說明依序為：更新內容 → 下載 → 桌面版更新方法 → 首次設定。
 
+## [0.20.1] - 2026-11-17
+
+### 修正
+- 修正透過一般區網 HTTP 開啟聊天室時，Git 控制呼叫不可用的 `crypto.randomUUID()`，導致畫面崩潰的問題；元件 ID 改用 React 既有的 `useId()`，保留手機／桌面多個選單的獨立對應
+- HTML／SVG 隔離預覽一併移除對 `randomUUID()` 的依賴，改以一般 HTTP 也能使用的 `crypto.getRandomValues()` 產生 128 位元隨機 CSP nonce，保留腳本限制與沙箱隔離
+
 ## [0.20.0] - 2026-11-17
 
 ### 新增

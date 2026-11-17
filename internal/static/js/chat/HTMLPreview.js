@@ -24,7 +24,7 @@ customElements.define('ra-html', class extends HTMLElement {
     frame.setAttribute('sandbox', 'allow-scripts allow-popups allow-popups-to-escape-sandbox');
     frame.referrerPolicy = 'no-referrer';
     frame.style.cssText = 'display:block;width:100%;border:0;height:150px;color-scheme:normal';
-    const nonce = crypto.randomUUID().replace(/-/g, '');
+    const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
     const measure = `function report(){parent.postMessage({previewHeight:Math.ceil(document.body.getBoundingClientRect().height)},'*')}report();new ResizeObserver(report).observe(document.body);addEventListener('load',report)`;
     frame.srcdoc = '<!doctype html><html><head><meta charset="utf-8">'
       + `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src data: https: http: blob:; font-src data:; base-uri 'none'; form-action 'none'">`

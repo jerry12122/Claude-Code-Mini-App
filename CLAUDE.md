@@ -108,7 +108,7 @@ Telegram 內建 WebView（Android System WebView／iOS WKWebView，版本跟隨 
 | Wails WebView2（桌面版） | 隨系統自動更新，不受限 | — |
 
 數字取自 MDN browser-compat-data（2026-11-16 查詢），是各瀏覽器在 `oklch()`、`:has()`、`:modal`、
-`dvh`、`<dialog>.showModal()`、`crypto.randomUUID()` 之中最晚支援的那一個。**目前只寫明限制、不做降級**：
+`dvh`、`<dialog>.showModal()` 之中最晚支援的那一個。**目前只寫明限制、不做降級**：
 低於這些版本不保證可用。新增功能若會把底線往上推，要同步更新這張表與 README 的「瀏覽器支援」。
 
 `overscroll-behavior`（Chrome 144／Safari 16／Firefox 150）與 `interactive-widget` 屬於漸進增強，

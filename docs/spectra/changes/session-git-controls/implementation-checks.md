@@ -68,3 +68,10 @@
 - GitHub CI `44059510622` 在 Windows runner 的兩則錯誤案例逾時；原案例以不存在的子指令（含 5000 字元名稱）觸發 Git 額外的指令搜尋。改用 `rev-parse --verify` 的不存在 ref 與固定輸出 5000 字元後退出的 alias，避免測到指令建議機制。
 - 保留真正的奈秒逾時案例、非互動環境檢查與 4096 位元組上限斷言，並明確要求失敗類型為 `failed`。正式 Git 操作與逾時設定未改動。
 - 修正後 `go test ./internal/gitinfo/ -count=1` 通過。
+
+## v0.20.1 HTTP 相容性修正
+
+- 使用者回報一般 HTTP 的 GitControls 因 `crypto.randomUUID is not a function` 崩潰。先讓 Git UI 測試停用該 API，確認同樣的錯誤；Markdown 預覽測試也重現同一依賴造成 iframe 無法建立。
+- GitControls 改用既有 React.useId；HTMLPreview 以 crypto.getRandomValues 產生 128 位元隨機 nonce，不降低 CSP 隔離。未改 Git API、選單樣式與忙碌限制。
+- 最終 Git UI 測試使用 `http://miniapp-http.test/` 的瀏覽器 origin，明確斷言 isSecureContext=false 且 randomUUID 不存在；390px、1280px、定位 fallback 均通過，並確認手機／桌面四個 popover ID 不重複。
+- `node scripts/markdown-security.test.cjs` 在無 randomUUID 情況下通過清洗、沙箱與 CSP nonce 對應檢查；Git hook、前端分層、靜態資產檢查通過。

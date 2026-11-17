@@ -61,17 +61,23 @@ with tempfile.TemporaryDirectory(prefix='git-panel-') as tmp, sync_playwright() 
             page.set_default_timeout(5000)
             if fallback:
                 page.add_init_script("const supports=CSS.supports.bind(CSS);CSS.supports=(...args)=>args[0]==='position-area: block-end'?false:supports(...args)")
-            page.goto(html.as_uri())
+            page.route('http://miniapp-http.test/**', lambda route: route.fulfill(path=str(html), content_type='text/html'))
+            page.goto('http://miniapp-http.test/')
+            assert page.evaluate("!isSecureContext && typeof crypto.randomUUID === 'undefined'"),'使用一般 HTTP 環境重現'
             if fallback:
                 page.add_style_tag(content='.ra-git-popover {position:fixed!important;position-area:none!important;inset:auto!important;margin:0!important;left:var(--git-left)!important;top:var(--git-top)!important;}')
             for name in ['tailwind.js','react.production.min.js','react-dom.production.min.js']:
                 page.add_script_tag(path=str(static/'js/vendor'/name))
             page.add_script_tag(content=config)
             page.add_script_tag(content=compiled)
+            page.wait_for_timeout(50)
+            assert not errors, errors
             if width == 390:
                 page.locator('summary').click()
             selector=page.get_by_role('button',name='切換分支',exact=True)
             expect(selector).to_contain_text('main')
+            ids=page.locator('[popover]').evaluate_all('(panels)=>panels.map(panel=>panel.id)')
+            assert len(ids)==4 and len(set(ids))==4,'手機與桌面元件的 popover ID 不得重複'
             assert page.get_by_role('combobox',name='切換分支').count()==0
             selector.click()
             branch_panel=page.locator('[popover]:popover-open')

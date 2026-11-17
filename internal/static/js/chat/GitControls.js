@@ -5,7 +5,7 @@ function GitControls({ session, state, git }) {
   const popoverRef = useRef(null);
   const branchTriggerRef = useRef(null);
   const branchPopoverRef = useRef(null);
-  const [popoverId] = useState(() => `git-${crypto.randomUUID()}`);
+  const popoverId = React.useId();
   const [open, setOpen] = useState(false);
   const [branchOpen, setBranchOpen] = useState(false);
   const busy = session.status !== 'idle' || state !== 'IDLE';

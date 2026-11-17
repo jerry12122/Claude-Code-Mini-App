@@ -98,6 +98,7 @@ test('Markdown strips executable HTML and preserves code, tables and Mermaid', {
       `<script src="${pathToFileURL(path.join(root, 'js/vendor', name))}"></script>`).join('');
     const checks = () => {
       const check = (v, msg) => { if (!v) throw Error(msg); };
+      Object.defineProperty(crypto, 'randomUUID', { value: undefined, configurable: true });
       const dirty = '<img src=x onerror="window.xss=1"><svg onload="window.xss=1"></svg>'
         + '<iframe srcdoc="x"></iframe><a href="javascript:alert(1)">bad</a>'
         + '<form id="DOMPurify"><input name="sanitize"></form>';
@@ -150,6 +151,8 @@ test('Markdown strips executable HTML and preserves code, tables and Mermaid', {
       check(preview, 'styled HTML lost its isolated preview');
       const frame = preview.querySelector('iframe');
       check(frame?.srcdoc.includes('padding:12px') && frame.srcdoc.includes('.box'), 'styles lost');
+      const nonce = frame.srcdoc.match(/<script nonce="([0-9a-f]{32})">/)?.[1];
+      check(nonce && frame.srcdoc.includes("script-src 'nonce-" + nonce + "'"), 'preview nonce must match its CSP');
       check(frame.sandbox.contains('allow-scripts') && !frame.sandbox.contains('allow-same-origin'), 'preview has console privileges');
       const height = frame.style.height;
       preview.onHeight({source:window,data:{previewHeight:9999}});
