@@ -33,6 +33,7 @@ Detailed walkthrough: [Getting started from scratch](docs/getting-started.md) ·
 - **Multi-agent** — Claude Code, Cursor Agent, Codex, Kiro ACP and Antigravity, chosen per session. Tool approvals show the full command or file content before you allow them
 - **Live chat** — WebSocket streaming with Markdown, syntax-highlighted code and one-click copy; multiple tabs stay in sync
 - **Sessions** — each bound to a `work_dir` and permission mode, with real-time unread and needs-approval badges, a Ctrl/Cmd+P quick switcher, and account-usage progress bars in the header
+- **Git controls** — inline branch, sync and text-change badges; select the branch to switch, or open Git for Pull/Push. Uses the server host's Git credentials; pull is fast-forward only and push never forces. Writes require all sessions in that directory to be idle; external CLI activity is not tracked
 - **Tabs & split view** (desktop, ≥1024px) — open sessions as tabs, split into two groups, drag a session from the sidebar (or a tab) to place it; `Ctrl+\` splits or merges. Model, effort and permission mode sit in the input bar
 - **Message queue** — messages sent while a task runs are queued, survive restarts, and pause on failure or interrupt
 - **Attachments** — paste or drag & drop images and files; the agent gets them by path, stored outside your `work_dir`

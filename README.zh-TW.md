@@ -33,6 +33,7 @@
 - **多代理** — Claude Code、Cursor Agent、Codex、Kiro ACP、Antigravity，依 Session 選擇。工具授權前會顯示完整指令或檔案內容
 - **即時對話** — WebSocket 串流、Markdown、語法高亮程式碼與一鍵複製；多分頁同步
 - **Session 管理** — 各自綁定 `work_dir` 與權限模式，即時的未讀與待授權標記、Ctrl/Cmd+P 快速跳轉，header 以進度條顯示帳戶用量
+- **Git 控制** — 聊天室標題列直接顯示分支、同步與文字增刪徽章；點分支切換，點 Git 選擇 Pull／Push。沿用伺服器主機的 Git 憑證，僅快轉 Pull、不強制 Push；同目錄所有 session 閒置後才能寫入，外部 CLI 的活動不在偵測範圍內
 - **分頁與分割檢視**（桌面，≥1024px）— 以分頁開啟會話、可分成兩個群組，從側欄（或分頁）拖曳來擺放；`Ctrl+\` 分割／合併。Model、Effort、權限模式在輸入列
 - **訊息佇列** — 執行中送出的訊息會排隊、重啟不遺失，失敗或中斷時暫停
 - **附件** — 貼上或拖放圖片與檔案，以路徑交給 agent，存放在 `work_dir` 之外

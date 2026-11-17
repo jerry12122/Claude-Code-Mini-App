@@ -77,7 +77,7 @@ L0 套件不得 import 任何其他內部套件。
 ### L1 領域工具
 
 無狀態的解析與計算：`model`（model 名稱解析與顯示）、`usage` 之上的 `quota`（抓取與快取額度）、
-`shell`（host shell 執行與允許清單）、`gitinfo`（分支查詢）、`opener`（在主機開啟檔案總管／VSCode）。
+`shell`（host shell 執行與允許清單）、`gitinfo`（分支、狀態查詢與簡單寫入操作）、`opener`（在主機開啟檔案總管／VSCode）。
 
 這層可以 spawn 子進程查詢外部狀態，但**不得持有 DB**，也不得知道 session 的存在。
 

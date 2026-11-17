@@ -490,6 +490,12 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 	})
 
 	oh := api.NewOpenHandler(database)
+	gh := api.NewGitHandler(database)
+	app.Get("/sessions/:id/git/status", authMiddleware, gh.Status)
+	app.Get("/sessions/:id/git/branches", authMiddleware, gh.Branches)
+	app.Post("/sessions/:id/git/checkout", authMiddleware, gh.Checkout)
+	app.Post("/sessions/:id/git/pull", authMiddleware, gh.Pull)
+	app.Post("/sessions/:id/git/push", authMiddleware, gh.Push)
 	app.Post("/sessions/:id/open-vscode", authMiddleware, oh.OpenVSCode)
 	app.Post("/sessions/:id/open-folder", authMiddleware, oh.OpenFolder)
 

@@ -132,6 +132,9 @@ function ChatSessionHeader({
   onClosePane = null,
 }) {
   const isGuest = !!guest;
+  const git = useGitStatus(!isGuest && session.git_branch ? session.id : null, state);
+  const gitBadge = isGuest ? <GitBranchBadge branch={session.git_branch} compact />
+    : session.git_branch ? <GitControls key={session.id} session={session} state={state} git={git} /> : null;
   const displayAgent = sessionDisplayAgent(session) || agentType;
   const showOpenButtons = !isGuest && ['127.0.0.1', 'localhost', '[::1]'].includes(window.location.hostname) && !!(session.work_dir && String(session.work_dir).trim());
   const repoLabel = workDirGroupShortLabel(session.work_dir);
@@ -178,7 +181,7 @@ function ChatSessionHeader({
                 <AgentBadgeIcon agentType={displayAgent} session={session} />
                 {AGENT_LABEL[displayAgent] || displayAgent}
               </span>
-              <GitBranchBadge branch={session.git_branch} compact />
+              {gitBadge}
               {!isGuest && <QuotaBadge quota={quota} compact agentType={agentType} onRefresh={onQuotaRefresh} refreshing={quotaRefreshing} />}
               {!isGuest && onShare && <ShareButton onClick={onShare} />}
             </div>
@@ -193,7 +196,7 @@ function ChatSessionHeader({
           <div className="flex flex-1 items-center gap-2 min-w-0">
             <h2 className="min-w-0 truncate text-base font-bold text-ra-t1" title={session.name || '未命名'}>{session.name || '未命名'}</h2>
             <SessionStateChip state={state} className="shrink-0" />
-            <GitBranchBadge branch={session.git_branch} compact />
+            {gitBadge}
             {isGuest && <GuestRoleChip guest={guest} />}
           </div>
           <div className="flex shrink-0 items-center gap-2 flex-wrap justify-end">
@@ -249,6 +252,8 @@ function ChatSessionHeader({
           ) : null}
         </div>
       </div>
+      {!isGuest && git.error && <p role="alert" className="max-h-24 overflow-y-auto app-scroll whitespace-pre-wrap break-all px-3 pb-2 text-xs text-red-400 sm:px-7">{git.error}</p>}
+      {!isGuest && !git.error && git.result && <p role="status" className="px-3 pb-2 text-xs text-emerald-400 sm:px-7">Git 操作完成</p>}
     </div>
   );
 }

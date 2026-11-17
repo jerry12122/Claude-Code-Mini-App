@@ -54,6 +54,12 @@ func newGuestEnv(t *testing.T) *guestEnv {
 	shareH := api.NewShareHandler(database, api.ShareHooks{Kick: ws.KickShare, Online: ws.ShareOnline}, os.DirFS("../static"))
 	sh := api.NewSessionHandler(database)
 	uh := api.NewUploadHandler(database)
+	gh := api.NewGitHandler(database)
+	app.Get("/sessions/:id/git/status", auth, gh.Status)
+	app.Get("/sessions/:id/git/branches", auth, gh.Branches)
+	app.Post("/sessions/:id/git/checkout", auth, gh.Checkout)
+	app.Post("/sessions/:id/git/pull", auth, gh.Pull)
+	app.Post("/sessions/:id/git/push", auth, gh.Push)
 	app.Get("/sessions/:id/messages", auth, sh.Messages)
 	app.Patch("/sessions/:id", auth, sh.Patch)
 	app.Delete("/sessions/:id", auth, sh.Delete)
@@ -138,6 +144,22 @@ func (e *guestEnv) status(method, path, token string) int {
 }
 
 var jsonHdr = map[string]string{"Content-Type": "application/json"}
+
+func TestGuestCannotReadGit(t *testing.T) {
+	env := newGuestEnv(t)
+	sess := env.session("Git 訪客限制")
+	token, _ := env.guest(sess.ID, "editor", "live", "訪客")
+	for _, endpoint := range []string{"status", "branches"} {
+		if code := env.status("GET", "/sessions/"+sess.ID+"/git/"+endpoint, token); code != 403 {
+			t.Fatalf("guest %s=%d", endpoint, code)
+		}
+	}
+	for _, endpoint := range []string{"checkout", "pull", "push"} {
+		if code := env.status("POST", "/sessions/"+sess.ID+"/git/"+endpoint, token); code != 403 {
+			t.Fatalf("guest %s=%d", endpoint, code)
+		}
+	}
+}
 
 // dialWS 嘗試連線；握手被拒時回傳 HTTP 狀態碼，連上則回傳 conn。
 func (e *guestEnv) dialWS(sessionID, token string, viaQuery bool) (*websocket.Conn, int) {
