@@ -164,6 +164,7 @@ Telegram 內建 WebView（Android System WebView／iOS WKWebView，版本跟隨 
 ---
 
 ## 參考文件
+- `docs/spec/backend-architecture.md` — 後端（`internal/`、`cmd/`）分層與依賴規範（以 `go test ./internal/arch/` 驗證）
 - `docs/spec/frontend-architecture.md` — 前端分層、命名與檔案大小規範（以 `node scripts/frontend-layering.test.cjs` 驗證）
 - `docs/spec/claude-code-cli.md` — CLI 旗標完整參考
 - `docs/spec/headless.md` — `-p` 模式與 stream-json 用法

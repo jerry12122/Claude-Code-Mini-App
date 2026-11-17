@@ -62,10 +62,22 @@ go test ./internal/arch/
 gofmt -l internal cmd    # must print nothing
 ```
 
-Run JavaScript unit tests (using Node.js standard test runner or assertion runner):
+Check the frontend layering rules on their own (fast):
 ```bash
-node scripts/tab-groups.test.cjs
-node scripts/desktop-update.test.cjs
+node scripts/frontend-layering.test.cjs
+```
+
+Run all JavaScript unit tests (Node.js standard test runner):
+```bash
+node --test scripts/*.test.cjs
+```
+
+Browser-driven UI checks (need Playwright and Edge or Chrome installed locally; not run in CI):
+```bash
+python scripts/tab-pinning.test.py
+python scripts/mobile-settings.test.py
+python scripts/composer-attachment.test.py
+python scripts/mobile-composer-mock.test.py
 ```
 
 ## Pull Request Guidelines

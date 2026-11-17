@@ -108,8 +108,8 @@
 
 - [ ] `internal/model/resolve.go`：新增 codexacp 的 model 解析路徑（若與純 `codex` 不同格式）
 - [ ] `internal/quota/codex.go`：確認 quota fetcher 是否仍可共用（quota 走的是 `codex` CLI 本身的 `/status` 或 usage 資訊，理論上與走 ACP 與否無關，應可直接沿用，需驗證）
-- [ ] `internal/static/js/ui/ui-atoms.js`、`NewSessionComposer.js`、`useNewSessionForm.js`：新建 session 表單加入 codexacp 選項（agent type 下拉、permission mode 選項是否適用）
-- [ ] `internal/static/js/ui/ui-atoms.js` 的 `permModeOptionsFor(agentType)`：codexacp 是否需要獨立的 permission mode 選項（比照 kiroacp 有 default/plan/acceptEdits/bypassPermissions）
+- [ ] `internal/static/js/ui/uiAtoms.js`、`NewSessionComposer.js`、`useNewSessionForm.js`：新建 session 表單加入 codexacp 選項（agent type 下拉、permission mode 選項是否適用）
+- [ ] `internal/static/js/ui/uiAtoms.js` 的 `permModeOptionsFor(agentType)`：codexacp 是否需要獨立的 permission mode 選項（比照 kiroacp 有 default/plan/acceptEdits/bypassPermissions）
 - [ ] MCP tools（`internal/mcp/tools.go`）与 `createSession` 的 agent_type 驗證邏輯
 - [ ] `docs/spec/` 新增 `codex-acp.md`，記錄 Phase 0 POC 結論（實測版本、事件格式、已知差異）
 

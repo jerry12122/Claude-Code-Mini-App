@@ -120,7 +120,7 @@ metadata 留存與實際檔案一致：檔案寫入成功後才建立 metadata�
 - [x] 完成後端測試與 Edge 自動化瀏覽器驗收，記錄驗證範圍。
 - [ ] 桌面 WebView 與 Telegram iOS／Android 實機驗收。
 
-主要修改位置：`internal/db/{db,message,queue}.go`、新增附件 DB helper、`internal/media/upload.go`、`internal/api/upload.go`、`internal/server/server.go`、`internal/ws/{handler,sync}.go`、`internal/static/js/chat/ChatView.js`、`internal/static/js/hooks/useChatSocket.js`、`internal/static/js/ui/ui-atoms.js`，必要時抽出附件元件並更新 `index.html` 載入與樣式。
+主要修改位置：`internal/db/{db,message,queue}.go`、新增附件 DB helper、`internal/media/upload.go`、`internal/api/upload.go`、`internal/server/server.go`、`internal/ws/{handler,sync}.go`、`internal/static/js/chat/ChatView.js`、`internal/static/js/hooks/useChatSocket.js`、`internal/static/js/ui/uiAtoms.js`，必要時抽出附件元件並更新 `index.html` 載入與樣式。
 
 ## 6. 驗收條件
 

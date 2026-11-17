@@ -45,8 +45,8 @@
 ### 2.3 用量刷新
 
 現況：
-- 桌面 `chat-header.js:329` 的 `{quotaRefreshing ? '↻' : '↻'}` 兩個分支相同，沒有旋轉。
-- 手機頂欄傳 `compact`，`ui-atoms.js:562` 的 `!compact && onRefresh` 讓手機完全沒有刷新鍵。
+- 桌面 `ChatHeader.js` 的 `{quotaRefreshing ? '↻' : '↻'}` 兩個分支相同，沒有旋轉。
+- 手機頂欄傳 `compact`，`uiAtoms.js:475` 的 `!compact && onRefresh` 讓手機完全沒有刷新鍵。
 - `useChatSocket.js:556` 的 10 秒 timeout 沒清除，逾時無提示；刷新成功與否使用者看不出來。
 
 做法：
@@ -92,13 +92,13 @@
 
 建議每項一個 commit，依 2.1 → 2.2 → 2.3 → 2.4 → 2.5 → 2.6：2.1 與 2.2 影響最大且互相呼應（斷線時的操作回饋）；2.6 最小，可隨時插入。
 
-涉及檔案：`chat/ChatView.js`、`chat/chat-header.js`、`hooks/useChatSocket.js`、`ui/ui-atoms.js`、`session/NewSessionComposer.js`、`chat/ForwardModal.js`、`app.js`。皆為前端，不需改後端或協議。
+涉及檔案：`chat/ChatView.js`、`chat/ChatHeader.js`、`hooks/useChatSocket.js`、`ui/uiAtoms.js`、`session/NewSessionComposer.js`、`chat/ForwardModal.js`、`app.js`。皆為前端，不需改後端或協議。
 
 ## 4. 驗證方式
 
 專案沒有前端測試框架，這幾項都是互動與時序行為，不為此新增框架。每項以第 2 節的完成標準手動驗證，用 DevTools 的 Offline／Network throttling 重現，電腦與手機（TG WebView）各跑一輪。
 
-風險：`sendPromptViaEphemeralWS` 的「成功」只代表 WS 已開啟並送出，後端沒有確認訊息被接受（`ui-atoms.js:224-246`），所以 2.4 只能處理「連線失敗」這類可偵測的失敗。是否補上確認機制另案評估。
+風險：`sendPromptViaEphemeralWS` 的「成功」只代表 WS 已開啟並送出，後端沒有確認訊息被接受（`hooks/forwardPrompt.js` 的 `sendPromptViaEphemeralWS`），所以 2.4 只能處理「連線失敗」這類可偵測的失敗。是否補上確認機制另案評估。
 
 ## 5. 不在本輪（次要，之後再議）
 

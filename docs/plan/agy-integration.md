@@ -102,9 +102,9 @@
 - [x] **開放 Session 建立選項**：
   - 更新 `internal/static/js/session/NewSessionComposer.js`，允許選擇 Antigravity 與自訂模型。
 - [x] **校準權限模式標籤**：
-  - 更新 `internal/static/js/ui/ui-atoms.js`，顯示標準權限選項。
+  - 更新 `internal/static/js/ui/uiAtoms.js`，顯示標準權限選項。
 - [x] **開放 Quota 徽章**：
-  - 更新 `internal/static/js/chat/chat-header.js`，解除 Antigravity 配額重新整理限制。
+  - 更新 `internal/static/js/chat/ChatHeader.js`，解除 Antigravity 配額重新整理限制。
 
 ### Phase 4：文件更新與端到端驗證
 - [x] 更新 `docs/spec/antigravity-cli.md`。
