@@ -131,6 +131,16 @@ with tempfile.TemporaryDirectory(prefix="composer-check-") as tmp, sync_playwrig
         assert page.locator('.ra-composer-sheet').evaluate("el => getComputedStyle(el, '::backdrop').animationName") == 'none'
         page.close()
 
+        # Clicking the bar's padding must focus the input instead of leaving a stray caret.
+        page = load()
+        field = page.locator("textarea[data-chat-input]")
+        bar = page.locator(".ra-cmd-bar").bounding_box()
+        x, y = bar["x"] + 4, bar["y"] + bar["height"] / 2  # left padding, clear of the rounded corner
+        assert page.evaluate("([x,y])=>document.elementFromPoint(x,y).classList.contains('ra-cmd-bar')", [x, y]), "probe must hit the bar itself"
+        page.mouse.click(x, y)
+        expect(field).to_be_focused()
+        page.close()
+
         page = load()
         field = page.locator("textarea[data-chat-input]")
         field.fill("草稿保留")

@@ -1385,7 +1385,15 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
                 onSelect={handleMentionSelect}
               />
             )}
-            <div className={(inputMode === 'shell' ? 'ra-cmd-bar shell' : 'ra-cmd-bar') + ' w-full' + (dragOver ? ' ring-2 ring-violet-500/70' : '')}>
+            <div
+              className={(inputMode === 'shell' ? 'ra-cmd-bar shell' : 'ra-cmd-bar') + ' w-full' + (dragOver ? ' ring-2 ring-violet-500/70' : '')}
+              // 點到外框空白處：WebView2 會在 placeholder 後面畫出游標卻沒聚焦，改為攔下並聚焦輸入框
+              onMouseDown={(e) => {
+                if (e.target.closest('button,select,input,textarea,a,[role="menu"],[role="listbox"]')) return;
+                e.preventDefault();
+                chatInputRef.current?.focus();
+              }}
+            >
               <div className="ra-composer-input relative flex w-full min-w-0 flex-col" ref={slashInputWrapRef}>
                 {inputMode !== 'shell' && <AttachmentChips items={attachments} onRemove={removeAttachment} onRetry={retryAttachment} disabled={sending || draftRestoring} />}
                 {slashMenuOpen && (
