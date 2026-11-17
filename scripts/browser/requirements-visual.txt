@@ -1,0 +1,4 @@
+# 真機需要 BrowserStack 的 Playwright；此環境不可混裝 Microsoft playwright。
+playwright-browserstack==1.62.0
+pytest==8.3.5
+browserstack-local==1.2.16
