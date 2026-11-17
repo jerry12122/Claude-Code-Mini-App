@@ -33,6 +33,8 @@ def page(app, request):
                 key = os.environ["BROWSERSTACK_ACCESS_KEY"]
                 tunnel = Local()
                 tunnel.start(key=key, localIdentifier=identifier)
+                # Safari 的本機網址與 WebSocket 必須使用 BrowserStack Local 的專用主機名。
+                app["url"] = app["url"].replace("127.0.0.1", "bs-local.com")
                 caps = {
                     **PLATFORMS[PROFILE],
                     "browserstack.username": os.environ["BROWSERSTACK_USERNAME"],
@@ -76,6 +78,15 @@ def page(app, request):
                         tunnel.stop()
 
 
+@pytest.fixture(autouse=True)
+def final_snapshot(page, request):
+    yield
+    viewport = request.node.callspec.params["viewport"]
+    folder = Path("test-results/ui") / PROFILE / (str(viewport[0]) if viewport else "native")
+    folder.mkdir(parents=True, exist_ok=True)
+    page.screenshot(path=str(folder / "99-final.png"), animations="disabled")
+
+
 def capture(page, folder, stage, issues, control=None):
     page.screenshot(path=str(folder / (stage + ".png")), animations="disabled")
     metrics = page.evaluate("""() => ({
@@ -114,6 +125,7 @@ def test_ui_review(page, app, viewport):
     page.get_by_role("textbox", name="密碼").fill(app["password"])
     page.get_by_role("button", name="進入", exact=True).click()
     expect(page.get_by_role("button", name="建立新 Session", exact=True)).to_be_visible()
+    expect(page.get_by_text("載入會話中…", exact=True)).to_have_count(0, timeout=30000)
     capture(page, folder, "02-sessions-dark", issues)
 
     page.get_by_role("button", name="設定", exact=True).click()
@@ -140,6 +152,7 @@ def test_ui_review(page, app, viewport):
     page.get_by_role("button", name="建立", exact=True).click()
     draft = page.locator("textarea[data-chat-input]")
     expect(draft).to_be_enabled()
+    expect(page.get_by_text("載入對話中…", exact=True)).to_have_count(0, timeout=30000)
     page.evaluate("() => document.activeElement?.blur()")
     capture(page, folder, "08-chat-empty-dark", issues, draft)
     if page.evaluate("innerWidth < 1024") and not page.get_by_role("button", name="回到會話列表", exact=True).is_visible():
