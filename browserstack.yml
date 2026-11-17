@@ -1,0 +1,16 @@
+# 憑證由 BROWSERSTACK_USERNAME、BROWSERSTACK_ACCESS_KEY 環境變數提供。
+framework: pytest
+projectName: Claude-Code-Mini-App
+buildName: browser-regression
+buildIdentifier: '${DATE_TIME}'
+# ponytail: 先驗收一個平台；確認併發額度後再擴充矩陣。
+platforms:
+  - os: Windows
+    osVersion: '11'
+    browserName: chrome
+    browserVersion: latest
+parallelsPerPlatform: 1
+browserstackLocal: true
+video: true
+consoleLogs: errors
+networkLogs: false
