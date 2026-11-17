@@ -10,17 +10,13 @@
 ## 桌面版應用程式內更新（Windows）
 
 - **首次需手動升級一次**：舊版（沒有更新功能）無法自我更新。下載本版 `claude-miniapp-@TAG@-windows-amd64.zip`，把舊資料夾中的 `claude-miniapp-desktop.exe` 換成新檔即可，`config.yaml`、資料庫與其他資料保持原位。之後的版本可在程式內更新。
-- **檢查**：系統匣「檢查更新」或 設定 → 桌面更新。程式會在啟動時與之後每 6 小時檢查一次，只顯示結果，不會自行下載或重啟。
+- **檢查**：系統匣「檢查更新」或 設定 → 桌面更新。程式會在啟動時與之後每小時檢查一次，只顯示結果，不會自行下載或重啟。
 - **下載與重啟分開確認**：按「下載」才會開始下載；按「重新啟動並更新」才會替換並重啟，不會自動重啟。
 - **忙碌時拒絕重啟**：只要有工作進行中（執行中的任務、shell 指令、待授權項目）或**佇列有項目（即使暫停）**，重啟會被拒絕（`update_busy`）。請先完成工作或清空佇列再試；已下載的更新會保留。
 - **需要可寫入的安裝目錄**：`claude-miniapp-desktop.exe` 所在資料夾必須對目前使用者可寫入；更新程式不會要求系統管理員權限。
 - **保留的內容**：`config.yaml`、`claude-miniapp.db`、`workspace/`（附件）、`logs/`、`internal/static/` 都不會被更新動作改動，只替換 `claude-miniapp-desktop.exe`。
 - **不會自動更新**：Windows server（`claude-miniapp.exe`）與 Linux 版本，請手動更新。
 - **手動恢復舊版**：升級前請先保留一份目前 EXE 的備份（例如複製為 `claude-miniapp-desktop.previous.exe`）。要回退時，關閉程式後把備份覆寫回 `claude-miniapp-desktop.exe`。資料不會自動降版。
-- **需要可寫入的安裝目錄**：`claude-miniapp-desktop.exe` 所在資料夾必須對目前使用者可寫入；更新程式不會要求系統管理員權限。
-- **保留的內容**：`config.yaml`、`claude-miniapp.db`、`workspace/`（附件）、`logs/`、`internal/static/` 都不會被更新動作改動，只替換 `claude-miniapp-desktop.exe`。
-- **不會自動更新**：Windows server（`claude-miniapp.exe`）與 Linux 版本，請手動更新。
-- **手動恢復舊版**：升級前請先備份目前的 EXE（例如複製為 `claude-miniapp-desktop.previous.exe`）。要回退時，關閉程式後把該備份覆寫回 `claude-miniapp-desktop.exe`。資料不會自動降版。
 - **完整性**：下載檔會以 `checksums.txt` 中的 SHA256 比對，確認檔案與本次發佈一致；這不等於驗證發佈者身分（目前沒有簽章驗證）。
 - **網路**：檢查與下載需要連到 GitHub；更新不代表程式可以離線使用。
 
