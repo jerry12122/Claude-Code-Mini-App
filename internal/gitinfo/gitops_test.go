@@ -164,7 +164,8 @@ func TestStatusParserPreservesPaths(t *testing.T) {
 
 func TestGitCommandErrors(t *testing.T) {
 	dir := testRepo(t)
-	_, _, err := runGit(dir, time.Second, "not-a-real-command")
+	// 使用已知子指令的錯誤路徑，避免 Git 掃描 CI 的 PATH 搜尋相似指令。
+	_, _, err := runGit(dir, queryTimeout, "rev-parse", "--verify", "refs/heads/missing")
 	var commandErr *CommandError
 	if !errors.As(err, &commandErr) || commandErr.Kind != "failed" || commandErr.Output == "" {
 		t.Fatalf("command failure: %v", err)
@@ -382,9 +383,9 @@ func TestGitRunnerEnvironmentAndOutputCap(t *testing.T) {
 	if err != nil || len(out) != 4096 {
 		t.Fatalf("success output length: %d, %v", len(out), err)
 	}
-	_, err = writeOutput(dir, queryTimeout, strings.Repeat("x", 5000))
+	_, err = writeOutput(dir, queryTimeout, "-c", "alias.runner-fail=!printf '"+strings.Repeat("x", 5000)+"' >&2; exit 1", "runner-fail")
 	var commandErr *CommandError
-	if !errors.As(err, &commandErr) || len(commandErr.Output) != 4096 {
+	if !errors.As(err, &commandErr) || commandErr.Kind != "failed" || len(commandErr.Output) != 4096 {
 		t.Fatalf("failure output is not capped: %v", err)
 	}
 }

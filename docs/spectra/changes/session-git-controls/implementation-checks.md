@@ -62,3 +62,9 @@
 - `node scripts/git-panel.test.cjs`、`node scripts/frontend-layering.test.cjs`、`go test ./internal/static/`、`git diff --check` 通過。沒有新增依賴或架構例外。
 - 使用實際 8081 預覽目視檢查 1280×900 的分支與 Git 選單、390×844 的分支選單。手機 document.scrollWidth=390，分支清單左右界約 141／349px，位於視窗內。原先的大型金色分支框與系統白色下拉已移除。
 - 已以 production 標籤建置 `preview-polish.exe`，只重啟獨立預覽程序；8081 bundle 回應 200。此次所有改動情境均有互動測試或局部視覺排除紀錄；既有整體驗證阻礙仍見 task 4.1。
+
+## v0.20.0 發布檢查
+
+- GitHub CI `44059510622` 在 Windows runner 的兩則錯誤案例逾時；原案例以不存在的子指令（含 5000 字元名稱）觸發 Git 額外的指令搜尋。改用 `rev-parse --verify` 的不存在 ref 與固定輸出 5000 字元後退出的 alias，避免測到指令建議機制。
+- 保留真正的奈秒逾時案例、非互動環境檢查與 4096 位元組上限斷言，並明確要求失敗類型為 `failed`。正式 Git 操作與逾時設定未改動。
+- 修正後 `go test ./internal/gitinfo/ -count=1` 通過。
