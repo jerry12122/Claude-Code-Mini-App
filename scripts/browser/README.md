@@ -22,8 +22,25 @@ Repository secrets：`BROWSERSTACK_USERNAME`、`BROWSERSTACK_ACCESS_KEY`。
 - workflow 合併至 main 後：可用 `gh workflow run browser-tests.yml -f browserstack=true` 手動執行。
 
 雲端由官方 SDK 建立 Local tunnel，沿用相同測試案例；目前一次使用一個平台。
-需 Java，CI 安裝 Temurin 21。`browserstack-sdk pytest scripts/browser` 可在已設定憑證的環境執行。
+需 Java，CI 安裝 Temurin 21。`browserstack-sdk pytest scripts/browser/test_regression.py` 可在已設定憑證的環境執行。
 Actions 保存 JUnit、失敗截圖與 trace 七天；影片及 session 結果到 BrowserStack Automate 檢視。
 
 目前涵蓋登入、串流與歷史、拒絕授權、附件、三種寬度的設定與主題持久化，共七個案例。
 尺寸模擬不等於手機真機；Wails 原生流程及 Telegram 容器仍由專用測試驗證。
+
+## UI 視覺檢查
+
+`ui-review` job 會在 Chrome、Edge、Firefox、macOS WebKit、Samsung Galaxy S25 Ultra／Android 15 Chrome、iPhone 17 Pro／iOS 26 Safari 執行。
+最多同時執行兩個 UI session；既有 Chrome 回歸可另外使用一個 session。
+桌面瀏覽器檢查 1280、768、390、320px 四種寬度；真機保留原生 viewport。
+
+```powershell
+# 獨立虛擬環境，不可與 Microsoft playwright 混裝。
+python -m pip install -r scripts/browser/requirements-visual.txt
+python -m pytest scripts/browser/test_ui_review.py -q --junitxml=test-results/ui-local.xml
+```
+
+成功與失敗畫面都會保存於 `test-results/ui/<環境>/<寬度>/`，包含 PNG、實際 UA／viewport／主題與問題 JSON。
+檢查登入、列表、深淺色設定、新會話、長標題、草稿、手機工具／模型、權限提示、歷史及分享。
+截圖會停用動畫；狀態先等待預期畫面，不用固定 sleep。UI 問題會讓 job 失敗，仍上傳完整 artifact。
+截圖必須另做人工視覺檢查；這不是自動像素差異核准，也不能以測試綠燈取代畫面驗收。
