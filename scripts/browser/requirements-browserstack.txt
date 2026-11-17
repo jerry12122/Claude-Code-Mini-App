@@ -1,2 +1,2 @@
 -r requirements.txt
-browserstack-sdk==1.51.2
+https://sdk-assets.browserstack.com/python/browserstack_sdk-latest.tar.gz
