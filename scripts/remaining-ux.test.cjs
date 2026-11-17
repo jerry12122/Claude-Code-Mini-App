@@ -143,7 +143,7 @@ async function main() {
   const controls = vm.createContext({
     useCallback: fn => fn, requestAnimationFrame: fn => fn(),
     chatScrollRef: { current: { scrollHeight: 1000, scrollTop: 170, clientHeight: 800 } },
-    chatNearBottomRef: { current: true }, setQuoteSelection() {}, setShowJumpLatest() {},
+    chatNearBottomRef: { current: true }, lastScrollTopRef: { current: 200 }, useRef: v => ({ current: v }), setQuoteSelection() {}, setShowJumpLatest() {},
     chatInputRef: { current: inputElement }, focusedPaneRef: { current: true },
     composerSessionRef: { current: 's' }, session: { id: 's' },
     document: { body, documentElement: {}, activeElement: body, hidden: false },
@@ -153,6 +153,24 @@ async function main() {
   vm.runInContext(chat.slice(syncStart, chat.indexOf('  const jumpToLatest =', syncStart)) + '\nglobalThis.sync = syncChatNearBottom;', controls);
   controls.sync();
   assert.equal(controls.chatNearBottomRef.current, false, '小幅往上捲 30px 必須停止跟隨');
+  const view = controls.chatScrollRef.current;
+  controls.chatNearBottomRef.current = true;
+  view.scrollHeight = 1190; // 授權區塊或串流讓內容長高，scrollTop 沒動：不是使用者離開底部
+  controls.sync();
+  assert.equal(controls.chatNearBottomRef.current, true, '內容長高不得關閉跟隨');
+  view.scrollTop = 190; // 捲到底的平滑動畫途中：往下前進、gap 仍大
+  controls.sync();
+  assert.equal(controls.chatNearBottomRef.current, true, '往下的捲動不得關閉跟隨');
+  view.scrollTop = 150;
+  controls.sync();
+  assert.equal(controls.chatNearBottomRef.current, false, '任何往上捲（含非手勢）都必須停止跟隨');
+  view.scrollTop = 390; // 回到底部（1190 - 800）
+  controls.sync();
+  assert.equal(controls.chatNearBottomRef.current, true, '回到底部必須恢復跟隨');
+  view.scrollHeight = 1000;
+  view.scrollTop = 170;
+  controls.lastScrollTopRef.current = 170;
+  controls.chatNearBottomRef.current = false;
   let smoothScrolling = true;
   controls.gestureRef = { current: false };
   controls.sendFollowUntilRef = { current: 123 };

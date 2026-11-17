@@ -224,12 +224,18 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const slashInputWrapRef = useRef(null);
   const composerWrapRef = useRef(null);
 
+  const lastScrollTopRef = useRef(0);
   const syncChatNearBottom = useCallback(() => {
     setQuoteSelection(null);
     const el = chatScrollRef.current;
     if (!el) return;
     const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
-    chatNearBottomRef.current = gap <= 2;
+    // 只有「往上捲」才算離開底部。內容長高（授權區塊、串流）或捲到底的平滑動畫進行中也會讓 gap 變大，
+    // 若據此關閉跟隨，授權區塊出現時會被動畫途中的捲動事件搶先關掉而停在畫面外。
+    const scrolledUp = el.scrollTop < lastScrollTopRef.current - 1;
+    lastScrollTopRef.current = el.scrollTop;
+    if (gap <= 2) chatNearBottomRef.current = true;
+    else if (scrolledUp) chatNearBottomRef.current = false;
     setShowJumpLatest(gap >= 200);
   }, []);
 
@@ -420,6 +426,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   // session 切換時重置輸入框草稿與 composer 選單（訊息／連線狀態由 useChatSocket 自行重置）
   useEffect(() => {
     chatNearBottomRef.current = true;
+    lastScrollTopRef.current = 0;
     setShowJumpLatest(false);
     setShowAllMessages(false);
     setHasNewBelow(false);

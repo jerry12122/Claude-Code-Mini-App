@@ -78,6 +78,7 @@ python scripts/tab-pinning.test.py
 python scripts/mobile-settings.test.py
 python scripts/composer-attachment.test.py
 python scripts/mobile-composer-mock.test.py
+python scripts/chat-autoscroll.test.py   # also needs Go and Node; starts a real server with a fake claude, ~2 min
 ```
 
 ## Pull Request Guidelines
