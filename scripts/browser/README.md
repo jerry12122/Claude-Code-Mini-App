@@ -47,6 +47,6 @@ python -m pytest scripts/browser/test_ui_review.py -q --junitxml=test-results/ui
 
 真機 iOS 使用支援的 locator 等待與明確狀態斷言；本次 Python bridge 的 `expect(...).to_be_visible()` 在可見登入欄位上回報空白 AssertionError。
 macOS WebKit 使用隔離的 HTTPS/WSS 反向代理，避開遠端 HTTP proxy 的明文 WebSocket 握手失敗。代理僅綁定 loopback，使用記憶體中的臨時自簽憑證；只有這個測試 context 允許該憑證。
-`python scripts/browser/check_tls_proxy.py` 驗證代理拒絕非本機上游，CI 也會執行。正式伺服器與授權流程不變。
+`python scripts/browser/check_fixtures.py` 驗證代理拒絕非本機上游，並確認失敗報告與擷取輸出的憑證遮罩，CI 也會執行。正式伺服器與授權流程不變。
 768px 返回入口與 iPhone 分享內容的修復、版本差異與畫面證據見 [UI 驗收報告](../../docs/reviews/2026-11-17-browserstack-ui.md)。
 報告內 `.spectra/design-cache/` 圖片連結只在保存證據的本機有效；GitHub 上請從報告的 Actions 連結下載對應 `ui-*` artifact。
