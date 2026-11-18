@@ -443,3 +443,646 @@ tests:
   - scripts/release/test/test-release.sh
   - internal/desktopupdate/helper_startup_windows_test.go
 -->
+
+---
+### Requirement: Current-user Windows installer
+
+The release SHALL include claude-miniapp-v<VERSION>-windows-amd64-setup.exe alongside the existing ZIP, Linux archive and desktop update executable. All four program assets MUST have SHA256 entries and all five release assets MUST be verified on a draft before publication. Setup MUST install the exact desktop bytes used by the ZIP and update executable without rebuilding them.
+
+#### Scenario: Assemble and publish installation assets
+- **WHEN** release assets are assembled
+- **THEN** Setup, ZIP, Linux archive, desktop update executable and checksums.txt exist and are verified before publication
+
+#### Scenario: Missing or corrupt Setup
+- **WHEN** Setup is missing locally or differs after upload
+- **THEN** publication fails and no incomplete release becomes latest
+
+
+<!-- @trace
+source: windows-installer
+updated: 2026-11-18
+code:
+  - internal/static/js/session/SessionView.js
+  - docs/plan/todo/system-monitor.md
+  - internal/server/server.go
+  - README.zh-TW.md
+  - docs/reviews/2026-11-17-browserstack-ui.md
+  - internal/db/attachment.go
+  - internal/static/js/hooks/useRoomTimeline.js
+  - internal/static/js/ui/SessionTabs.js
+  - go.mod
+  - docs/plan/todo/telegram-optional.md
+  - internal/db/room_workflow.go
+  - scripts/browser/requirements.txt
+  - scripts/file-browser.test.cjs
+  - scripts/browser/requirements-visual.txt
+  - internal/static/js/core/core.js
+  - scripts/system-stats.test.cjs
+  - internal/mcp/tools.go
+  - docs/plan/todo/browserstack-automation.md
+  - internal/db/session.go
+  - internal/static/js/share/ShareModal.js
+  - scripts/console-usability.test.cjs
+  - internal/static/js/chat/GitControls.js
+  - scripts/rooms.test.cjs
+  - go.sum
+  - internal/server/room.go
+  - internal/static/js/chat/ChatView.js
+  - scripts/release/prepare-webview2.ps1
+  - internal/static/js/session/RoomMessageBubble.js
+  - cmd/desktop/install_windows.go
+  - internal/api/system.go
+  - docs/plan/todo.md
+  - scripts/browser/check_fixtures.py
+  - docs/plan/todo/turn-token-usage.md
+  - internal/static/js/session/RoomFormModal.js
+  - scripts/tab-pinning.test.py
+  - docs/getting-started.zh-TW.md
+  - internal/mcp/room.go
+  - internal/fsbrowse/platform_other.go
+  - internal/api/settings.go
+  - .github/workflows/release.yml
+  - internal/gitinfo/gitops.go
+  - build.bat
+  - docs/plan/todo/ux-feedback.md
+  - cmd/desktop/main_windows.go
+  - docs/reviews/2026-11-18-windows-installer.md
+  - internal/api/files.go
+  - internal/db/room_timeline.go
+  - internal/sysmon/procfs.go
+  - internal/static/js/session/FileBrowserModal.js
+  - internal/sysmon/sysmon_windows.go
+  - internal/ws/instruction.go
+  - .github/workflows/browser-tests.yml
+  - scripts/browser/conftest.py
+  - internal/static/js/session/RoomView.js
+  - internal/db/global_instruction.go
+  - scripts/release/windows-installer.iss
+  - README.md
+  - scripts/browser/requirements-browserstack.txt
+  - scripts/browser/tls_proxy.go
+  - internal/api/rooms.go
+  - browserstack.yml
+  - config.example.yaml
+  - docs/plan/todo/windows-installer.md
+  - cmd/desktop/desktop_windows_amd64.syso
+  - internal/static/js/hooks/systemStats.js
+  - internal/sysmon/sysmon.go
+  - .github/workflows/ci.yml
+  - internal/ws/handoff.go
+  - internal/mcp/server.go
+  - internal/fsbrowse/fsbrowse.go
+  - internal/static/js/ui/SystemStatsSection.js
+  - internal/db/db.go
+  - internal/static/index.html
+  - internal/ws/quota_guard.go
+  - scripts/browser/README.md
+  - internal/db/room.go
+  - scripts/release/version-resource.py
+  - scripts/mobile-settings.test.py
+  - internal/api/session.go
+  - internal/cursor/runner.go
+  - internal/static/js/session/RoomControls.js
+  - internal/config/config.go
+  - docs/plan/todo/file-explorer.md
+  - internal/static/js/ui/SettingsModal.js
+  - internal/ws/claudeperm.go
+  - internal/ws/handler.go
+  - internal/static/js/hooks/fileBrowser.js
+  - internal/sysmon/sysmon_linux.go
+  - internal/db/input_receipt.go
+  - internal/ws/dispatch.go
+  - docs/plan/todo/supervisor-room.md
+  - internal/static/js/hooks/messageRows.js
+  - internal/static/js/session/RoomsSection.js
+  - cmd/desktop/desktop.rc
+  - internal/static/js/hooks/roomPoller.js
+  - internal/static/js/hooks/rooms.js
+  - .github/release-header.md
+  - internal/sysmon/sysmon_other.go
+  - internal/static/js/chat/ChatHeader.js
+  - scripts/release/package.sh
+  - docs/plan/roadmap.md
+  - internal/static/js/chat/AttachmentCards.js
+  - internal/fsbrowse/platform_windows.go
+  - internal/static/js/app.js
+  - docs/getting-started.md
+  - internal/agent/runner.go
+  - scripts/release/publish.sh
+tests:
+  - internal/gitinfo/gitops_test.go
+  - internal/fsbrowse/fsbrowse_test.go
+  - internal/desktopupdate/release_contract_test.go
+  - scripts/release/test/check_workflow.py
+  - internal/desktopupdate/helper_startup_windows_test.go
+  - internal/fsbrowse/fsbrowse_windows_test.go
+  - scripts/browser/test_ui_review.py
+  - internal/sysmon/sysmon_test.go
+  - internal/server/guest_test.go
+  - scripts/release/test/test-release.sh
+  - cmd/desktop/install_windows_test.go
+  - internal/api/git_test.go
+  - internal/db/room_test.go
+  - internal/api/system_test.go
+  - scripts/browser/test_regression.py
+  - internal/arch/arch_test.go
+  - internal/server/rooms_test.go
+  - internal/db/room_workflow_test.go
+  - internal/sysmon/sysmon_windows_test.go
+  - internal/api/rooms_test.go
+  - internal/ws/session_instruction_test.go
+  - scripts/release/test/installer-smoke.ps1
+  - internal/api/session_instruction_test.go
+  - internal/ws/quota_guard_test.go
+  - cmd/desktop/icon_windows_amd64_test.go
+  - internal/server/files_test.go
+  - internal/config/config_test.go
+  - internal/ws/claudeperm_test.go
+  - internal/api/files_test.go
+  - internal/server/system_stats_test.go
+-->
+
+---
+### Requirement: Installed desktop data isolation
+
+An installed.flag beside the desktop executable SHALL select installed mode. Installed mode MUST use %LOCALAPPDATA%\ClaudeMiniApp\data as working directory before configuration, logging and DB initialization, and its webview2 subdirectory as a stable WebView2 profile. Missing LOCALAPPDATA or filesystem failures MUST stop startup with an error. Without the flag the existing portable and development behavior SHALL remain unchanged.
+
+#### Scenario: First installed startup
+- **WHEN** the marked executable starts from an unrelated directory
+- **THEN** setup creates configuration in the fixed data directory and profile storage is independent of the executable version
+
+#### Scenario: Invalid data location
+- **WHEN** the installed data directory cannot be created or entered
+- **THEN** startup reports failure without writing configuration or opening a DB in the launch directory
+
+#### Scenario: Portable startup
+- **WHEN** the executable has no installed.flag
+- **THEN** existing configuration selection and development startup remain unchanged
+
+
+<!-- @trace
+source: windows-installer
+updated: 2026-11-18
+code:
+  - internal/static/js/session/SessionView.js
+  - docs/plan/todo/system-monitor.md
+  - internal/server/server.go
+  - README.zh-TW.md
+  - docs/reviews/2026-11-17-browserstack-ui.md
+  - internal/db/attachment.go
+  - internal/static/js/hooks/useRoomTimeline.js
+  - internal/static/js/ui/SessionTabs.js
+  - go.mod
+  - docs/plan/todo/telegram-optional.md
+  - internal/db/room_workflow.go
+  - scripts/browser/requirements.txt
+  - scripts/file-browser.test.cjs
+  - scripts/browser/requirements-visual.txt
+  - internal/static/js/core/core.js
+  - scripts/system-stats.test.cjs
+  - internal/mcp/tools.go
+  - docs/plan/todo/browserstack-automation.md
+  - internal/db/session.go
+  - internal/static/js/share/ShareModal.js
+  - scripts/console-usability.test.cjs
+  - internal/static/js/chat/GitControls.js
+  - scripts/rooms.test.cjs
+  - go.sum
+  - internal/server/room.go
+  - internal/static/js/chat/ChatView.js
+  - scripts/release/prepare-webview2.ps1
+  - internal/static/js/session/RoomMessageBubble.js
+  - cmd/desktop/install_windows.go
+  - internal/api/system.go
+  - docs/plan/todo.md
+  - scripts/browser/check_fixtures.py
+  - docs/plan/todo/turn-token-usage.md
+  - internal/static/js/session/RoomFormModal.js
+  - scripts/tab-pinning.test.py
+  - docs/getting-started.zh-TW.md
+  - internal/mcp/room.go
+  - internal/fsbrowse/platform_other.go
+  - internal/api/settings.go
+  - .github/workflows/release.yml
+  - internal/gitinfo/gitops.go
+  - build.bat
+  - docs/plan/todo/ux-feedback.md
+  - cmd/desktop/main_windows.go
+  - docs/reviews/2026-11-18-windows-installer.md
+  - internal/api/files.go
+  - internal/db/room_timeline.go
+  - internal/sysmon/procfs.go
+  - internal/static/js/session/FileBrowserModal.js
+  - internal/sysmon/sysmon_windows.go
+  - internal/ws/instruction.go
+  - .github/workflows/browser-tests.yml
+  - scripts/browser/conftest.py
+  - internal/static/js/session/RoomView.js
+  - internal/db/global_instruction.go
+  - scripts/release/windows-installer.iss
+  - README.md
+  - scripts/browser/requirements-browserstack.txt
+  - scripts/browser/tls_proxy.go
+  - internal/api/rooms.go
+  - browserstack.yml
+  - config.example.yaml
+  - docs/plan/todo/windows-installer.md
+  - cmd/desktop/desktop_windows_amd64.syso
+  - internal/static/js/hooks/systemStats.js
+  - internal/sysmon/sysmon.go
+  - .github/workflows/ci.yml
+  - internal/ws/handoff.go
+  - internal/mcp/server.go
+  - internal/fsbrowse/fsbrowse.go
+  - internal/static/js/ui/SystemStatsSection.js
+  - internal/db/db.go
+  - internal/static/index.html
+  - internal/ws/quota_guard.go
+  - scripts/browser/README.md
+  - internal/db/room.go
+  - scripts/release/version-resource.py
+  - scripts/mobile-settings.test.py
+  - internal/api/session.go
+  - internal/cursor/runner.go
+  - internal/static/js/session/RoomControls.js
+  - internal/config/config.go
+  - docs/plan/todo/file-explorer.md
+  - internal/static/js/ui/SettingsModal.js
+  - internal/ws/claudeperm.go
+  - internal/ws/handler.go
+  - internal/static/js/hooks/fileBrowser.js
+  - internal/sysmon/sysmon_linux.go
+  - internal/db/input_receipt.go
+  - internal/ws/dispatch.go
+  - docs/plan/todo/supervisor-room.md
+  - internal/static/js/hooks/messageRows.js
+  - internal/static/js/session/RoomsSection.js
+  - cmd/desktop/desktop.rc
+  - internal/static/js/hooks/roomPoller.js
+  - internal/static/js/hooks/rooms.js
+  - .github/release-header.md
+  - internal/sysmon/sysmon_other.go
+  - internal/static/js/chat/ChatHeader.js
+  - scripts/release/package.sh
+  - docs/plan/roadmap.md
+  - internal/static/js/chat/AttachmentCards.js
+  - internal/fsbrowse/platform_windows.go
+  - internal/static/js/app.js
+  - docs/getting-started.md
+  - internal/agent/runner.go
+  - scripts/release/publish.sh
+tests:
+  - internal/gitinfo/gitops_test.go
+  - internal/fsbrowse/fsbrowse_test.go
+  - internal/desktopupdate/release_contract_test.go
+  - scripts/release/test/check_workflow.py
+  - internal/desktopupdate/helper_startup_windows_test.go
+  - internal/fsbrowse/fsbrowse_windows_test.go
+  - scripts/browser/test_ui_review.py
+  - internal/sysmon/sysmon_test.go
+  - internal/server/guest_test.go
+  - scripts/release/test/test-release.sh
+  - cmd/desktop/install_windows_test.go
+  - internal/api/git_test.go
+  - internal/db/room_test.go
+  - internal/api/system_test.go
+  - scripts/browser/test_regression.py
+  - internal/arch/arch_test.go
+  - internal/server/rooms_test.go
+  - internal/db/room_workflow_test.go
+  - internal/sysmon/sysmon_windows_test.go
+  - internal/api/rooms_test.go
+  - internal/ws/session_instruction_test.go
+  - scripts/release/test/installer-smoke.ps1
+  - internal/api/session_instruction_test.go
+  - internal/ws/quota_guard_test.go
+  - cmd/desktop/icon_windows_amd64_test.go
+  - internal/server/files_test.go
+  - internal/config/config_test.go
+  - internal/ws/claudeperm_test.go
+  - internal/api/files_test.go
+  - internal/server/system_stats_test.go
+-->
+
+---
+### Requirement: Safe installer maintenance
+
+Setup SHALL install for the current user without elevation in %LOCALAPPDATA%\Programs\ClaudeMiniApp, create a start-menu shortcut, offer an optional desktop shortcut and register an uninstaller with a stable AppId. Setup MUST refuse downgrade of a newer installed desktop and refuse replacement if an existing executable version cannot be determined. Setup and uninstall MUST refuse maintenance while a desktop process is active or managed files are locked. Desktop startup MUST refuse while maintenance holds its mutex. Maintenance MUST NOT kill workloads or schedule replacement on reboot. Uninstall MUST retain the separate data directory and unknown files.
+
+#### Scenario: Install and remove
+- **WHEN** a user installs and subsequently uninstalls Setup
+- **THEN** program files and shortcuts are removed while configuration, DB, attachments and profile remain
+
+#### Scenario: Running or newer application
+- **WHEN** maintenance encounters an active desktop or locked files, or Setup encounters an unknown executable version or a newer version
+- **THEN** the conflicting operation is refused without replacing the desktop or changing user data
+
+#### Scenario: Launch during maintenance
+- **WHEN** desktop startup detects the maintenance mutex
+- **THEN** startup stops before initializing logging or opening the DB
+
+
+<!-- @trace
+source: windows-installer
+updated: 2026-11-18
+code:
+  - internal/static/js/session/SessionView.js
+  - docs/plan/todo/system-monitor.md
+  - internal/server/server.go
+  - README.zh-TW.md
+  - docs/reviews/2026-11-17-browserstack-ui.md
+  - internal/db/attachment.go
+  - internal/static/js/hooks/useRoomTimeline.js
+  - internal/static/js/ui/SessionTabs.js
+  - go.mod
+  - docs/plan/todo/telegram-optional.md
+  - internal/db/room_workflow.go
+  - scripts/browser/requirements.txt
+  - scripts/file-browser.test.cjs
+  - scripts/browser/requirements-visual.txt
+  - internal/static/js/core/core.js
+  - scripts/system-stats.test.cjs
+  - internal/mcp/tools.go
+  - docs/plan/todo/browserstack-automation.md
+  - internal/db/session.go
+  - internal/static/js/share/ShareModal.js
+  - scripts/console-usability.test.cjs
+  - internal/static/js/chat/GitControls.js
+  - scripts/rooms.test.cjs
+  - go.sum
+  - internal/server/room.go
+  - internal/static/js/chat/ChatView.js
+  - scripts/release/prepare-webview2.ps1
+  - internal/static/js/session/RoomMessageBubble.js
+  - cmd/desktop/install_windows.go
+  - internal/api/system.go
+  - docs/plan/todo.md
+  - scripts/browser/check_fixtures.py
+  - docs/plan/todo/turn-token-usage.md
+  - internal/static/js/session/RoomFormModal.js
+  - scripts/tab-pinning.test.py
+  - docs/getting-started.zh-TW.md
+  - internal/mcp/room.go
+  - internal/fsbrowse/platform_other.go
+  - internal/api/settings.go
+  - .github/workflows/release.yml
+  - internal/gitinfo/gitops.go
+  - build.bat
+  - docs/plan/todo/ux-feedback.md
+  - cmd/desktop/main_windows.go
+  - docs/reviews/2026-11-18-windows-installer.md
+  - internal/api/files.go
+  - internal/db/room_timeline.go
+  - internal/sysmon/procfs.go
+  - internal/static/js/session/FileBrowserModal.js
+  - internal/sysmon/sysmon_windows.go
+  - internal/ws/instruction.go
+  - .github/workflows/browser-tests.yml
+  - scripts/browser/conftest.py
+  - internal/static/js/session/RoomView.js
+  - internal/db/global_instruction.go
+  - scripts/release/windows-installer.iss
+  - README.md
+  - scripts/browser/requirements-browserstack.txt
+  - scripts/browser/tls_proxy.go
+  - internal/api/rooms.go
+  - browserstack.yml
+  - config.example.yaml
+  - docs/plan/todo/windows-installer.md
+  - cmd/desktop/desktop_windows_amd64.syso
+  - internal/static/js/hooks/systemStats.js
+  - internal/sysmon/sysmon.go
+  - .github/workflows/ci.yml
+  - internal/ws/handoff.go
+  - internal/mcp/server.go
+  - internal/fsbrowse/fsbrowse.go
+  - internal/static/js/ui/SystemStatsSection.js
+  - internal/db/db.go
+  - internal/static/index.html
+  - internal/ws/quota_guard.go
+  - scripts/browser/README.md
+  - internal/db/room.go
+  - scripts/release/version-resource.py
+  - scripts/mobile-settings.test.py
+  - internal/api/session.go
+  - internal/cursor/runner.go
+  - internal/static/js/session/RoomControls.js
+  - internal/config/config.go
+  - docs/plan/todo/file-explorer.md
+  - internal/static/js/ui/SettingsModal.js
+  - internal/ws/claudeperm.go
+  - internal/ws/handler.go
+  - internal/static/js/hooks/fileBrowser.js
+  - internal/sysmon/sysmon_linux.go
+  - internal/db/input_receipt.go
+  - internal/ws/dispatch.go
+  - docs/plan/todo/supervisor-room.md
+  - internal/static/js/hooks/messageRows.js
+  - internal/static/js/session/RoomsSection.js
+  - cmd/desktop/desktop.rc
+  - internal/static/js/hooks/roomPoller.js
+  - internal/static/js/hooks/rooms.js
+  - .github/release-header.md
+  - internal/sysmon/sysmon_other.go
+  - internal/static/js/chat/ChatHeader.js
+  - scripts/release/package.sh
+  - docs/plan/roadmap.md
+  - internal/static/js/chat/AttachmentCards.js
+  - internal/fsbrowse/platform_windows.go
+  - internal/static/js/app.js
+  - docs/getting-started.md
+  - internal/agent/runner.go
+  - scripts/release/publish.sh
+tests:
+  - internal/gitinfo/gitops_test.go
+  - internal/fsbrowse/fsbrowse_test.go
+  - internal/desktopupdate/release_contract_test.go
+  - scripts/release/test/check_workflow.py
+  - internal/desktopupdate/helper_startup_windows_test.go
+  - internal/fsbrowse/fsbrowse_windows_test.go
+  - scripts/browser/test_ui_review.py
+  - internal/sysmon/sysmon_test.go
+  - internal/server/guest_test.go
+  - scripts/release/test/test-release.sh
+  - cmd/desktop/install_windows_test.go
+  - internal/api/git_test.go
+  - internal/db/room_test.go
+  - internal/api/system_test.go
+  - scripts/browser/test_regression.py
+  - internal/arch/arch_test.go
+  - internal/server/rooms_test.go
+  - internal/db/room_workflow_test.go
+  - internal/sysmon/sysmon_windows_test.go
+  - internal/api/rooms_test.go
+  - internal/ws/session_instruction_test.go
+  - scripts/release/test/installer-smoke.ps1
+  - internal/api/session_instruction_test.go
+  - internal/ws/quota_guard_test.go
+  - cmd/desktop/icon_windows_amd64_test.go
+  - internal/server/files_test.go
+  - internal/config/config_test.go
+  - internal/ws/claudeperm_test.go
+  - internal/api/files_test.go
+  - internal/server/system_stats_test.go
+-->
+
+---
+### Requirement: Verified WebView2 prerequisite
+
+Setup SHALL detect the Evergreen WebView2 Runtime in HKCU and HKLM using a nonzero pv version. If absent, Setup MUST run the bundled official Microsoft bootstrapper and recheck the Runtime. Packaging MUST reject a bootstrapper lacking a valid Microsoft Corporation Authenticode signature. Failed installation or a still-missing Runtime MUST surface an actionable error.
+
+#### Scenario: Runtime already present
+- **WHEN** a valid Runtime is installed
+- **THEN** Setup skips running the bootstrapper
+
+#### Scenario: Runtime absent or installation fails
+- **WHEN** no valid Runtime is present
+- **THEN** Setup runs the verified bootstrapper and refuses completion if the Runtime remains unavailable
+
+#### Scenario: Untrusted prerequisite
+- **WHEN** the downloaded bootstrapper signature is invalid or its signer is not Microsoft Corporation
+- **THEN** packaging fails before producing release assets
+
+<!-- @trace
+source: windows-installer
+updated: 2026-11-18
+code:
+  - internal/static/js/session/SessionView.js
+  - docs/plan/todo/system-monitor.md
+  - internal/server/server.go
+  - README.zh-TW.md
+  - docs/reviews/2026-11-17-browserstack-ui.md
+  - internal/db/attachment.go
+  - internal/static/js/hooks/useRoomTimeline.js
+  - internal/static/js/ui/SessionTabs.js
+  - go.mod
+  - docs/plan/todo/telegram-optional.md
+  - internal/db/room_workflow.go
+  - scripts/browser/requirements.txt
+  - scripts/file-browser.test.cjs
+  - scripts/browser/requirements-visual.txt
+  - internal/static/js/core/core.js
+  - scripts/system-stats.test.cjs
+  - internal/mcp/tools.go
+  - docs/plan/todo/browserstack-automation.md
+  - internal/db/session.go
+  - internal/static/js/share/ShareModal.js
+  - scripts/console-usability.test.cjs
+  - internal/static/js/chat/GitControls.js
+  - scripts/rooms.test.cjs
+  - go.sum
+  - internal/server/room.go
+  - internal/static/js/chat/ChatView.js
+  - scripts/release/prepare-webview2.ps1
+  - internal/static/js/session/RoomMessageBubble.js
+  - cmd/desktop/install_windows.go
+  - internal/api/system.go
+  - docs/plan/todo.md
+  - scripts/browser/check_fixtures.py
+  - docs/plan/todo/turn-token-usage.md
+  - internal/static/js/session/RoomFormModal.js
+  - scripts/tab-pinning.test.py
+  - docs/getting-started.zh-TW.md
+  - internal/mcp/room.go
+  - internal/fsbrowse/platform_other.go
+  - internal/api/settings.go
+  - .github/workflows/release.yml
+  - internal/gitinfo/gitops.go
+  - build.bat
+  - docs/plan/todo/ux-feedback.md
+  - cmd/desktop/main_windows.go
+  - docs/reviews/2026-11-18-windows-installer.md
+  - internal/api/files.go
+  - internal/db/room_timeline.go
+  - internal/sysmon/procfs.go
+  - internal/static/js/session/FileBrowserModal.js
+  - internal/sysmon/sysmon_windows.go
+  - internal/ws/instruction.go
+  - .github/workflows/browser-tests.yml
+  - scripts/browser/conftest.py
+  - internal/static/js/session/RoomView.js
+  - internal/db/global_instruction.go
+  - scripts/release/windows-installer.iss
+  - README.md
+  - scripts/browser/requirements-browserstack.txt
+  - scripts/browser/tls_proxy.go
+  - internal/api/rooms.go
+  - browserstack.yml
+  - config.example.yaml
+  - docs/plan/todo/windows-installer.md
+  - cmd/desktop/desktop_windows_amd64.syso
+  - internal/static/js/hooks/systemStats.js
+  - internal/sysmon/sysmon.go
+  - .github/workflows/ci.yml
+  - internal/ws/handoff.go
+  - internal/mcp/server.go
+  - internal/fsbrowse/fsbrowse.go
+  - internal/static/js/ui/SystemStatsSection.js
+  - internal/db/db.go
+  - internal/static/index.html
+  - internal/ws/quota_guard.go
+  - scripts/browser/README.md
+  - internal/db/room.go
+  - scripts/release/version-resource.py
+  - scripts/mobile-settings.test.py
+  - internal/api/session.go
+  - internal/cursor/runner.go
+  - internal/static/js/session/RoomControls.js
+  - internal/config/config.go
+  - docs/plan/todo/file-explorer.md
+  - internal/static/js/ui/SettingsModal.js
+  - internal/ws/claudeperm.go
+  - internal/ws/handler.go
+  - internal/static/js/hooks/fileBrowser.js
+  - internal/sysmon/sysmon_linux.go
+  - internal/db/input_receipt.go
+  - internal/ws/dispatch.go
+  - docs/plan/todo/supervisor-room.md
+  - internal/static/js/hooks/messageRows.js
+  - internal/static/js/session/RoomsSection.js
+  - cmd/desktop/desktop.rc
+  - internal/static/js/hooks/roomPoller.js
+  - internal/static/js/hooks/rooms.js
+  - .github/release-header.md
+  - internal/sysmon/sysmon_other.go
+  - internal/static/js/chat/ChatHeader.js
+  - scripts/release/package.sh
+  - docs/plan/roadmap.md
+  - internal/static/js/chat/AttachmentCards.js
+  - internal/fsbrowse/platform_windows.go
+  - internal/static/js/app.js
+  - docs/getting-started.md
+  - internal/agent/runner.go
+  - scripts/release/publish.sh
+tests:
+  - internal/gitinfo/gitops_test.go
+  - internal/fsbrowse/fsbrowse_test.go
+  - internal/desktopupdate/release_contract_test.go
+  - scripts/release/test/check_workflow.py
+  - internal/desktopupdate/helper_startup_windows_test.go
+  - internal/fsbrowse/fsbrowse_windows_test.go
+  - scripts/browser/test_ui_review.py
+  - internal/sysmon/sysmon_test.go
+  - internal/server/guest_test.go
+  - scripts/release/test/test-release.sh
+  - cmd/desktop/install_windows_test.go
+  - internal/api/git_test.go
+  - internal/db/room_test.go
+  - internal/api/system_test.go
+  - scripts/browser/test_regression.py
+  - internal/arch/arch_test.go
+  - internal/server/rooms_test.go
+  - internal/db/room_workflow_test.go
+  - internal/sysmon/sysmon_windows_test.go
+  - internal/api/rooms_test.go
+  - internal/ws/session_instruction_test.go
+  - scripts/release/test/installer-smoke.ps1
+  - internal/api/session_instruction_test.go
+  - internal/ws/quota_guard_test.go
+  - cmd/desktop/icon_windows_amd64_test.go
+  - internal/server/files_test.go
+  - internal/config/config_test.go
+  - internal/ws/claudeperm_test.go
+  - internal/api/files_test.go
+  - internal/server/system_stats_test.go
+-->

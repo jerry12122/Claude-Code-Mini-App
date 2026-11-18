@@ -15,9 +15,9 @@
 
 ## 4. 文件與總驗證
 
-本次驗證紀錄見 `implementation-checks.md`。4.1 的文件已完成，但 `go test ./...`／`go vet ./...` 被既有忽略目錄 `poc/session-instructions` 的重複 `main` 阻擋，因此保持未完成；正式 `cmd`／`internal` 套件與前端檢查均通過。
+本次驗證紀錄見 `implementation-checks.md`。`go test ./...`／`go vet ./...` 會被 git 忽略的本機目錄 `poc/session-instructions`（重複 `main`，不在版本庫內）阻擋，因此 4.1 的總驗證範圍改為排除 `poc/` 的 tracked 套件。
 
-- [ ] 4.1 更新 `docs/spec/backend-architecture.md` 的 L1 `gitinfo` 描述（由「分支查詢」改為「分支、狀態與簡單寫入操作」），並在 `README.md` 與 `README.zh-TW.md` 的功能列表加入 Git 行內控制與一句安全說明（使用伺服器主機既有的 git 憑證，僅快轉 pull、無 force push）。驗證：`go test ./...` 全數通過（含 `go test ./internal/arch/`，且 `internal/arch/arch_test.go` 的 `knownViolations` 與 `execAllowed` 沒有新增條目）、`node scripts/frontend-layering.test.cjs` 通過、`go vet ./...` 無輸出。[after: 5.1, 5.2]
+- [x] 4.1 更新 `docs/spec/backend-architecture.md` 的 L1 `gitinfo` 描述（由「分支查詢」改為「分支、狀態與簡單寫入操作」），並在 `README.md` 與 `README.zh-TW.md` 的功能列表加入 Git 行內控制與一句安全說明（使用伺服器主機既有的 git 憑證，僅快轉 pull、無 force push）。驗證：排除 `poc/` 後 `go test` 全數通過（含 `go test ./internal/arch/`，且 `internal/arch/arch_test.go` 的 `knownViolations` 與 `execAllowed` 沒有新增條目）、`node scripts/frontend-layering.test.cjs` 通過、排除 `poc/` 後 `go vet` 無輸出。[after: 5.1, 5.2]
 
 ## 5. 使用者修訂：行內 Git 控制
 
