@@ -82,17 +82,16 @@ assert.equal(zoneScroll.behavior, 'smooth');
 const sessionSource = fs.readFileSync(path.join(root, 'js/session/SessionView.js'), 'utf8');
 const sidebarActions = [];
 const sidebarContext = vm.createContext({
-  isUnread: () => false, onEnter: session => sidebarActions.push(['open', session.id]),
+  onEnter: session => sidebarActions.push(['open', session.id]),
   isWideScreen: true, revealSessionTab: id => sidebarActions.push(['reveal', id]),
 });
+vm.runInContext(fs.readFileSync(path.join(root, 'js/hooks/messageRows.js'), 'utf8'), sidebarContext);
 const enterStart = sessionSource.indexOf('  const handleEnter =');
 vm.runInContext(sessionSource.slice(enterStart, sessionSource.indexOf('  const listStatus =', enterStart)) + '\nthis.enter = handleEnter;', sidebarContext);
 sidebarContext.enter({ id: 'secondary-hidden' });
 assert.deepEqual(sidebarActions, [['open', 'secondary-hidden'], ['reveal', 'secondary-hidden']], 'reveal only after selecting the actual session/pane');
-sidebarContext.isUnread = () => true;
-sidebarContext.formatSqliteNow = () => 'now';
 sidebarContext.setSessions = () => { throw new Error('Navigation alone must not acknowledge unread results'); };
-assert.doesNotThrow(() => sidebarContext.enter({ id: 'unread' }), 'wait for the visible chat to acknowledge loaded results');
+assert.doesNotThrow(() => sidebarContext.enter({ id: 'unread', unread_count: 1 }), 'wait for the visible chat to acknowledge loaded results');
 sidebarContext.sessions = [{ id: 'current', unread_count: 1 }];
 sidebarContext.activeSessionId = 'current';
 sidebarContext.useMemo = fn => fn();

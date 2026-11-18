@@ -8,9 +8,18 @@ function sessionLastActiveMs(s) {
   return Number.isNaN(t) ? 0 : t;
 }
 
+/** 舊版 API 沒有未讀數時，沿用活動時間判斷是否有未讀。 */
+function sessionUnreadCount(s) {
+  if (typeof s.unread_count === 'number' && s.unread_count >= 0) return s.unread_count;
+  const active = sessionLastActiveMs(s);
+  if (!active) return 0;
+  const read = s.last_read_at ? Date.parse(String(s.last_read_at).trim().replace(' ', 'T')) : 0;
+  return active > (Number.isNaN(read) ? 0 : read) ? 1 : 0;
+}
+
 /**
  * 產生 optimistic update 用的「現在」字串，格式對齊 SQLite datetime('now')（YYYY-MM-DD HH:MM:SS）。
- * 用本地時間（不加時區標記），因為 sessionLastActiveMs／isUnread 都是以 Date.parse 忽略時區的方式解析，
+ * 用本地時間（不加時區標記），因為 sessionLastActiveMs／sessionUnreadCount 都是以 Date.parse 忽略時區的方式解析，
  * 需與既有解析假設一致，否則本地樂觀值與後端值的比較會偏差。
  */
 function formatSqliteNow() {

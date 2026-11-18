@@ -214,6 +214,9 @@ function SessionTabBar({
         const dotClass = sessionStatusDotClass(s);
         const statusLabel = sessionStatusLabel(s);
         const agentType = sessionDisplayAgent(s);
+        const unreadCount = sessionUnreadCount(s);
+        const unreadBadgeText = unreadCount > 99 ? '99+' : String(unreadCount);
+        const unreadLabel = unreadCount > 0 ? `未讀訊息 ${unreadBadgeText} 則` : '';
 
         return (
           <div
@@ -270,7 +273,7 @@ function SessionTabBar({
               type="button"
               role="tab"
               aria-selected={isActive}
-              aria-description={isPinned ? '已釘選；請先取消釘選再關閉' : undefined}
+              aria-description={[isPinned && '已釘選；請先取消釘選再關閉', unreadLabel].filter(Boolean).join('；') || undefined}
               aria-keyshortcuts={isPinned ? undefined : 'Delete'}
               tabIndex={isActive ? 0 : -1}
               className="flex items-center gap-1.5 flex-1 min-w-0 text-left rounded-sm"
@@ -317,6 +320,9 @@ function SessionTabBar({
             <span className="truncate flex-1 min-w-0">
               {s.name || '未命名'}
             </span>
+            {unreadLabel && (
+              <span className="ra-unread-badge" title={unreadLabel} aria-hidden="true">{unreadBadgeText}</span>
+            )}
             </button>
 
             {/* 關閉按鈕 */}

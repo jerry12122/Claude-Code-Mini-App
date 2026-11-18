@@ -12,7 +12,7 @@ html = (root / "index.html").read_text(encoding="utf-8")
 styles = "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", html, re.S))
 config = re.search(r"<script>\s*(tailwind.config = .*?)</script>", html, re.S)[1]
 source = "\n".join((root / "js" / f).read_text(encoding="utf-8") for f in [
-    "hooks/tabGroups.js", "ui/ContextMenu.js", "chat/MessageActions.js", "ui/SessionTabs.js",
+    "hooks/tabGroups.js", "hooks/messageRows.js", "ui/ContextMenu.js", "chat/MessageActions.js", "ui/SessionTabs.js",
 ])
 harness = r"""
 const {useState,useEffect,useLayoutEffect,useRef,useCallback,useMemo}=React;
@@ -24,10 +24,12 @@ window.sessions=Array.from({length:16},(_,i)=>({id:String.fromCharCode(65+i),nam
 const initial={...createDefaultTabGroupsState(),groups:[{tabs:['A','B','C'],active:'A'}]};
 function Harness(){
  const [state,dispatch]=React.useReducer(tabGroupsReducer,undefined,()=>localStorage.getItem('pin-test')?deserializeTabGroupsState(localStorage.getItem('pin-test')):initial);
+ const [sessionList,setSessionList]=useState(sessions);
+ window.refreshSession=(id,fields)=>setSessionList(items=>items.map(s=>s.id===id?{...s,...fields}:s));
  window.tabState=state;window.dispatch=action=>ReactDOM.flushSync(()=>dispatch(action));
  useEffect(()=>localStorage.setItem('pin-test',serializeTabGroupsState(state)),[state]);
  return <div style={{width:'100%',height:200,display:'flex'}}>{state.groups.map((group,i)=><div key={i} style={{width:state.groups.length===1?'100%':'50%'}}>
- <SessionGroupFrame groupIndex={i} group={group} pinnedTabs={state.pinnedTabs} allSessions={sessions}
+ <SessionGroupFrame groupIndex={i} group={group} pinnedTabs={state.pinnedTabs} allSessions={sessionList}
    groupCount={state.groups.length} isFocused={state.focused===i}
    onFocusGroup={()=>dispatch({type:'focus',groupIndex:i})}
    onSelectTab={sessionId=>dispatch({type:'open',sessionId,groupIndex:i})}
@@ -90,6 +92,19 @@ with tempfile.TemporaryDirectory(prefix="pinning-", dir=repo / "poc") as tmp, sy
         expect(tab("C")).to_be_focused()
         assert state()["groups"][0] == {"tabs": ["C", "A", "B"], "active": "A"}
         expect(tab("C")).to_have_attribute("aria-description", "已釘選；請先取消釘選再關閉")
+        # A tab keeps its count until the session list reports that the messages were read.
+        badge = tab("C").locator(".ra-unread-badge")
+        page.evaluate("refreshSession('C', {last_active: '2026-11-18 12:00:00'})")
+        expect(badge).to_have_text("1")
+        page.evaluate("refreshSession('C', {unread_count: 100})")
+        expect(badge).to_have_text("99+")
+        expect(tab("C")).to_have_accessible_description("已釘選；請先取消釘選再關閉；未讀訊息 99+ 則")
+        tab("C").click()
+        expect(tab("C")).to_have_attribute("aria-selected", "true")
+        expect(badge).to_be_visible()
+        page.evaluate("refreshSession('C', {unread_count: 0})")
+        expect(badge).to_have_count(0)
+        tab("A").click()
         tab("C").press("Delete")
         tab("C").click(button="middle")
         assert state()["pinnedTabs"] == ["C"]

@@ -358,18 +358,8 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
     onCreateNew?.({ workDir: dir, name: workDirBasename(dirKey) });
   };
 
-  // 未讀判斷：若後端有精確 unread_count 則以其為準；否則 last_active 比 last_read_at 新即為未讀。
-  const isUnread = (s) => {
-    if (typeof s.unread_count === 'number' && s.unread_count > 0) return true;
-    if (typeof s.unread_count === 'number' && s.unread_count === 0) return false;
-    const active = sessionLastActiveMs(s);
-    if (!active) return false;
-    const read = s.last_read_at ? Date.parse(String(s.last_read_at).trim().replace(' ', 'T')) : 0;
-    return active > (Number.isNaN(read) ? 0 : read);
-  };
-
   const unreadCount = useMemo(
-    () => (Array.isArray(sessions) ? sessions : []).filter(isUnread).length,
+    () => (Array.isArray(sessions) ? sessions : []).filter(s => sessionUnreadCount(s) > 0).length,
     [sessions]
   );
   const hasUnread = unreadCount > 0;
@@ -412,9 +402,9 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
     const extraArgN = Array.isArray(s.cli_extra_args) ? s.cli_extra_args.length : 0;
     const displayAgent = sessionDisplayAgent(s);
     const agentLabel = AGENT_LABEL[displayAgent] || displayAgent || 'claude';
-    const unread = isUnread(s);
-    const unreadCountNum = typeof s.unread_count === 'number' ? s.unread_count : 1;
-    const unreadBadgeText = unreadCountNum > 99 ? '99+' : String(unreadCountNum > 0 ? unreadCountNum : 1);
+    const unreadCountNum = sessionUnreadCount(s);
+    const unread = unreadCountNum > 0;
+    const unreadBadgeText = unreadCountNum > 99 ? '99+' : String(unreadCountNum);
     const statusClass = sessionStatusDotClass(s);
     const rowTitle = [agentLabel, s.git_branch, extraArgN > 0 ? `+${extraArgN} CLI 引數` : '']
       .filter(Boolean)
@@ -754,11 +744,10 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
               </span>
               {dirSessions.map((s) => {
                 const active = activeSessionId != null && s.id === activeSessionId;
-                const unread = isUnread(s);
                 const displayAgent = sessionDisplayAgent(s);
                 const agentLabel = AGENT_LABEL[displayAgent] || displayAgent || 'claude';
-                const unreadCountNum = typeof s.unread_count === 'number' ? s.unread_count : 1;
-                const unreadBadgeText = unreadCountNum > 99 ? '99+' : String(unreadCountNum > 0 ? unreadCountNum : 1);
+                const unreadCountNum = sessionUnreadCount(s);
+                const unreadBadgeText = unreadCountNum > 99 ? '99+' : String(unreadCountNum);
                 return (
                   <button
                     key={s.id}
@@ -799,7 +788,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
                         aria-label={sessionStatusLabel(s)}
                       />
                     )}
-                    {unread && (
+                    {unreadCountNum > 0 && (
                       <span
                         className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-violet-600 text-white text-[10px] font-bold flex items-center justify-center leading-none pointer-events-none ring-2 ring-ra-bg"
                         aria-label={`未讀訊息 ${unreadBadgeText} 則`}
