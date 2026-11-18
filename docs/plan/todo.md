@@ -63,7 +63,7 @@
 - [x] Telegram 改為可選模組（第一、二期已完成，2026-11-18 核對並補上缺的啟動提示）：`bot_token` 可留空（需 `web.password`）、空 token 時 `tg.Verify` 拒絕且標頭／查詢的 `initData` 一律當沒帶（測試 `TestEmptyBotTokenIgnoresInitData`）、`RealIP` 只信任設定的代理；第三期（信任上游認證）仍為選做、未決定（見 [計劃](todo/telegram-optional.md)）
 - [ ] Supervisor 工作室：使用者 + PM + 執行者同一虛擬群組，只有被 @ 的成員觸發；共享脈絡與額度守門；第一期（改 supervisor 流程）已於 2026-11-18 試跑完成，第二期（唯讀合併時間軸）待多跑幾個真任務後再決定（見 [計劃](todo/supervisor-room.md)）
 - [x] 支援更多 AI 工具（若有 CLI）：評估完成（2026-11-18），目前不新增。OpenAI 模型已由 Codex CLI 提供（本專案已整合，模型可切換）；DeepSeek 查無官方編碼代理 CLI，只有第三方 PyPI 套件 `deepseek-agent`，不屬官方、需自備 API key，而本專案以 `bypassPermissions` 執行代理，不建議未經審查就接入第三方代理。之後出現明確的官方 CLI 再重開
-- [ ] 檔案總管功能 (瀏覽 work_dir 檔案)
-- [ ] 系統資源監控 (CPU/Memory 狀態)
+- [ ] 檔案總管功能 (瀏覽 work_dir 檔案)：2026-11-18 補了最小規格（唯讀、限單一 session 的 work_dir、受保護檔名、訪客 403），假設待使用者確認（見 [計劃](todo/file-explorer.md)）
+- [x] 系統資源監控 (CPU/Memory 狀態)：已實作並驗證（2026-11-18）。後端 `GET /system/stats`（新套件 `internal/sysmon`，無第三方依賴，訪客 403）、設定頁唯讀「系統資源」區塊（可見時每 3 秒輪詢）；實測 CPU 與 Windows `Get-Counter` 差在 15 個百分點內、記憶體差約 0.1 GB。規格的 4 項假設仍待使用者確認（見 [計劃](todo/system-monitor.md)）；已知限制：Linux 路徑只有解析測試與跨平台編譯，沒在 Linux 機器跑過
 - [x] Kiro ACP：前端已重新啟用（需 kiro-cli >= 2.16.0；`session/load` PoC 通過，見 `poc/kiro-cli/acp_same_cwd_resume_poc.js`／`docs/plan/done/kiro-output-markdown-and-acp.md`）
 - [x] Session @mention + MCP 諮詢署名（見 `docs/plan/done/session-mention-mcp.md`）
