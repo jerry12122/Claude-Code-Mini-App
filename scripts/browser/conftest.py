@@ -13,6 +13,17 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 
 
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport():
+    outcome = yield
+    report = outcome.get_result()
+    key = os.environ.get("BROWSERSTACK_ACCESS_KEY")
+    if key:
+        if report.longrepr:
+            report.longrepr = str(report.longrepr).replace(key, "[redacted]")
+        report.sections = [(name, text.replace(key, "[redacted]")) for name, text in report.sections]
+
+
 @pytest.fixture(scope="session", autouse=True)
 def app(tmp_path_factory):
     root = tmp_path_factory.mktemp("miniapp-browser")
