@@ -329,6 +329,8 @@
     .ra-dialog-settings { width: min(64rem, calc(100vw - 2rem)); height: min(85vh, 44rem); }
     .ra-dialog-settings[open] { display: flex; }
     /* 手機版設定佔滿視窗（原本是 inset-0 的全螢幕容器） */
+    .ra-dialog-files { width: min(48rem, calc(100vw - 1rem)); height: min(80vh, 40rem); }
+    .ra-dialog-files[open] { display: flex; flex-direction: column; }
     .ra-dialog-settings.mobile { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; }
     .ra-composer-plus, .ra-tools-icon { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; flex-shrink: 0; border: 0; border-radius: 12px; background: transparent; color: oklch(var(--ra-t3)); cursor: pointer; }
     .ra-composer-plus { grid-column: 1; grid-row: 1; align-self: end; }
@@ -619,6 +621,7 @@
 <script type="text/babel" data-presets="react-classic" src="./js/hooks/messageRows.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/hooks/quotaMetrics.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/hooks/systemStats.js"></script>
+<script type="text/babel" data-presets="react-classic" src="./js/hooks/fileBrowser.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/hooks/forwardPrompt.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/ui/uiAtoms.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/ui/ContextMenu.js"></script>
@@ -642,6 +645,7 @@
 <script type="text/babel" data-presets="react-classic" src="./js/hooks/useGitStatus.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/chat/GitControls.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/chat/ForwardModal.js"></script>
+<script type="text/babel" data-presets="react-classic" src="./js/session/FileBrowserModal.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/session/SessionView.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/session/NewSessionComposer.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/chat/ChatHeader.js"></script>

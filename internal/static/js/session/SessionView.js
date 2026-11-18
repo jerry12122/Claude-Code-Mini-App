@@ -1,6 +1,7 @@
 // ── Session 列表畫面 ──────────────────────────────────────────────────────────
 function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, activeSessionId = null, onCreateNew, onOpenSettings, hasUpdate = false, onOpenUpdate, onToggleSidebar, collapsed = false, isSplit = false, onToggleSplit = null, isWideScreen = true, onOpenOtherPane, canOpenOtherPane }) {
   const [sessionMenu, setSessionMenu] = useState(null);
+  const [browseSession, setBrowseSession] = useState(null);
   const bindSessionMenu = useLongPress(setSessionMenu);
   const closeSessionMenu = useCallback(() => setSessionMenu(null), []);
   useEffect(() => setSessionMenu(null), [activeSessionId, collapsed]);
@@ -513,11 +514,17 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
       if (await copyText(menuSession.work_dir)) showToast('已複製工作目錄');
       else showToast('複製失敗', { error: true });
     } }] : []),
+    ...(menuSession.work_dir ? [{ label: '瀏覽檔案', onSelect: () => setBrowseSession(menuSession) }] : []),
     { separator: true },
     { label: '刪除會話…', danger: true, disabled: !!menuBusy, reason: '請先停止任務，再刪除會話',
       onSelect: () => del(menuSession.id) },
   ] : [];
-  const menuElement = <ContextMenu menu={menuSession ? sessionMenu : null} items={menuItems} onClose={closeSessionMenu} label="會話操作" />;
+  const menuElement = (
+    <>
+      <ContextMenu menu={menuSession ? sessionMenu : null} items={menuItems} onClose={closeSessionMenu} label="會話操作" />
+      <FileBrowserModal session={browseSession} onClose={() => setBrowseSession(null)} />
+    </>
+  );
 
   const settingsEntry = (
         <button

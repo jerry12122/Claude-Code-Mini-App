@@ -512,6 +512,9 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 	app.Get("/quota/:provider", authMiddleware, qh.Get)
 	app.Post("/quota/:provider/refresh", authMiddleware, qh.Refresh)
 	app.Get("/system/stats", authMiddleware, api.NewSystemHandler(sysmon.NewSampler()).Stats)
+	filesH := api.NewFilesHandler(database)
+	app.Get("/sessions/:id/files", authMiddleware, filesH.List)
+	app.Get("/sessions/:id/files/content", authMiddleware, filesH.Content)
 
 	tgMgr := tgclient.NewManager(cfg.TelegramClient, database)
 	_ = tgMgr.Start(ctx)
