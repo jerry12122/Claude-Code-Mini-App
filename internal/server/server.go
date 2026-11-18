@@ -576,6 +576,9 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 	if cfg.NoAuth {
 		slog.Info("⚠️  no_auth: true，已跳過 Telegram 驗證（僅限開發環境）")
 	}
+	if cfg.BotToken == "" {
+		slog.Info("[auth] bot_token 未設定，僅提供 web 密碼／訪客登入，Telegram 通知停用")
+	}
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	slog.Info(fmt.Sprintf("MiniApp v%s listening on %s", version.Version, addr))
