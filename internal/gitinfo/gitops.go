@@ -49,23 +49,55 @@ type LineStats struct {
 	Deletions int `json:"deletions"`
 }
 
-// ChangeStats 計算已追蹤文字檔相對 HEAD 的淨增刪，不重複累加暫存區與工作樹。
+// ChangeStats 合計已追蹤文字檔相對 HEAD 的淨增刪與未忽略的新文字檔行數。
 func ChangeStats(workDir string) (LineStats, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	defer cancel()
+	prefix, _, err := runGitContext(ctx, workDir, queryTimeout, "rev-parse", "--show-cdup")
+	if err != nil {
+		return LineStats{}, err
+	}
+	root := filepath.Join(workDir, strings.TrimSpace(prefix))
+	run := func(args ...string) (string, string, error) {
+		return runGitContext(ctx, root, queryTimeout, args...)
+	}
 	args := []string{"diff", "--numstat", "-z", "--no-ext-diff", "--no-textconv", "HEAD", "--"}
-	out, diagnostic, err := runGit(workDir, queryTimeout, args...)
+	out, diagnostic, err := run(args...)
 	if err != nil && strings.TrimSpace(diagnostic) == "fatal: bad revision 'HEAD'" {
 		// 尚無提交時由 Git 計算目前物件格式的空 tree hash，支援 SHA-1 與 SHA-256。
-		emptyTree, _, hashErr := runGit(workDir, queryTimeout, "hash-object", "-t", "tree", "--stdin")
+		emptyTree, _, hashErr := run("hash-object", "-t", "tree", "--stdin")
 		if hashErr != nil {
 			return LineStats{}, hashErr
 		}
 		args[len(args)-2] = strings.TrimSpace(emptyTree)
-		out, _, err = runGit(workDir, queryTimeout, args...)
+		out, _, err = run(args...)
 	}
 	if err != nil {
 		return LineStats{}, err
 	}
-	return parseNumstat(out)
+	paths, _, err := run("ls-files", "--others", "--exclude-standard", "-z")
+	if err != nil {
+		return LineStats{}, err
+	}
+	var combined strings.Builder
+	combined.WriteString(out)
+	// ponytail: 每個新檔用一次 Git 保留二進位判斷，共用查詢期限。新檔量大時再導入批次比對。
+	for path := range strings.SplitSeq(paths, "\x00") {
+		if path == "" || strings.HasSuffix(path, "/") { // Git 以尾斜線標記內嵌 repo。
+			continue
+		}
+		newFile, _, err := run("diff", "--no-index", "--numstat", "-z", "--no-ext-diff", "--no-textconv", "--", "/dev/null", "./"+path)
+		if err != nil {
+			var command *CommandError
+			var exit *exec.ExitError
+			// --no-index 用 1 表示有差異，也可能用 1 表示無法讀檔。
+			if newFile == "" || !errors.As(err, &command) || command.Kind != "failed" || !errors.As(err, &exit) || exit.ExitCode() != 1 {
+				return LineStats{}, err
+			}
+		}
+		combined.WriteString(newFile)
+	}
+	return parseNumstat(combined.String())
 }
 
 func parseNumstat(out string) (LineStats, error) {
@@ -130,6 +162,10 @@ func (e *CommandError) Unwrap() error { return e.Err }
 func runGit(workDir string, timeout time.Duration, args ...string) (stdout, stderr string, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+	return runGitContext(ctx, workDir, timeout, args...)
+}
+
+func runGitContext(ctx context.Context, workDir string, timeout time.Duration, args ...string) (stdout, stderr string, err error) {
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", workDir}, args...)...)
 	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=never", "LC_ALL=C")
 	cmd.SysProcAttr = proc.SysProcAttr()

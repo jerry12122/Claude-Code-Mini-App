@@ -220,6 +220,9 @@ func TestGitStatusLineCounts(t *testing.T) {
 	if err := os.WriteFile(name, []byte("one\nfinal\ntwo\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(dir, "untracked"), []byte("new\ntext"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	session, err := database.CreateSession("Git 行數", "", dir, "default", "claude", nil, "agent")
 	if err != nil {
 		t.Fatal(err)
@@ -235,7 +238,7 @@ func TestGitStatusLineCounts(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
-	if resp.StatusCode != 200 || got["is_repo"] != true || got["branch"] != "main" || got["additions"] != float64(1) || got["deletions"] != float64(0) {
+	if resp.StatusCode != 200 || got["is_repo"] != true || got["branch"] != "main" || got["additions"] != float64(3) || got["deletions"] != float64(0) {
 		t.Fatalf("status line counts: %d %+v", resp.StatusCode, got)
 	}
 	// 移除測試 repo 的 HEAD blob；status 仍可讀取中繼資料，行數 diff 必須明確失敗。
