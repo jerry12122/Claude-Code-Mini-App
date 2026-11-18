@@ -80,8 +80,8 @@ func cursorCommand(ctx context.Context, opts agent.RunOptions, args []string) *e
 			slog.Warn("[cursor] 找不到 node.exe/index.js，改走 cursor-agent.cmd；prompt 的 LF／引號已近似處理，%VAR% 與 !x! 可能被 cmd.exe 改寫")
 		}
 	}
-	binArgs = append(binArgs, prompt)
 	slog.Info(fmt.Sprintf("[cursor] 執行指令: %s %s (prompt len=%d)", bin, strings.Join(binArgs, " "), len(prompt)))
+	binArgs = append(binArgs, prompt)
 	if opts.WorkDir != "" {
 		slog.Info(fmt.Sprintf("[cursor] 工作目錄: %s", opts.WorkDir))
 	}
