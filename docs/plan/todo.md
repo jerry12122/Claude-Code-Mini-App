@@ -61,7 +61,7 @@
 - [ ] 共享聊天室實機驗證：snapshot 橫幅、到期前 5 分鐘提示、editor 實際送訊息、非內網 IP 帶 guest token 的存取測試
 - [ ] 共享聊天室對外開放：Cloudflare Tunnel 部署與實機驗證；`RealIP` 可信代理檢查已完成，其他代理須設定 `web.trusted_proxies`
 - [x] Telegram 改為可選模組（第一、二期已完成，2026-11-18 核對並補上缺的啟動提示）：`bot_token` 可留空（需 `web.password`）、空 token 時 `tg.Verify` 拒絕且標頭／查詢的 `initData` 一律當沒帶（測試 `TestEmptyBotTokenIgnoresInitData`）、`RealIP` 只信任設定的代理；第三期（信任上游認證）仍為選做、未決定（見 [計劃](todo/telegram-optional.md)）
-- [ ] Supervisor 工作室：第一期已試跑（notify 推播已確認收得到）；2026-11-18 使用者批准做第二期「唯讀虛擬群聊」與最小範圍的額度硬守門（排隊訊息自動啟動時檢查，預設 90%，`quota_guard_percent`），規格見 [計劃](todo/supervisor-room.md) 第 7 節；第三期（群組輸入與 @ 路由）尚未開始
+- [ ] Supervisor 工作室：第一期已試跑；額度硬守門已實作並驗證（2026-11-18，`quota_guard_percent` 預設 90，排隊訊息自動啟動時檢查）；使用者批准做第二期「唯讀虛擬群聊」，規格見 [計劃](todo/supervisor-room.md) 7.1，尚未開工；第三期（群組輸入與 @ 路由）尚未開始
 - [x] 支援更多 AI 工具（若有 CLI）：評估完成（2026-11-18），目前不新增。OpenAI 模型已由 Codex CLI 提供（本專案已整合，模型可切換）；DeepSeek 查無官方編碼代理 CLI，只有第三方 PyPI 套件 `deepseek-agent`，不屬官方、需自備 API key，而本專案以 `bypassPermissions` 執行代理，不建議未經審查就接入第三方代理。之後出現明確的官方 CLI 再重開
 - [x] 檔案總管功能 (瀏覽 work_dir 檔案)：已實作並驗證（2026-11-18）。唯讀、限單一 session 的 work_dir、受保護憑證檔名、訪客 403；supervisor 以臨時實例做過對抗性複核（路徑跳出、junction、備用資料流、大小寫、洩漏）。規格的假設與受保護名單已由使用者確認維持現狀（2026-11-18）；已知限制見 [計劃](todo/file-explorer.md) 第 7 節（硬連結、Windows symlink 測試 SKIP、`~數字` 檔名誤擋）
 - [x] 系統資源監控 (CPU/Memory 狀態)：已實作並驗證（2026-11-18）。後端 `GET /system/stats`（新套件 `internal/sysmon`，無第三方依賴，訪客 403）、設定頁唯讀「系統資源」區塊（可見時每 3 秒輪詢）；實測 CPU 與 Windows `Get-Counter` 差在 15 個百分點內、記憶體差約 0.1 GB。規格的假設已由使用者確認不需修改（2026-11-18）（見 [計劃](todo/system-monitor.md)）；已知限制：Linux 路徑只有解析測試與跨平台編譯，沒在 Linux 機器跑過
