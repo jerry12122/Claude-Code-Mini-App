@@ -20,6 +20,7 @@ import (
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/api"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/media"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/sysmon"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/tg"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/ws"
 )
@@ -77,6 +78,7 @@ func newGuestEnv(t *testing.T) *guestEnv {
 	app.Delete("/shares/:id", auth, shareH.Revoke)
 	app.Delete("/shares", auth, shareH.RevokeAll)
 	app.Get("/guest/me", auth, shareH.Me)
+	app.Get("/system/stats", auth, api.NewSystemHandler(sysmon.NewSampler()).Stats)
 	app.Post("/share/:token/join", api.JoinLimiter(), shareH.Join)
 	app.Use("/sessions/:id/ws", func(c *fiber.Ctx) error {
 		if fiberws.IsWebSocketUpgrade(c) {
@@ -214,6 +216,7 @@ func TestGuest_InvalidTokenAndOwnerRoutesForbidden(t *testing.T) {
 		{"GET", "/shares"},
 		{"DELETE", "/shares"},
 		{"DELETE", "/shares/1"},
+		{"GET", "/system/stats"},
 	} {
 		if code := e.status(tc.method, tc.path, tok); code != 403 {
 			t.Errorf("%s %s 訪客應 403，got %d", tc.method, tc.path, code)

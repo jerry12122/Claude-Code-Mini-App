@@ -31,6 +31,7 @@ import (
 	mymcp "github.com/jerry12122/Claude-Code-Mini-App/internal/mcp"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/quota"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/static"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/sysmon"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/tg"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/tgclient"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/version"
@@ -510,6 +511,7 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 	app.Get("/quota", authMiddleware, qh.GetAll)
 	app.Get("/quota/:provider", authMiddleware, qh.Get)
 	app.Post("/quota/:provider/refresh", authMiddleware, qh.Refresh)
+	app.Get("/system/stats", authMiddleware, api.NewSystemHandler(sysmon.NewSampler()).Stats)
 
 	tgMgr := tgclient.NewManager(cfg.TelegramClient, database)
 	_ = tgMgr.Start(ctx)
