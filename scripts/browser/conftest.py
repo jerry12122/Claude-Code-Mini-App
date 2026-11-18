@@ -47,6 +47,7 @@ def app(tmp_path_factory):
     base = f"http://127.0.0.1:{port}"
     with (root / "server.log").open("w", encoding="utf-8") as log:
         process = subprocess.Popen([str(binary)], cwd=root, env=env, stdout=log, stderr=log)
+        processes = [process]
         try:
             deadline = time.monotonic() + 30
             while True:
@@ -60,14 +61,24 @@ def app(tmp_path_factory):
                     if time.monotonic() >= deadline:
                         pytest.fail(f"測試 server 啟動逾時：{root / 'server.log'}")
                     time.sleep(0.1)
+            if os.environ.get("UI_PROFILE") == "webkit":
+                # WebKit's remote HTTP proxy fails for ws://; exercise real HTTPS/WSS instead.
+                proxy_binary = root / ("tls-proxy.exe" if os.name == "nt" else "tls-proxy")
+                subprocess.run(["go", "build", "-o", str(proxy_binary), str(REPO / "scripts/browser/tls_proxy.go")],
+                               cwd=REPO, check=True, timeout=120)
+                proxy = subprocess.Popen([str(proxy_binary), base], stdout=subprocess.PIPE, stderr=log, text=True)
+                processes.append(proxy)
+                base = proxy.stdout.readline().strip()
+                assert base.startswith("https://127.0.0.1:"), "TLS fixture failed to start"
             yield {"url": base, "password": password}
         finally:
-            process.terminate()
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=10)
+            for child in reversed(processes):
+                child.terminate()
+                try:
+                    child.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait(timeout=10)
 
 
 @pytest.fixture

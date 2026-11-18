@@ -253,7 +253,7 @@ function ShareModal({ session, onClose }) {
         <button type="button" onClick={() => dialogRef.current?.close()} className="text-ra-t4 hover:text-ra-t1 text-lg leading-none px-1" aria-label="關閉">×</button>
       </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto app-scroll px-5 pb-5 space-y-4">
+        <div className="flex-auto min-h-0 overflow-y-auto app-scroll px-5 pb-5 space-y-4">
           <div className="space-y-3 rounded-xl border border-ra-line-soft p-3">
             <div>
               <div className="mb-1.5 text-xs text-ra-t4">對方的權限</div>
