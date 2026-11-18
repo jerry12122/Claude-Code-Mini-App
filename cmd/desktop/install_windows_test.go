@@ -85,6 +85,11 @@ func TestInstalledWorkDirFailsClosed(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer windows.CloseHandle(h)
+				// 部分 CI runner 不執行獨占鎖（os.Open 仍成功），此時無法製造讀取失敗。
+				if f, err := os.Open(marker); err == nil {
+					f.Close()
+					t.Skip("此環境的獨占鎖未生效，無法驗證讀取安裝標記失敗")
+				}
 			}
 			if _, err := setDesktopWorkDir(exeDir, root, local); err == nil {
 				t.Fatal("expected startup error")
