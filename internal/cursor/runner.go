@@ -191,6 +191,9 @@ func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventC
 			abandoned.Store(true)
 			slog.Warn(fmt.Sprintf("[cursor] result 後 %s 內 stdout 仍未關閉，強制結束進程樹並放棄等待 (PID=%d)", resultExitGrace, cmd.Process.Pid))
 			_ = proc.KillTree(cmd.Process.Pid)
+			// KillTree 殺不到已退出 wrapper 底下的孤兒（PID 已不存在），Wait 會一路等到 WaitDelay；
+			// 已確定放棄，縮短它，避免任務在 result 後多卡約 5 秒。
+			cmd.WaitDelay = 200 * time.Millisecond
 		}
 	}
 
