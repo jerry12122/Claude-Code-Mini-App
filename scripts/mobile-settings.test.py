@@ -25,6 +25,12 @@ let stored={...APPEARANCE_DEFAULTS};
 const readStoredAppearance=()=>({...stored}),saveStoredAppearance=d=>{stored={...d}},applyAppearance=()=>{};
 const putAppearance=async d=>({...d}),fetchServerConfig=async()=>({version:'1.2.3',sha:'abcdef012345'});
 const getGeneralSettings=async()=>({...GENERAL_DEFAULTS}),putGeneralSettings=async g=>g;
+let globalInstruction={text:'',mode:'native'};
+const apiFetch=async (path,opts)=>{
+  if(path!=='/settings/global-instruction') throw Error('Unexpected settings API: '+path);
+  if(opts.method==='PUT') globalInstruction=JSON.parse(opts.body);
+  return {ok:true,json:async()=>globalInstruction};
+};
 const readThemePref=()=> 'dark',setThemePref=()=>{},readChatFontSize=()=>14,setChatFontSize=n=>n;
 const SharesSection=()=>React.createElement('p',null,'分享內容');
 const LogsSection=()=>React.createElement('p',null,'日誌內容');
@@ -72,10 +78,22 @@ with tempfile.TemporaryDirectory(prefix='settings-check-') as tmp, sync_playwrig
             for label, content in [('一般', '開啟 VSCode'), ('分享', '分享內容'), ('日誌', '日誌內容'), ('更新', '更新內容')]:
                 nav.get_by_role('button', name=re.compile('^' + label)).click()
                 expect(page.get_by_text(content, exact=True)).to_be_visible()
-                assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
                 if mobile:
                     expect(nav).to_have_count(0)
                     expect(back).to_be_focused()
+                if label == '一般':
+                    field = page.get_by_role('textbox', name='全域指令', exact=True)
+                    field.fill('全域規則\n第二行')
+                    mode = page.get_by_role('radio', name=re.compile('^僅原生支援'))
+                    expect(mode).to_be_checked()
+                    mode.focus()
+                    page.keyboard.press('ArrowRight')
+                    expect(page.get_by_role('radio', name='會話第一則訊息')).to_be_checked()
+                    page.get_by_role('button', name='儲存全域指令').click()
+                    expect(page.get_by_role('status')).to_have_text('已儲存全域指令')
+                    assert page.evaluate('globalInstruction') == {'text': '全域規則\n第二行', 'mode': 'first'}
+                assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+                if mobile:
                     back.click()
                     expect(nav.get_by_role('button', name=re.compile('^' + label))).to_be_focused()
                 else:

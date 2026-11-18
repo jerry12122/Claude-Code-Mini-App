@@ -500,6 +500,22 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				broadcast(serverMsg{Type: "error", Content: err.Error()})
 				return
 			}
+			runnerPrompt := prompt
+			firstInstruction := false
+			if g := s.GlobalInstruction; userMsgID > 0 && g.Text != "" {
+				if g.Mode == db.GlobalInstructionFirst {
+					sent, err := database.GlobalInstructionSent(sessionID)
+					if err != nil {
+						slog.Error("[ws] read global instruction delivery", "err", err)
+						broadcast(serverMsg{Type: "error", Content: "無法確認首則全域指令是否已送出"})
+						return
+					}
+					firstInstruction = !sent
+				}
+				if firstInstruction || g.Mode == db.GlobalInstructionEvery {
+					runnerPrompt = "全域指令\n" + g.Text + "\n\n使用者訊息\n" + prompt
+				}
+			}
 			mu.Lock()
 			pm := s.PermissionMode
 			agSid := s.AgentSessionID
@@ -554,8 +570,8 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 			}
 
 			opts := agent.RunOptions{
-				Prompt:            prompt,
-				SystemInstruction: s.SystemInstruction,
+				Prompt:            runnerPrompt,
+				SystemInstruction: nativeSystemInstruction(s),
 				SessionID:         agSid,
 				WorkDir:           wdir,
 				ExtraArgs:         extra,
@@ -601,8 +617,8 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				return allow
 			}
 
-			// ACP 互動式授權：有專屬指令的 Antigravity 與 kiroacp 共用既有決策流程。
-			if agentType == agent.TypeKiroACP || (agentType == agent.TypeAntigravity && s.SystemInstruction != "") {
+			// ACP 互動式授權：有原生指令的 Antigravity 與 kiroacp 共用既有決策流程。
+			if agentType == agent.TypeKiroACP || (agentType == agent.TypeAntigravity && opts.SystemInstruction != "") {
 				opts.RequestPermission = func(rctx context.Context, req agent.PermissionRequest) string {
 					title := strings.TrimSpace(req.Title)
 					if title == "" {
@@ -763,6 +779,17 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				}
 
 				err := runner.Run(ctx, opts, func(e agent.Event) {
+					if firstInstruction && !runFailed {
+						// A model response confirms receipt. Starting the CLI alone does not.
+						switch e.Type {
+						case agent.EventDelta, agent.EventThinking, agent.EventToolStarted, agent.EventPermDenied, agent.EventDone:
+							if err := database.MarkGlobalInstructionSent(sessionID, userMsgID); err != nil {
+								slog.Error("[ws] save global instruction delivery", "err", err)
+							} else {
+								firstInstruction = false
+							}
+						}
+					}
 					if e.Type != agent.EventDelta {
 						if flushErr := content.Flush(); flushErr != nil {
 							runFailed = true
@@ -1591,6 +1618,9 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 			case "reset_context":
 				// 會清除訊息與佇列，屬於寫入；維護中整段拒絕，佇列與訊息保留。
 				withWorkAdmission(send, "", func() {
+					dl := dispatchLock(sessionID)
+					dl.Lock()
+					defer dl.Unlock()
 					taskCancel(sessionID)
 					shellTaskCancel(sessionID)
 					clearInMemoryShellApproval(sessionID)

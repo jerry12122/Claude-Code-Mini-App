@@ -131,8 +131,15 @@ func (db *DB) migrate() error {
 		return err
 	}
 	// 新增／更名欄位（已存在或來源欄位不存在時忽略錯誤）
-	if _, err := db.Exec(`ALTER TABLE sessions ADD COLUMN system_instruction TEXT NOT NULL DEFAULT ''`); err != nil && !strings.Contains(err.Error(), "duplicate column") {
-		return err
+	for _, query := range []string{
+		`ALTER TABLE sessions ADD COLUMN system_instruction TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE sessions ADD COLUMN global_instruction_text TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE sessions ADD COLUMN global_instruction_mode TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE messages ADD COLUMN global_instruction_sent INTEGER NOT NULL DEFAULT 0`,
+	} {
+		if _, err := db.Exec(query); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return err
+		}
 	}
 	tryAlter := func(q string) {
 		if _, err := db.Exec(q); err != nil {

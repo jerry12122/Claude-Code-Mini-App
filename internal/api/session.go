@@ -17,6 +17,7 @@ import (
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/gitinfo"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/tgclient"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/ws"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -171,7 +172,7 @@ func (h *SessionHandler) Create(c *fiber.Ctx) error {
 		}
 	}
 	instruction = strings.TrimSpace(instruction)
-	if len(instruction) > 16384 || strings.ContainsRune(instruction, 0) {
+	if len(instruction) > db.MaxSystemInstructionBytes || strings.ContainsRune(instruction, 0) {
 		return c.Status(400).JSON(fiber.Map{"error": "system_instruction 最多 16384 UTF-8 bytes，且不可包含 U+0000"})
 	}
 
@@ -233,21 +234,17 @@ func (h *SessionHandler) Create(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
-	if instruction != "" {
-		if body.InputMode == "shell" || (body.AgentType != agent.TypeClaude && body.AgentType != agent.TypeCodex && body.AgentType != agent.TypeAntigravity) {
-			return c.Status(400).JSON(fiber.Map{"error": "system_instruction 僅支援 Claude、Codex、Antigravity 的 agent 模式"})
-		}
-		if body.AgentType == agent.TypeClaude {
-			for _, arg := range cliExtra {
-				flag, _, _ := strings.Cut(arg, "=")
-				switch flag {
-				case "--system-prompt", "--system-prompt-file", "--append-system-prompt", "--append-system-prompt-file":
-					return c.Status(400).JSON(fiber.Map{"error": "專屬指令與 CLI system prompt 參數請擇一使用"})
-				}
-			}
-		}
+	if instruction != "" && (body.InputMode == "shell" || !agent.SupportsSystemInstruction(body.AgentType)) {
+		return c.Status(400).JSON(fiber.Map{"error": "system_instruction 僅支援 Claude、Codex、Antigravity 的 agent 模式"})
 	}
-	s, err := h.db.CreateSessionWithInstruction(body.Name, body.Description, body.WorkDir, body.PermissionMode, body.AgentType, cliExtra, body.InputMode, disguiseAgent, instruction)
+	s, err := ws.CreateSession(h.db, db.Session{
+		Name: body.Name, Description: body.Description, WorkDir: body.WorkDir, PermissionMode: body.PermissionMode,
+		AgentType: body.AgentType, CliExtraArgs: cliExtra, InputMode: body.InputMode, DisguiseAgent: disguiseAgent,
+		SystemInstruction: instruction,
+	})
+	if errors.Is(err, ws.ErrInstructionConflict) || errors.Is(err, ws.ErrInstructionTooLong) {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "無法儲存 session"})
 	}
@@ -299,6 +296,7 @@ func (h *SessionHandler) Patch(c *fiber.Ctx) error {
 	if body.Name == nil && body.CliExtraArgs == nil && body.MarkRead == nil && body.Pinned == nil {
 		return c.Status(400).JSON(fiber.Map{"error": "name、cli_extra_args、mark_read 或 pinned 至少指定一項"})
 	}
+	var cliExtra []string
 	if body.CliExtraArgs != nil {
 		s, err := h.db.GetSession(id)
 		if err != nil {
@@ -309,6 +307,13 @@ func (h *SessionHandler) Patch(c *fiber.Ctx) error {
 		}
 		if reason := agent.DisabledReason(s.AgentType); reason != "" {
 			return c.Status(403).JSON(fiber.Map{"error": reason})
+		}
+		cliExtra, err = normalizeCliExtraArgs(*body.CliExtraArgs)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		}
+		if err := ws.ValidateInstructionArgs(s, cliExtra); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 		}
 	}
 	if body.Name != nil {
@@ -321,10 +326,6 @@ func (h *SessionHandler) Patch(c *fiber.Ctx) error {
 		}
 	}
 	if body.CliExtraArgs != nil {
-		cliExtra, err := normalizeCliExtraArgs(*body.CliExtraArgs)
-		if err != nil {
-			return c.Status(400).JSON(fiber.Map{"error": err.Error()})
-		}
 		if err := h.db.UpdateSessionCliExtraArgs(id, cliExtra); err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 		}

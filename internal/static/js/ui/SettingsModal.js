@@ -1,6 +1,5 @@
 // ── 設定彈窗（桌面左右分欄；手機分類清單 → 內容 → 返回）───────────────────
-// 目前有「一般」「外觀」兩個分類：
-//   一般：伺服器端本機行為開關（目前僅 vscodeNoAdmin）。
+//   一般：伺服器端本機行為與全域指令。
 //   外觀：Markdown 顏色（heading/bold/inline code）+ 自訂 CSS。
 // 外觀本機 localStorage 當快取；伺服器 SQLite 為準（見 core.js putAppearance / hydrateAppearanceFromServer）。
 // 一般設定不做本機快取，見 GeneralSection。
@@ -74,7 +73,95 @@ function ColorField({ label, value, onChange, placeholder }) {
   );
 }
 
-/** 「一般」設定頁：vscodeNoAdmin 開關即時 PUT（不走外層儲存流程，跟 appearance 分開存）；另有純前端的「清除快取並重新載入」。 */
+function GlobalInstructionSettings() {
+  const id = React.useId();
+  const [instruction, setInstruction] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    apiFetch('/settings/global-instruction', { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error();
+        return res.json();
+      })
+      .then(setInstruction)
+      .catch(() => {
+        if (!controller.signal.aborted) setStatus('無法讀取全域指令設定');
+      });
+    return () => controller.abort();
+  }, []);
+
+  const update = (event) => {
+    const { name, value } = event.target;
+    setInstruction((current) => ({ ...current, [name]: value }));
+    setStatus('');
+  };
+
+  const save = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    setStatus('');
+    try {
+      const res = await apiFetch('/settings/global-instruction', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(instruction),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || '無法儲存全域指令設定');
+      setInstruction(result);
+      setStatus('已儲存全域指令');
+    } catch (err) {
+      setStatus(err.message || '無法儲存全域指令設定');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={save} aria-labelledby={`${id}-title`} className="space-y-3">
+      <div>
+        <label id={`${id}-title`} htmlFor={`${id}-text`} className="block text-sm font-semibold text-ra-t1 mb-1">全域指令</label>
+        <p id={`${id}-help`} className="text-xs text-ra-t4 mb-2">套用到之後建立的 Agent 會話。最多 16,384 UTF-8 bytes。</p>
+        <textarea
+          id={`${id}-text`}
+          name="text"
+          aria-describedby={`${id}-help`}
+          value={instruction?.text ?? ''}
+          onChange={update}
+          rows={4}
+          disabled={!instruction || saving}
+          className="w-full bg-ra-card border border-ra-line rounded-lg px-3 py-2 text-base text-ra-t1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500 resize-y"
+        />
+      </div>
+      <fieldset disabled={!instruction || saving}>
+        <legend className="text-sm font-medium text-ra-t1">注入模式</legend>
+        {[
+          ['first', '會話第一則訊息'],
+          ['every', '每則訊息'],
+          ['native', '僅原生支援（Claude、Codex、Antigravity）'],
+        ].map(([value, label]) => (
+          <div key={value} className="flex items-center gap-2 text-sm text-ra-t1">
+            <input type="radio" id={`${id}-${value}`} name="mode" value={value}
+              checked={(instruction?.mode ?? 'native') === value} onChange={update} className="accent-violet-600" />
+            <label htmlFor={`${id}-${value}`} className="py-2">{label}</label>
+          </div>
+        ))}
+      </fieldset>
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="submit" disabled={!instruction || saving}
+          className="px-3 py-1.5 rounded-lg text-sm font-medium bg-ra-raised text-ra-t1 border border-ra-line-strong disabled:opacity-40">
+          {saving ? '儲存中…' : '儲存全域指令'}
+        </button>
+        <span role="status" className="text-xs text-ra-t3">{status}</span>
+      </div>
+    </form>
+  );
+}
+
+/** 「一般」設定頁：vscodeNoAdmin 開關即時 PUT，與外觀設定分開存。 */
 function GeneralSection() {
   const [general, setGeneral] = useState(() => ({ ...GENERAL_DEFAULTS }));
   const [loading, setLoading] = useState(true);
@@ -141,6 +228,7 @@ function GeneralSection() {
 
   return (
     <div className="divide-y divide-ra-line-soft [&>*]:py-6 [&>:first-child]:pt-0 [&>:last-child]:pb-0">
+      <GlobalInstructionSettings />
       <div>
         <div className="text-sm font-semibold text-ra-t1 mb-1">開啟 VSCode</div>
         <label className="flex items-start gap-3 cursor-pointer">

@@ -11,6 +11,60 @@ import (
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
 )
 
+func TestGlobalInstructionSettingsAndCreation(t *testing.T) {
+	database, err := db.Open(t.TempDir() + "/global.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	app := fiber.New()
+	settings := NewSettingsHandler(database)
+	app.Get("/settings/global-instruction", settings.GetGlobalInstruction)
+	app.Put("/settings/global-instruction", settings.PutGlobalInstruction)
+	sessions := NewSessionHandler(database)
+	app.Post("/sessions", sessions.Create)
+	app.Patch("/sessions/:id", sessions.Patch)
+
+	check := func(method, path, payload string, status int) []byte {
+		t.Helper()
+		req := httptest.NewRequest(method, path, strings.NewReader(payload))
+		req.Header.Set("Content-Type", "application/json")
+		res, err := app.Test(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		body, err := io.ReadAll(res.Body)
+		if err != nil || res.StatusCode != status {
+			t.Fatalf("%s %s = %d %s (%v), want %d", method, path, res.StatusCode, body, err, status)
+		}
+		return body
+	}
+	const path = "/settings/global-instruction"
+	for _, payload := range []string{`null`, `{"text":null,"mode":"first"}`, `{"text":"private","mode":"unknown"}`, `{"text":"private\u0000","mode":"every"}`} {
+		if body := check("PUT", path, payload, 400); strings.Contains(string(body), "private") {
+			t.Fatal("validation exposed the prompt")
+		}
+	}
+	check("PUT", path, `{"text":"  全域\n第二行  ","mode":"native"}`, 200)
+	var global db.GlobalInstruction
+	if err := json.Unmarshal(check("GET", path, "", 200), &global); err != nil || global.Text != "全域\n第二行" || global.Mode != db.GlobalInstructionNative {
+		t.Fatalf("settings round trip = %+v, %v", global, err)
+	}
+
+	const conflict = `{"cli_extra_args":["--append-system-prompt=legacy"]}`
+	check("POST", "/sessions", conflict, 400)
+	body := check("POST", "/sessions", `{"system_instruction":"專屬"}`, 201)
+	var created db.Session
+	if err := json.Unmarshal(body, &created); err != nil || created.SystemInstruction != "專屬" || strings.Contains(string(body), "全域") {
+		t.Fatalf("global prompt leaked or local prompt was overwritten: %s (%v)", body, err)
+	}
+	check("PATCH", "/sessions/"+created.ID, conflict, 400)
+	if stored, err := database.GetSession(created.ID); err != nil || stored.GlobalInstruction != global {
+		t.Fatalf("stored session did not snapshot the global setting: %+v, %v", stored, err)
+	}
+}
+
 func TestCreateSessionInstructionValidation(t *testing.T) {
 	type instructionCase struct {
 		name                  string
