@@ -35,7 +35,7 @@ var layerOf = map[string]int{
 	"internal/version": 0,
 
 	// L1 領域工具：解析、計算、外部程序查詢
-	"internal/gitinfo": 1, "internal/model": 1, "internal/opener": 1,
+	"internal/fsbrowse": 1, "internal/gitinfo": 1, "internal/model": 1, "internal/opener": 1,
 	"internal/quota": 1, "internal/shell": 1, "internal/sysmon": 1,
 
 	// L2 Agent runner：實作 agent.Runner 並以 agent.Register 註冊

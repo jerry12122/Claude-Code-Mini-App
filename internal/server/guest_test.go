@@ -79,6 +79,9 @@ func newGuestEnv(t *testing.T) *guestEnv {
 	app.Delete("/shares", auth, shareH.RevokeAll)
 	app.Get("/guest/me", auth, shareH.Me)
 	app.Get("/system/stats", auth, api.NewSystemHandler(sysmon.NewSampler()).Stats)
+	fileH := api.NewFilesHandler(database)
+	app.Get("/sessions/:id/files", auth, fileH.List)
+	app.Get("/sessions/:id/files/content", auth, fileH.Content)
 	app.Post("/share/:token/join", api.JoinLimiter(), shareH.Join)
 	app.Use("/sessions/:id/ws", func(c *fiber.Ctx) error {
 		if fiberws.IsWebSocketUpgrade(c) {
@@ -217,6 +220,8 @@ func TestGuest_InvalidTokenAndOwnerRoutesForbidden(t *testing.T) {
 		{"DELETE", "/shares"},
 		{"DELETE", "/shares/1"},
 		{"GET", "/system/stats"},
+		{"GET", "/sessions/" + a.ID + "/files"},
+		{"GET", "/sessions/" + a.ID + "/files/content?path=x"},
 	} {
 		if code := e.status(tc.method, tc.path, tok); code != 403 {
 			t.Errorf("%s %s 訪客應 403，got %d", tc.method, tc.path, code)
