@@ -1,6 +1,6 @@
 # 功能計劃：檔案總管（唯讀瀏覽 work_dir）
 
-> 狀態：規劃中（尚未實作）
+> 狀態：第 1、2 節已實作並驗證（2026-11-18）；第 4 節假設待使用者確認
 > 建立日期：2026-11-18
 > 來源：`todo.md`「檔案總管功能 (瀏覽 work_dir 檔案)」原本只有一行，沒有規格；以下為 supervisor 補的最小規格，**假設都標在第 4 節，使用者可推翻**。
 > 目標：在手機上不必請 agent 幫忙，就能看某個 session 的工作目錄有哪些檔案、讀一個文字檔內容。
@@ -42,3 +42,17 @@
 
 - 瀏覽功能讓「能登入」的人讀到 `work_dir` 內所有文字檔；它的權限不超過現有的 shell 模式，但比 agent 對話更容易被快速掃過，所以受保護檔名與訪客 403 不能省。
 - Windows 路徑特性多（短檔名、保留名稱 `CON`／`NUL`、備用資料流 `file.txt:stream`），需在測試與複核中涵蓋。
+
+## 7. 實作與驗證紀錄（2026-11-18）
+
+- 實作：L1 套件 `internal/fsbrowse`（安全邊界全在此）、`internal/api/files.go`、設定於 session 選單「瀏覽檔案」的唯讀對話框。訪客不在 `guestRouteAllowed` 放行清單內，預設 403。
+- **受保護清單比規格第 2 節多**（supervisor 對抗性複核後擴充）：`.env*`、`*.pem`、`*.key`、`*.pfx`、`*.p12`、`id_rsa*`／`id_ed25519*`／`id_ecdsa*`／`id_dsa*`、`.npmrc`、`.netrc`、`.pgpass`、`.git-credentials`、`config.yaml`，皆不分大小寫、名稱與真實檔名都比對。仍未涵蓋如 `.git/config`、`credentials.json`、雲端憑證檔等，清單不可設定。
+- 執行者的重要發現：Windows 上 Go 1.23 起 `filepath.EvalSymlinks` 不再展開 junction，只靠它的前綴比對會被 junction 繞過（實驗證實會列出外部檔案）；改用 `GetFinalPathNameByHandle`。另補了一個缺口：穿過指向外部的連結時，存在回 400、不存在回 404 會變成外部檔案的存在探測，現已一律回 400。
+- supervisor 獨立複核（臨時實例，獨立埠與資料夾）：`..`、編碼與雙重編碼、反斜線、絕對路徑、`C:`、UNC、全形點、NUL、備用資料流、尾端點與空白、8.3 短名、junction、大小寫混用皆被擋；回應與錯誤不含絕對路徑；未登入 401、不存在的 session 404。
+- **已知限制**：
+  - 硬連結（hard link）指向工作目錄外的檔案時，路徑上看不出差別，可被讀取。要建立硬連結需要在工作目錄內有寫入權限，且 agent 本來就能讀該檔，所以不另擋；若要擋需比對檔案身分（link count／volume+index）。
+  - 本機 Windows 沒有建立 symlink 的權限，兩個 symlink 測試在 Windows 為 SKIP；Linux 版已交叉編譯後在 WSL 實跑通過。
+  - 含 `~` 加數字的檔名（例如 `file~1.txt`）在 Windows 被當成 8.3 短名而不顯示也不可讀（偏保守的誤擋）。
+  - 非 UTF-8 文字檔（Big5、GBK、UTF-16）一律回 415，無法預覽。
+  - 檔案瀏覽期間若有人在 work_dir 內即時換掉 symlink（TOCTOU）理論上可競賽；攻擊者需要工作目錄寫入權，而 agent 本來就能直接讀檔，不另處理。
+
