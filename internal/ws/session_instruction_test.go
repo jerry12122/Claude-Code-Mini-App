@@ -326,3 +326,43 @@ func TestHandoffInstructionOwnerOnly(t *testing.T) {
 		t.Fatal("guest filtering mutated shared handoff")
 	}
 }
+
+func TestCreateSessionGlobalInstructionBoundaries(t *testing.T) {
+	database, err := db.Open(t.TempDir() + "/global.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	put := func(g db.GlobalInstruction) {
+		t.Helper()
+		if err := database.PutGlobalInstruction(g); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	put(db.GlobalInstruction{Text: strings.Repeat("a", 10000), Mode: db.GlobalInstructionNative})
+	_, err = CreateSession(database, db.Session{Name: "long", AgentType: agent.TypeClaude, SystemInstruction: strings.Repeat("b", 10000)})
+	if !errors.Is(err, ErrInstructionTooLong) {
+		t.Fatalf("merged native instruction over the limit: %v", err)
+	}
+	// 只有原生模式會合併；聊天模式不受合併上限影響。
+	put(db.GlobalInstruction{Text: strings.Repeat("a", 10000), Mode: db.GlobalInstructionEvery})
+	if _, err := CreateSession(database, db.Session{Name: "chat", AgentType: agent.TypeClaude, SystemInstruction: strings.Repeat("b", 10000)}); err != nil {
+		t.Fatalf("chat mode must not be limited by the merged size: %v", err)
+	}
+
+	put(db.GlobalInstruction{Text: "全域", Mode: db.GlobalInstructionEvery})
+	for _, s := range []db.Session{
+		{Name: "tg", AgentType: agent.TypeTelegram},
+		{Name: "shell", AgentType: agent.TypeClaude, InputMode: "shell"},
+	} {
+		created, err := CreateSession(database, s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stored, err := database.GetSession(created.ID)
+		if err != nil || stored.GlobalInstruction.Text != "" {
+			t.Fatalf("%s stored a global instruction: %+v, %v", s.Name, stored.GlobalInstruction, err)
+		}
+	}
+}

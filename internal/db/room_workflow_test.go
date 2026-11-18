@@ -262,3 +262,17 @@ func requireRoomTestOK(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
+
+func TestCreateRoomWorkerSnapshotsGlobalInstruction(t *testing.T) {
+	d, roomID, pm, _ := roomWithWorker(t)
+	want := GlobalInstruction{Text: "全域規則", Mode: GlobalInstructionEvery}
+	requireRoomTestOK(t, d.PutGlobalInstruction(want))
+	id, err := d.CreateRoomWorker(roomID, pm, "快照工作者", "codex")
+	requireRoomTestOK(t, err)
+	requireRoomTestOK(t, d.PutGlobalInstruction(GlobalInstruction{Mode: GlobalInstructionNative}))
+	got, err := d.GetSession(id)
+	requireRoomTestOK(t, err)
+	if got.GlobalInstruction != want {
+		t.Fatalf("worker global instruction = %+v, want %+v", got.GlobalInstruction, want)
+	}
+}

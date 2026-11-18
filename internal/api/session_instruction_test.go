@@ -60,6 +60,9 @@ func TestGlobalInstructionSettingsAndCreation(t *testing.T) {
 		t.Fatalf("global prompt leaked or local prompt was overwritten: %s (%v)", body, err)
 	}
 	check("PATCH", "/sessions/"+created.ID, conflict, 400)
+	if stored, err := database.GetSession(created.ID); err != nil || len(stored.CliExtraArgs) != 0 {
+		t.Fatalf("rejected PATCH changed cli_extra_args: %+v, %v", stored, err)
+	}
 	if stored, err := database.GetSession(created.ID); err != nil || stored.GlobalInstruction != global {
 		t.Fatalf("stored session did not snapshot the global setting: %+v, %v", stored, err)
 	}
