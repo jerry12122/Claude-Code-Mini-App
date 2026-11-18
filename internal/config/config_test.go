@@ -97,3 +97,31 @@ func TestLoadBotTokenOptional(t *testing.T) {
 		})
 	}
 }
+
+func TestQuotaGuardPercentConfig(t *testing.T) {
+	tests := []struct {
+		name, yaml string
+		want       float64
+	}{
+		{"未設定預設 90", "no_auth: true\n", 90},
+		{"設 0 停用", "no_auth: true\nquota_guard_percent: 0\n", 0},
+		{"自訂門檻", "no_auth: true\nquota_guard_percent: 75\n", 75},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+			t.Chdir(t.TempDir())
+			if err := os.WriteFile("config.yaml", []byte(tt.yaml), 0600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.QuotaGuardPercent != tt.want {
+				t.Fatalf("quota_guard_percent = %v，預期 %v", cfg.QuotaGuardPercent, tt.want)
+			}
+		})
+	}
+}

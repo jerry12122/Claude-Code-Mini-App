@@ -558,7 +558,7 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 	app.Get("/logs/ws", authMiddleware, fiberws.New(guardedSocket(ws.NewLogStreamHandler())))
 	app.Get("/logs/level", authMiddleware, api.GetLogLevel)
 	app.Put("/logs/level", authMiddleware, api.PutLogLevel)
-	app.Get("/sessions/:id/ws", authMiddleware, fiberws.New(guardedSocket(ws.NewHandler(database, cfg.BotToken, shellOpts, quotaSvc, notifyCfg))))
+	app.Get("/sessions/:id/ws", authMiddleware, fiberws.New(guardedSocket(ws.NewHandler(database, cfg.BotToken, shellOpts, quotaSvc, notifyCfg, ws.WithQuotaGuardPercent(cfg.QuotaGuardPercent)))))
 
 	if cfg.McpToken != "" {
 		header := http.Header{"Authorization": {"Bearer " + cfg.McpToken}}
