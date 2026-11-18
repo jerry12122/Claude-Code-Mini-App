@@ -680,17 +680,9 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 			permCleanup := func() {}
 			if isClaude {
 				if _, _, ok := claudePermMCP(); ok {
-					var roomURL, roomToken string
-					if ho.roomBridge != nil {
-						roomURL, roomToken = ho.roomBridge(sessionID)
-					}
-					if cfgPath, rmCfg, err := writePermMCPConfig(sessionID, roomURL, roomToken); err != nil {
+					if cfgPath, rmCfg, err := ho.writeClaudeMCPConfig(sessionID, extra); err != nil {
 						slog.Info(fmt.Sprintf("[ws] perm mcp 設定檔建立失敗，略過權限詢問: %v", err))
 					} else {
-						if roomURL != "" {
-							extra[agent.ArgAllowedTools] = strings.Trim(strings.Join([]string{extra[agent.ArgAllowedTools],
-								"mcp__miniapp_room__get_board,mcp__miniapp_room__get_history,mcp__miniapp_room__save_memo,mcp__miniapp_room__create_worker,mcp__miniapp_room__dispatch,mcp__miniapp_room__rename_session"}, ","), ",")
-						}
 						askQuestion := func(rctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 							q, err := newQuestion(input)
 							if err != nil {

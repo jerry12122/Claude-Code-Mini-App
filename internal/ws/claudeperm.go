@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/agent"
@@ -31,6 +32,20 @@ func claudePermMCP() (url, token string, ok bool) {
 	claudePermCfg.mu.Lock()
 	defer claudePermCfg.mu.Unlock()
 	return claudePermCfg.url, claudePermCfg.token, claudePermCfg.url != "" && claudePermCfg.token != ""
+}
+
+func (o handlerOptions) writeClaudeMCPConfig(sessionID string, args map[string]string) (string, func(), error) {
+	var roomURL, roomToken string
+	if o.roomBridge != nil {
+		roomURL, roomToken = o.roomBridge(sessionID)
+	}
+	path, cleanup, err := writePermMCPConfig(sessionID, roomURL, roomToken)
+	if err == nil && roomURL != "" {
+		const roomTools = "mcp__miniapp_room__get_board,mcp__miniapp_room__get_history,mcp__miniapp_room__get_quota," +
+			"mcp__miniapp_room__save_memo,mcp__miniapp_room__create_worker,mcp__miniapp_room__dispatch,mcp__miniapp_room__rename_session"
+		args[agent.ArgAllowedTools] = strings.Trim(args[agent.ArgAllowedTools]+","+roomTools, ",")
+	}
+	return path, cleanup, err
 }
 
 // writePermMCPConfig 把 --mcp-config 內容寫成暫存檔（0600）再傳路徑：token 不進 argv，也就不進 log 與行程列表。

@@ -10,6 +10,7 @@ import (
 
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/agent"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/quota"
 	gomcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -40,9 +41,9 @@ type roomLookup struct {
 	RoomID string `json:"room_id,omitempty"`
 }
 
-func NewRoomHTTPHandler(database *db.DB) http.Handler {
+func NewRoomHTTPHandler(database *db.DB, quotaSvc *quota.Service) http.Handler {
 	s := gomcp.NewServer(&gomcp.Implementation{Name: "miniapp-room", Version: "1.0.0"}, nil)
-	registerRoomTools(s, database, "", func(req *gomcp.CallToolRequest, requested string) (string, string, error) {
+	scope := func(req *gomcp.CallToolRequest, requested string) (string, string, error) {
 		extra := req.GetExtra()
 		if extra == nil {
 			return "", "", db.ErrRoomPM
@@ -53,6 +54,14 @@ func NewRoomHTTPHandler(database *db.DB) http.Handler {
 			return "", "", db.ErrRoomPM
 		}
 		return room, pm, err
+	}
+	registerRoomTools(s, database, "", scope)
+	d := deps{quota: quotaSvc}
+	gomcp.AddTool(s, &gomcp.Tool{Name: "get_quota", Description: "讀取 provider 用量快取，可在派工前查閱"}, func(ctx context.Context, req *gomcp.CallToolRequest, in getQuotaIn) (*gomcp.CallToolResult, getQuotaOut, error) {
+		if _, _, err := scope(req, ""); err != nil {
+			return nil, getQuotaOut{}, err
+		}
+		return d.getQuota(ctx, req, in)
 	})
 	return gomcp.NewStreamableHTTPHandler(func(*http.Request) *gomcp.Server { return s }, &gomcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 }

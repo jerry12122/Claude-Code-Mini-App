@@ -521,16 +521,8 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 	filesH := api.NewFilesHandler(database)
 	app.Get("/sessions/:id/files", authMiddleware, filesH.List)
 	app.Get("/sessions/:id/files/content", authMiddleware, filesH.Content)
-	roomsH := api.NewRoomsHandler(database, quotaSvc)
-	app.Get("/rooms", authMiddleware, roomsH.List)
-	app.Post("/rooms", authMiddleware, roomsH.Create)
-	app.Get("/rooms/:id", authMiddleware, roomsH.Get)
-	app.Put("/rooms/:id", authMiddleware, roomsH.Update)
-	app.Delete("/rooms/:id", authMiddleware, roomsH.Delete)
-	app.Get("/rooms/:id/timeline", authMiddleware, roomsH.Timeline)
-	app.Get("/rooms/:id/board", authMiddleware, roomsH.Board)
-	app.Put("/rooms/:id/board", authMiddleware, roomsH.SaveMemo)
-	app.Post("/rooms/:id/messages", authMiddleware, roomsH.SendToPM)
+	roomRuntime := newRoomRuntime(database, cfg.Server.Port)
+	roomRuntime.registerRoutes(app, authMiddleware, quotaSvc)
 
 	tgMgr := tgclient.NewManager(cfg.TelegramClient, database)
 	_ = tgMgr.Start(ctx)
@@ -574,10 +566,8 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 	app.Get("/logs/ws", authMiddleware, fiberws.New(guardedSocket(ws.NewLogStreamHandler())))
 	app.Get("/logs/level", authMiddleware, api.GetLogLevel)
 	app.Put("/logs/level", authMiddleware, api.PutLogLevel)
-	roomRuntime := newRoomRuntime(database, cfg.Server.Port)
 	app.Get("/sessions/:id/ws", roomRuntime.wsAuth(authMiddleware), fiberws.New(guardedSocket(ws.NewHandler(database, cfg.BotToken, shellOpts, quotaSvc, notifyCfg,
 		ws.WithQuotaGuardPercent(cfg.QuotaGuardPercent), ws.WithRoomBridge(roomRuntime.bridge)))))
-	app.Post("/mcp/room", roomRuntime.mcpAuth, adaptor.HTTPHandler(mymcp.NewRoomHTTPHandler(database)))
 
 	if cfg.McpToken != "" {
 		header := http.Header{"Authorization": {"Bearer " + cfg.McpToken}}
@@ -618,15 +608,7 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 		done: make(chan struct{}),
 	}
 	go func() {
-		watchCtx, stop := context.WithCancel(ctx)
-		watchDone := make(chan struct{})
-		go func() {
-			defer close(watchDone)
-			roomRuntime.watch(watchCtx)
-		}()
-		err := app.Listener(ln)
-		stop()
-		<-watchDone
+		err := roomRuntime.listen(ctx, app, ln)
 		_ = database.Close()
 		s.finish(err)
 	}()

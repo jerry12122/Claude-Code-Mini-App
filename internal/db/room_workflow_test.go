@@ -2,6 +2,7 @@ package db
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -151,5 +152,113 @@ func TestRoomHandoffPreservesMemoAttachmentsAndReports(t *testing.T) {
 	if report.Sender != "前端" || report.Recipient != "新 PM" || request.Sender != "舊 PM" ||
 		request.Recipient != "前端" || oldReply.Recipient != "工作室" || !attachment.Mine || len(attachment.Attachments) != 1 {
 		t.Fatalf("wrong routes or missing attachment: %+v", page.Items)
+	}
+}
+
+func TestRoomJobRepliesStayInAssignedRoom(t *testing.T) {
+	d, roomID, pm, worker := roomWithWorker(t)
+	otherPM := roomSession(t, d, "另一位 PM", "claude")
+	other, err := d.CreateRoom("另一間", []RoomMember{{SessionID: otherPM.ID, Role: RoomRolePM}, {SessionID: worker, Role: RoomRoleWorker}})
+	requireRoomTestOK(t, err)
+
+	_, err = d.DispatchRoomJob(roomID, pm, worker, "這間的派工")
+	requireRoomTestOK(t, err)
+	reply := bindQueuedRoomTestJob(t, d, worker)
+	requireRoomTestOK(t, d.AppendMessageContent(reply, "部分結果"))
+	requireRoomTestOK(t, d.FinalizeMessage(reply))
+	retry, err := d.CreatePendingMessage(worker)
+	requireRoomTestOK(t, err)
+	requireRoomTestOK(t, d.BindRoomJob(worker, 0, retry))
+	requireRoomTestOK(t, d.AppendMessageContent(retry, "完整結果"))
+	requireRoomTestOK(t, d.AddMessage(worker, "user", "一般會話輸入", ""))
+	requireRoomTestOK(t, d.AddMessage(worker, "claude", "一般會話回覆", ""))
+
+	original, err := d.RoomTimeline(roomID, nil, 20)
+	requireRoomTestOK(t, err)
+	if len(original.Items) != 5 {
+		t.Fatalf("assigned room timeline = %+v", original.Items)
+	}
+	assertOtherRoom := func() {
+		t.Helper()
+		page, err := d.RoomTimeline(other.ID, nil, 20)
+		requireRoomTestOK(t, err)
+		if len(page.Items) != 2 || page.Items[0].Content != "一般會話回覆" || page.Items[1].Content != "一般會話輸入" {
+			t.Fatalf("other room timeline = %+v", page.Items)
+		}
+	}
+	assertOtherRoom()
+	requireRoomTestOK(t, d.DeleteRoom(roomID))
+	assertOtherRoom()
+}
+
+func TestRoomMonitorRecoversOrphanedJobAndReportsOnce(t *testing.T) {
+	d, roomID, pm, worker := roomWithWorker(t)
+	first, err := d.DispatchRoomJob(roomID, pm, worker, "等授權的派工")
+	requireRoomTestOK(t, err)
+	_, err = d.Exec("UPDATE room_jobs SET created_at = datetime('now', '-1 hour') WHERE id = ?", first)
+	requireRoomTestOK(t, err)
+	queued, err := d.ListQueuedMessages(worker)
+	requireRoomTestOK(t, err)
+	input, err := d.PromoteQueuedMessage(worker, queued[0])
+	requireRoomTestOK(t, err)
+	requireRoomTestOK(t, d.DeliverRoomReports())
+	reply, err := d.CreatePendingMessage(worker)
+	requireRoomTestOK(t, err)
+	requireRoomTestOK(t, d.BindRoomJob(worker, input.ID, reply))
+	requireRoomTestOK(t, d.UpdateSessionStatus(worker, SessionStatusAwaitingConfirm))
+	requireRoomTestOK(t, d.DeliverRoomReports())
+	board, err := d.RoomBoard(roomID)
+	requireRoomTestOK(t, err)
+	if board.Jobs[0].Status != "blocked" {
+		t.Fatalf("live approval should stay open: %+v", board)
+	}
+
+	// 模擬舊版重設只清會話的資料，留下未結束的派工。
+	requireRoomTestOK(t, d.ClearMessages(worker))
+	requireRoomTestOK(t, d.UpdateSessionStatus(worker, SessionStatusIdle))
+	requireRoomTestOK(t, d.DeliverRoomReports())
+	requireRoomTestOK(t, d.DeliverRoomReports())
+	second, err := d.DispatchRoomJob(roomID, pm, worker, "下一個派工")
+	requireRoomTestOK(t, err)
+	requireRoomTestOK(t, d.FinishRoomJob(worker, reply, "done"))
+	board, err = d.RoomBoard(roomID)
+	requireRoomTestOK(t, err)
+	if len(board.Jobs) != 2 || board.Jobs[0].ID != second || board.Jobs[0].Status != "queued" ||
+		board.Jobs[1].ID != first || board.Jobs[1].Status != "interrupted" {
+		t.Fatalf("unexpected recovery board: %+v", board)
+	}
+	queue, err := d.ListQueuedMessages(pm)
+	requireRoomTestOK(t, err)
+	if len(queue) != 1 || !strings.Contains(queue[0].Content, "已中斷") {
+		t.Fatalf("PM report queue = %+v", queue)
+	}
+}
+
+func roomWithWorker(t *testing.T) (*DB, string, string, string) {
+	t.Helper()
+	d := roomTestDB(t)
+	pm := roomSession(t, d, "PM", "claude")
+	worker := roomSession(t, d, "執行者", "claude")
+	room, err := d.CreateRoom("工作室", []RoomMember{{SessionID: pm.ID, Role: RoomRolePM}, {SessionID: worker.ID, Role: RoomRoleWorker}})
+	requireRoomTestOK(t, err)
+	return d, room.ID, pm.ID, worker.ID
+}
+
+func bindQueuedRoomTestJob(t *testing.T, d *DB, worker string) int64 {
+	t.Helper()
+	queue, err := d.ListQueuedMessages(worker)
+	requireRoomTestOK(t, err)
+	input, err := d.PromoteQueuedMessage(worker, queue[0])
+	requireRoomTestOK(t, err)
+	reply, err := d.CreatePendingMessage(worker)
+	requireRoomTestOK(t, err)
+	requireRoomTestOK(t, d.BindRoomJob(worker, input.ID, reply))
+	return reply
+}
+
+func requireRoomTestOK(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
 	}
 }

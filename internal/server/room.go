@@ -10,13 +10,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
 	"github.com/fasthttp/websocket"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/adaptor"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/api"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
 	mymcp "github.com/jerry12122/Claude-Code-Mini-App/internal/mcp"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/quota"
 )
 
 const roomWakeHeader = "X-Miniapp-Room-Wake"
@@ -30,6 +34,34 @@ type roomRuntime struct {
 
 func newRoomRuntime(database *db.DB, port int) roomRuntime {
 	return roomRuntime{db: database, address: fmt.Sprintf("127.0.0.1:%d", port), wakeToken: rand.Text(), toolKey: rand.Text()}
+}
+
+func (r roomRuntime) registerRoutes(app *fiber.App, auth fiber.Handler, quotaSvc *quota.Service) {
+	h := api.NewRoomsHandler(r.db, quotaSvc)
+	app.Get("/rooms", auth, h.List)
+	app.Post("/rooms", auth, h.Create)
+	app.Get("/rooms/:id", auth, h.Get)
+	app.Put("/rooms/:id", auth, h.Update)
+	app.Delete("/rooms/:id", auth, h.Delete)
+	app.Get("/rooms/:id/timeline", auth, h.Timeline)
+	app.Get("/rooms/:id/board", auth, h.Board)
+	app.Put("/rooms/:id/board", auth, h.SaveMemo)
+	app.Post("/rooms/:id/messages", auth, h.SendToPM)
+	app.Post("/mcp/room", r.mcpAuth, adaptor.HTTPHandler(mymcp.NewRoomHTTPHandler(r.db, quotaSvc)))
+}
+
+func (r roomRuntime) listen(ctx context.Context, app *fiber.App, ln net.Listener) error {
+	watchCtx, stop := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		r.watch(watchCtx)
+	}()
+	defer func() {
+		stop()
+		<-done
+	}()
+	return app.Listener(ln)
 }
 
 func (r roomRuntime) pmToken(roomID, sessionID string) string {

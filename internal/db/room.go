@@ -87,6 +87,7 @@ func (db *DB) migrateRooms() error {
 		);
 		CREATE UNIQUE INDEX IF NOT EXISTS idx_room_jobs_active_worker ON room_jobs(worker_id) WHERE outcome = '';
 		CREATE INDEX IF NOT EXISTS idx_room_jobs_room ON room_jobs(room_id, id);
+		CREATE INDEX IF NOT EXISTS idx_room_jobs_reply ON room_jobs(assistant_id) WHERE assistant_id > 0;
 	`)
 	return err
 }

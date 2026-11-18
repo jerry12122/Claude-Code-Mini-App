@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -141,5 +142,28 @@ func TestWritePermMCPConfig(t *testing.T) {
 	SetClaudePermMCP("", "")
 	if _, _, err := writePermMCPConfig("x"); err == nil {
 		t.Error("未設定 mcp_token 時不應建立設定檔")
+	}
+}
+
+func TestClaudeRoomBridgeAllowsQuotaOnlyForPM(t *testing.T) {
+	SetClaudePermMCP("http://127.0.0.1:1/mcp/perm", "test-perm")
+	t.Cleanup(func() { SetClaudePermMCP("", "") })
+	opts := handlerOptions{roomBridge: func(sessionID string) (string, string) {
+		if sessionID == "pm" {
+			return "http://127.0.0.1:1/mcp/room", "test-room"
+		}
+		return "", ""
+	}}
+	for _, sessionID := range []string{"pm", "worker"} {
+		args := map[string]string{agent.ArgAllowedTools: "Read"}
+		_, clean, err := opts.writeClaudeMCPConfig(sessionID, args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(clean)
+		tools := strings.Split(args[agent.ArgAllowedTools], ",")
+		if tools[0] != "Read" || slices.Contains(tools, "mcp__miniapp_room__get_quota") != (sessionID == "pm") {
+			t.Fatalf("%s tools = %v", sessionID, tools)
+		}
 	}
 }

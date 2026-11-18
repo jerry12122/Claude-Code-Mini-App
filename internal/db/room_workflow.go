@@ -205,7 +205,7 @@ func (db *DB) RecoverRoomJobs() error {
 	return err
 }
 
-// DeliverRoomReports atomically queues each report once for the room's current PM.
+// DeliverRoomReports 修復失去佇列或回覆的派工，並把每份回報原子送入目前 PM 的佇列。
 func (db *DB) DeliverRoomReports() error {
 	var pending bool
 	if err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM room_jobs WHERE outcome = '' OR reported = 0)").Scan(&pending); err != nil || !pending {
@@ -222,10 +222,15 @@ func (db *DB) DeliverRoomReports() error {
 		FROM sessions s WHERE s.id = j.worker_id), '') WHERE j.outcome = ''`); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`UPDATE room_jobs SET outcome = 'interrupted'
- WHERE outcome = '' AND (NOT EXISTS (SELECT 1 FROM sessions WHERE id = worker_id)
-  OR (assistant_id = 0 AND created_at < datetime('now', '-10 seconds')
-  AND NOT EXISTS (SELECT 1 FROM queued_messages WHERE session_id = worker_id AND author = 'room-job:' || room_jobs.id)))`); err != nil {
+	// 排隊很久的派工一樣需要留時間讓出列的訊息綁上回覆。
+	if _, err := tx.Exec(`UPDATE room_jobs AS j SET outcome = 'interrupted'
+ WHERE j.outcome = '' AND (NOT EXISTS (SELECT 1 FROM sessions WHERE id = j.worker_id)
+  OR (j.assistant_id > 0 AND NOT EXISTS (
+   SELECT 1 FROM messages WHERE id = j.assistant_id AND session_id = j.worker_id))
+  OR (j.assistant_id = 0 AND j.created_at < datetime('now', '-10 seconds')
+   AND NOT EXISTS (SELECT 1 FROM queued_messages WHERE session_id = j.worker_id AND author = 'room-job:' || j.id)
+   AND NOT EXISTS (SELECT 1 FROM messages WHERE session_id = j.worker_id AND role = 'user'
+    AND author = 'room-job:' || j.id AND created_at >= datetime('now', '-10 seconds'))))`); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`INSERT INTO queued_messages(session_id, content, author)

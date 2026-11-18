@@ -66,9 +66,11 @@ func (db *DB) RoomTimeline(roomID string, before *RoomCursor, limit int) (*RoomT
 		LEFT JOIN messages input ON m.role = 'claude' AND input.id = (
 			SELECT last.id FROM messages last WHERE last.session_id = m.session_id AND last.id < m.id AND last.role = 'user'
 			ORDER BY last.id DESC LIMIT 1)
+		LEFT JOIN room_jobs reply ON reply.assistant_id = m.id AND reply.assistant_id > 0 AND reply.worker_id = m.session_id
 		LEFT JOIN room_jobs job ON job.id = CASE
 			WHEN m.author LIKE 'room-job:%' THEN CAST(substr(m.author, 10) AS INTEGER)
 			WHEN m.author LIKE 'room-report:%' THEN CAST(substr(m.content, 5) AS INTEGER)
+			WHEN input.author LIKE 'room-job:%' THEN CAST(substr(input.author, 10) AS INTEGER)
 		END
 		LEFT JOIN sessions pm ON pm.id = job.pm_id
 		LEFT JOIN sessions worker ON worker.id = job.worker_id
@@ -79,7 +81,9 @@ func (db *DB) RoomTimeline(roomID string, before *RoomCursor, limit int) (*RoomT
 		  AND (m.author NOT LIKE 'room-report:%' OR m.author = 'room-report:' || rm.room_id)
 		  AND (COALESCE(input.author, '') NOT LIKE 'room-user:%' OR input.author = 'room-user:' || rm.room_id)
 		  AND (COALESCE(input.author, '') NOT LIKE 'room-report:%' OR input.author = 'room-report:' || rm.room_id)
-		  AND (m.author NOT LIKE 'room-job:%' OR job.room_id = rm.room_id)`
+		  AND (m.author NOT LIKE 'room-job:%' OR job.room_id = rm.room_id)
+		  AND (reply.id IS NULL OR reply.room_id = rm.room_id)
+		  AND (reply.id IS NOT NULL OR COALESCE(input.author, '') NOT LIKE 'room-job:%' OR job.room_id = rm.room_id)`
 	args := []any{roomID}
 	if before != nil {
 		q += ` AND (m.created_at < ? OR (m.created_at = ? AND m.id < ?))`
