@@ -40,6 +40,16 @@ func (db *DB) InputAccepted(sessionID, actor, requestID, content, author string,
 // AcceptInput atomically records acceptance and queues the work. A crash between
 // commit and acknowledgement leaves one recoverable queue item, never a receipt alone.
 func (db *DB) AcceptInput(sessionID, actor, requestID, content, author string, ids []string) (duplicate bool, err error) {
+	return db.acceptInput(sessionID, actor, requestID, content, author, ids, "")
+}
+
+func (db *DB) AcceptRoomInput(roomID, pmID, requestID, content string, ids []string) error {
+	author := RoomUserAuthorPrefix + roomID
+	_, err := db.acceptInput(pmID, author, requestID, content, author, ids, roomID)
+	return err
+}
+
+func (db *DB) acceptInput(sessionID, actor, requestID, content, author string, ids []string, roomID string) (duplicate bool, err error) {
 	if requestID == "" || len(requestID) > 128 {
 		return false, fmt.Errorf("訊息 ID 必須介於 1 到 128 bytes")
 	}
@@ -52,9 +62,14 @@ func (db *DB) AcceptInput(sessionID, actor, requestID, content, author string, i
 	}
 	defer tx.Rollback()
 	digest := inputDigest(content, author, ids)
-	res, err := tx.Exec(`INSERT INTO input_receipts (session_id, actor, request_id, digest)
-		SELECT id, ?, ?, ? FROM sessions WHERE id = ?
-		ON CONFLICT(session_id, actor, request_id) DO NOTHING`, actor, requestID, digest, sessionID)
+	query := `INSERT INTO input_receipts (session_id, actor, request_id, digest)
+		SELECT id, ?, ?, ? FROM sessions WHERE id = ?`
+	args := []any{actor, requestID, digest, sessionID}
+	if roomID != "" {
+		query += " AND id IN (SELECT session_id FROM (" + roomPMQuery + ") WHERE room_id = ?)"
+		args = append(args, roomID)
+	}
+	res, err := tx.Exec(query+` ON CONFLICT(session_id, actor, request_id) DO NOTHING`, args...)
 	if err != nil {
 		return false, err
 	}
@@ -65,6 +80,9 @@ func (db *DB) AcceptInput(sessionID, actor, requestID, content, author string, i
 	if n == 0 {
 		var previous string
 		if err := tx.QueryRow(`SELECT digest FROM input_receipts WHERE session_id = ? AND actor = ? AND request_id = ?`, sessionID, actor, requestID).Scan(&previous); err != nil {
+			if roomID != "" && errors.Is(err, sql.ErrNoRows) {
+				return false, ErrRoomPM
+			}
 			return false, err
 		}
 		if previous != digest {

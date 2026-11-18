@@ -148,7 +148,7 @@ func (db *DB) DeleteSession(id string) error {
 	if _, err := db.Exec(`DELETE FROM attachments WHERE session_id = ?`, id); err != nil {
 		return err
 	}
-	// 工作室只是檢視：session 沒了就退出所屬工作室，工作室本身保留。
+	// session 刪除後退出所屬工作室，工作室本身保留。
 	if _, err := db.Exec(`DELETE FROM room_members WHERE session_id = ?`, id); err != nil {
 		return err
 	}

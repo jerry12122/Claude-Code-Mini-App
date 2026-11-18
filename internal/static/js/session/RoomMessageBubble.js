@@ -1,6 +1,4 @@
-/** 工作室時間軸的一則唯讀氣泡。user／assistant／system 三種外觀：
- *  user＝框起來的氣泡、assistant＝agent 頭像＋文件流正文、system＝置中的淡色提示。
- *  安全：只有 assistant 訊息走 parseMarkdown（內建 DOMPurify 消毒）；user 與 system 一律是 React 文字節點。 */
+/** 以發訊者與收件者呈現工作室訊息。助理正文沿用已消毒的 Markdown。 */
 
 // dangerouslySetInnerHTML 插入的 DOM 沒有 React 事件：用事件委派處理程式碼區塊的複製鍵（同 ChatView 的作法）。
 function roomProseClick(e) {
@@ -12,57 +10,70 @@ function roomProseClick(e) {
   copyText(text).then((ok) => showToast(ok ? '已複製程式碼' : '複製失敗', ok ? undefined : { error: true }));
 }
 
-const RoomMessageBubble = React.memo(function RoomMessageBubble({ m }) {
+function RoomMessageBody({ text, pending, children }) {
+  if (pending || (text.length <= 500 && text.split('\n', 9).length < 9)) return children;
+  const preview = Array.from(text.trimStart().slice(0, 240).replace(/\s+/gu, ' ')).slice(0, 120).join('');
+  return (
+    <details className="room-wrap text-sm">
+      <summary className="cursor-pointer py-1">
+        <span className="text-xs font-semibold">展開全文</span>
+        <span className="mt-1 block text-sm leading-relaxed">{preview}…</span>
+      </summary>
+      <div className="mt-2 pt-1">
+        <button type="button" className="mb-1 min-h-9 rounded-md px-2 text-xs font-semibold underline-offset-4 hover:underline"
+          onClick={() => copyText(text).then((ok) => showToast(ok ? '已複製全文' : '複製失敗', ok ? undefined : { error: true }))}>複製全文</button>
+        {children}
+      </div>
+    </details>
+  );
+}
+
+const RoomMessageBubble = React.memo(function RoomMessageBubble({ m, onPreview }) {
   const meta = roomMessageMeta(m);
   const html = useMemo(
     () => (meta.side === 'assistant' && m.text ? parseMarkdown(m.text, { streaming: meta.pending }) : null),
     [m.text, meta.side, meta.pending]
   );
-  const source = (
-    <span className="flex min-w-0 items-center gap-1.5 text-[11px] text-ra-t4">
-      <span className="min-w-0 truncate font-semibold text-ra-t3" title={meta.sourceName}>{meta.sourceName}</span>
-      <span className="shrink-0">· {meta.agentLabel}</span>
-      {meta.memberRoleLabel ? <span className="shrink-0 rounded bg-ra-raised px-1 text-[10px] text-ra-t3">{meta.memberRoleLabel}</span> : null}
-      {meta.time ? <time className="ml-auto shrink-0 text-ra-t5" dateTime={m.created_at}>{meta.time}</time> : null}
-    </span>
-  );
-
-  if (meta.side === 'system') {
+  const side = meta.side === 'system' ? 'center' : meta.mine ? 'right' : 'left';
+  if (side === 'center') {
     return (
-      <div className="flex justify-center" data-room-msg-id={m.id} data-side="system">
-        <div className="max-w-[92%] min-w-0 rounded-lg border border-dashed border-ra-line bg-ra-card px-3 py-1.5">
-          {source}
-          <div className="mt-0.5 whitespace-pre-wrap break-words text-xs text-ra-t3"><span className="font-semibold text-amber-300/90">{meta.roleLabel}</span>　{m.text}</div>
-        </div>
-      </div>
-    );
-  }
-  if (meta.side === 'user') {
-    return (
-      <div className="flex" data-room-msg-id={m.id} data-side="user">
-        <div className="w-fit max-w-full min-w-0 rounded-xl border border-violet-500/30 bg-violet-500/10 px-3 py-2">
-          {source}
-          <div className="mt-1 whitespace-pre-wrap break-words text-sm leading-[1.7] text-ra-t1"><span className="mr-1.5 text-[11px] font-semibold text-violet-300">{meta.roleLabel}</span>{m.text}</div>
-        </div>
+      <div className="flex justify-center" data-room-msg-id={m.id} data-side={meta.side} data-align={side}>
+        <div className="room-message room-wrap rounded-lg bg-ra-sunken px-3 py-1.5 text-center text-xs text-ra-t4">{m.text}</div>
       </div>
     );
   }
   return (
-    <div className="flex flex-col gap-1.5 min-w-0" data-room-msg-id={m.id} data-side="assistant">
-      <div className="flex items-center gap-2 min-w-0">
-        <span className={`inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md ${getAgentBadgeClass(m.agent_type)}`} aria-hidden="true">
+    <article className={'flex min-w-0 ' + (meta.mine ? 'justify-end' : 'justify-start')}
+      data-room-msg-id={m.id} data-side={meta.side} data-align={side}>
+      {!meta.mine && meta.side === 'assistant' ? (
+        <span className={'mr-2 inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md ' + getAgentBadgeClass(m.agent_type)} aria-hidden="true">
           <AgentBadgeIcon agentType={m.agent_type} />
         </span>
-        <span className="shrink-0 text-[13px] font-bold text-ra-t2">{meta.roleLabel}</span>
-        <div className="min-w-0 flex-1">{source}</div>
-      </div>
-      {html ? (
-        <div className="prose text-ra-t2 text-sm leading-[1.8] min-w-0 pl-[30px]" onClick={roomProseClick} dangerouslySetInnerHTML={{ __html: html }} />
-      ) : meta.pending ? (
-        <div className="flex gap-1 py-1 pl-[30px]" aria-label="串流中"><span className="dot" /><span className="dot" /><span className="dot" /></div>
       ) : null}
-      {meta.pending && html ? <span className="streaming-tail pl-[30px] select-none" aria-hidden="true">...</span> : null}
-      {meta.interrupted ? <div className="pl-[30px] text-[11px] text-amber-400">已中斷</div> : null}
-    </div>
+      <div className="room-message min-w-0">
+        <header className={'mb-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 ' + (meta.mine ? 'justify-end' : '')}>
+          <strong className="room-wrap text-base font-bold leading-snug text-ra-t1">{meta.sender}</strong>
+          {meta.recipient ? <span className="room-wrap text-xs leading-snug text-ra-t3">
+            <span aria-hidden="true">→ </span><span className="sr-only">傳給 </span>{meta.recipient}
+          </span> : null}
+          {meta.time ? <time className="ra-msg-time shrink-0 tabular-nums text-ra-t4" dateTime={m.created_at}>{meta.time}</time> : null}
+        </header>
+        <div className={'min-w-0 ' + (meta.mine
+          ? 'bubble-user px-4 py-2.5'
+          : meta.side === 'assistant' ? 'text-ra-t2' : 'rounded-lg border border-ra-line-soft bg-ra-card px-3 py-2.5 text-sm text-ra-t2')}>
+          {m.text ? <RoomMessageBody text={m.text} pending={meta.pending}>
+            {html ? (
+              <div className="room-wrap prose text-ra-t2 text-sm leading-[1.7]" onClick={roomProseClick} dangerouslySetInnerHTML={{ __html: html }} />
+            ) : (
+              <div className="room-wrap whitespace-pre-wrap leading-relaxed">{m.text}</div>
+            )}
+          </RoomMessageBody> : null}
+          {m.attachments?.length ? <div className={m.text ? 'mt-2' : ''}><MessageAttachments items={m.attachments} onPreview={onPreview} /></div> : null}
+          {meta.pending && !html ? <div className="flex gap-1 py-1" aria-label="串流中"><span className="dot" /><span className="dot" /><span className="dot" /></div> : null}
+          {meta.pending && html ? <span className="streaming-tail select-none" aria-hidden="true">...</span> : null}
+          {meta.interrupted ? <div className="text-[11px] text-amber-400">已中斷</div> : null}
+        </div>
+      </div>
+    </article>
   );
 });

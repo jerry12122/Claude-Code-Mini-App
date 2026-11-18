@@ -11,6 +11,9 @@ function RoomFormModal({ room, sessions, onClose, onSaved }) {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const picked = new Map(form.members.map((m) => [m.session_id, m.role]));
+  const previousPM = room?.members.find((m) => m.role === 'pm');
+  const nextPM = form.members.find((m) => m.role === 'pm');
+  const handoff = previousPM && nextPM && previousPM.session_id !== nextPM.session_id;
 
   useLayoutEffect(() => {
     const dialog = dialogRef.current;
@@ -22,12 +25,13 @@ function RoomFormModal({ room, sessions, onClose, onSaved }) {
     e.preventDefault();
     const bad = roomFormError(form);
     if (bad) { setError(bad); return; }
+    if (!nextPM) { setError('請指定一位 PM'); return; }
     setSaving(true); setError('');
     try {
       const res = await apiFetch(room ? roomUrl(room.id) : roomsUrl(), {
         method: room ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(roomFormBody(form)),
+        body: JSON.stringify({ ...roomFormBody(form), previous_pm_id: room ? previousPM?.session_id || '' : undefined }),
       });
       if (!res.ok) { setError(await readApiError(res, room ? '儲存工作室失敗' : '建立工作室失敗')); setSaving(false); return; }
       const saved = await res.json();
@@ -68,7 +72,7 @@ function RoomFormModal({ room, sessions, onClose, onSaved }) {
             className="mt-1 w-full rounded-lg border border-ra-line bg-ra-card px-3 py-2 text-sm text-ra-t1 focus:border-violet-500 focus:outline-none" />
           <fieldset className="mt-4 min-w-0">
             <legend className="text-xs font-semibold text-ra-t3">成員（已選 {form.members.length}）</legend>
-            <p className="mt-0.5 text-[11px] text-ra-t4">工作室只是唯讀的合併視圖，勾選不會改動 session 本身。</p>
+            <p className="mt-0.5 text-xs text-ra-t4">每個工作室有一位 PM。選另一位 PM 即可交接，原 PM 會改為執行者。</p>
             {sessions.length === 0 ? <div className="py-4 text-center text-xs text-ra-t4">目前沒有 session 可選</div> : (
               <ul className="mt-2 space-y-1">
                 {sessions.map((s) => {
@@ -77,7 +81,7 @@ function RoomFormModal({ room, sessions, onClose, onSaved }) {
                   return (
                     <li key={s.id} className={'flex items-center gap-2 rounded-lg border px-2 py-1.5 ' + (on ? 'border-violet-500/40 bg-violet-500/10' : 'border-ra-line-soft')}>
                       <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
-                        <input type="checkbox" checked={on} className="h-4 w-4 shrink-0 accent-violet-500"
+                        <input type="checkbox" checked={on} disabled={s.id === previousPM?.session_id} className="h-4 w-4 shrink-0 accent-violet-500"
                           onChange={() => setForm((f) => ({ ...f, members: roomFormToggle(f.members, s.id) }))} />
                         <span className={`inline-flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded ${getAgentBadgeClass(s.agent_type, s)}`} aria-hidden="true">
                           <AgentBadgeIcon agentType={s.agent_type} session={s} />
@@ -88,7 +92,7 @@ function RoomFormModal({ room, sessions, onClose, onSaved }) {
                         <select aria-label={`${s.name || '未命名'} 的角色`} value={role}
                           onChange={(e) => setForm((f) => ({ ...f, members: roomFormSetRole(f.members, s.id, e.target.value) }))}
                           className="shrink-0 rounded-md border border-ra-line bg-ra-card px-1.5 py-1 text-xs text-ra-t1">
-                          <option value="pm">{ROOM_ROLE_LABEL.pm}</option>
+                          <option value="pm" disabled={s.agent_type === 'telegram' || s.input_mode === 'shell'}>{ROOM_ROLE_LABEL.pm}</option>
                           <option value="worker">{ROOM_ROLE_LABEL.worker}</option>
                         </select>
                       ) : null}
@@ -106,7 +110,7 @@ function RoomFormModal({ room, sessions, onClose, onSaved }) {
               className="rounded-lg px-3 py-2 text-sm text-ra-t3 hover:bg-ra-raised">取消</button>
             <button type="submit" disabled={saving}
               className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-60">
-              {saving ? '儲存中…' : (room ? '儲存' : '建立')}
+              {saving ? '儲存中…' : (handoff ? '交接 PM 並儲存' : room ? '儲存' : '建立')}
             </button>
           </div>
         </footer>

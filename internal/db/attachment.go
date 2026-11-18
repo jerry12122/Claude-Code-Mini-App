@@ -2,9 +2,12 @@ package db
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 )
+
+var ErrInvalidAttachment = errors.New("附件不存在、重複或不屬於此會話")
 
 // Attachment exposes display metadata; storage names never leave the server.
 type Attachment struct {
@@ -84,7 +87,7 @@ func (db *DB) ResolveAttachments(sessionID string, ids []string) ([]Attachment, 
 	for _, id := range ids {
 		a, ok := all[id]
 		if !ok || seen[id] {
-			return nil, fmt.Errorf("附件不存在、重複或不屬於此會話")
+			return nil, ErrInvalidAttachment
 		}
 		seen[id] = true
 		out = append(out, a)

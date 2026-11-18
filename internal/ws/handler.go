@@ -173,6 +173,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 	return func(c *fiberws.Conn) {
 		sessionID := c.Params("id")
 		tgUserID, _ := c.Locals("tg_id").(int64)
+		roomWake, _ := c.Locals("room_wake").(bool)
 
 		// 訪客身分由 authMiddleware 寫入 Locals；擁有者沒有這些值。訪客一律沒有 tg_id，不觸發 Telegram 通知。
 		shareID, _ := c.Locals("share_id").(int64)
@@ -516,6 +517,9 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				broadcast(serverMsg{Type: "error", Content: err.Error()})
 				return
 			}
+			if err := database.BindRoomJob(sessionID, userMsgID, msgID); err != nil {
+				slog.Error("[room] bind job", "err", err)
+			}
 
 			ctx, cancel := context.WithCancel(context.Background())
 			taskStart(sessionID, cancel, msgID)
@@ -637,6 +641,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 			if err != nil {
 				slog.Info(fmt.Sprintf("[ws] NewRunner %s: %v", agentType, err))
 				_ = database.FinalizeMessage(msgID)
+				_ = database.FinishRoomJob(sessionID, msgID, "failed")
 				_ = database.UpdateSessionStatus(sessionID, db.SessionStatusIdle)
 				taskEnd(sessionID, msgID)
 				broadcast(serverMsg{Type: "error", Content: err.Error()})
@@ -659,9 +664,17 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 			permCleanup := func() {}
 			if isClaude {
 				if _, _, ok := claudePermMCP(); ok {
-					if cfgPath, rmCfg, err := writePermMCPConfig(sessionID); err != nil {
+					var roomURL, roomToken string
+					if ho.roomBridge != nil {
+						roomURL, roomToken = ho.roomBridge(sessionID)
+					}
+					if cfgPath, rmCfg, err := writePermMCPConfig(sessionID, roomURL, roomToken); err != nil {
 						slog.Info(fmt.Sprintf("[ws] perm mcp 設定檔建立失敗，略過權限詢問: %v", err))
 					} else {
+						if roomURL != "" {
+							extra[agent.ArgAllowedTools] = strings.Trim(strings.Join([]string{extra[agent.ArgAllowedTools],
+								"mcp__miniapp_room__get_board,mcp__miniapp_room__get_history,mcp__miniapp_room__save_memo,mcp__miniapp_room__create_worker,mcp__miniapp_room__dispatch,mcp__miniapp_room__rename_session"}, ","), ",")
+						}
 						askQuestion := func(rctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 							q, err := newQuestion(input)
 							if err != nil {
@@ -998,6 +1011,15 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				if permDenied {
 					return
 				}
+				outcome := "done"
+				if cancelled {
+					outcome = "interrupted"
+				} else if runFailed || !succeeded {
+					outcome = "failed"
+				}
+				if jobErr := database.FinishRoomJob(sessionID, msgID, outcome); jobErr != nil {
+					slog.Error("[room] finish job", "err", jobErr)
+				}
 				if runFailed && !cancelled {
 					recordSessionFailure(database, sessionID, errText)
 					notifyTaskAsync(botToken, tgUserID, notifyCfg, tg.TaskAlert{
@@ -1028,9 +1050,9 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 			if queued != nil {
 				who = queued.Author
 			}
-			// 訪客訊息送給 agent 前加 [暱稱] 前綴，agent 才分得出是誰在說話。
+			// 署名帶進 prompt，工作室的內部識別轉成對應的通訊角色。
 			if who != "" {
-				prompt = "[" + who + "] " + prompt
+				prompt = "[" + db.RoomMessageAuthor(who) + "] " + prompt
 			}
 			// Telegram 的對話內容不進 messages 表：待傳氣泡只存在這次連線，重整後改向 Telegram 要最新頁。
 			// 佇列裡的項目也只出列，不晉升成歷史列。
@@ -1368,6 +1390,11 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 			}
 
 			switch msg.Type {
+			case "room_drain":
+				if roomWake {
+					dispatcher.Drain()
+					send(serverMsg{Type: "room_drained"})
+				}
 			case "input":
 				slog.Info(fmt.Sprintf("[ws] input len=%d", len(msg.Data)))
 				dispatcher.Dispatch(msg)

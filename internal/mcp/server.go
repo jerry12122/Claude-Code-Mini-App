@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"net/http"
 
 	gomcp "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -27,6 +28,18 @@ func NewHTTPHandler(database *db.DB, quotaSvc *quota.Service, reg *Registry, max
 
 	server := gomcp.NewServer(&gomcp.Implementation{Name: "claude-miniapp", Version: "1.0.0"}, nil)
 	registerTools(server, d)
+	registerRoomTools(server, database, "room_", func(_ *gomcp.CallToolRequest, roomID string) (string, string, error) {
+		pm, err := database.RoomPM(roomID)
+		return roomID, pm, err
+	})
+	gomcp.AddTool(server, &gomcp.Tool{Name: "list_rooms", Description: "列出工作室名稱和 room_id，供手動接手或呼叫 room_ 工具"}, func(_ context.Context, _ *gomcp.CallToolRequest, _ struct{}) (*gomcp.CallToolResult, listRoomsOut, error) {
+		rooms, err := database.ListRooms()
+		return nil, listRoomsOut{Rooms: rooms}, err
+	})
 
 	return gomcp.NewStreamableHTTPHandler(func(*http.Request) *gomcp.Server { return server }, nil)
+}
+
+type listRoomsOut struct {
+	Rooms []*db.RoomSummary `json:"rooms"`
 }

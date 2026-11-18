@@ -27,7 +27,7 @@ type QuotaReader interface {
 	Get(provider string) quota.Snapshot
 }
 
-// RoomsHandler 提供唯讀虛擬群聊（工作室）。工作室只是檢視：不執行、不路由、不觸發任何成員 session。
+// RoomsHandler 提供工作室、合併時間軸與人員送往專用 PM 的入口。
 // 訪客不在 guestRouteAllowed 的放行清單內，由 authMiddleware 以 403 擋下，這裡不重複判斷。
 type RoomsHandler struct {
 	db    *db.DB
@@ -45,8 +45,9 @@ type roomMemberBody struct {
 
 // roomBody 的欄位用指標區分「沒給」與「給了空值」：PUT 沒給的欄位不動。
 type roomBody struct {
-	Name    *string           `json:"name"`
-	Members *[]roomMemberBody `json:"members"`
+	Name         *string           `json:"name"`
+	Members      *[]roomMemberBody `json:"members"`
+	PreviousPMID *string           `json:"previous_pm_id"`
 }
 
 type roomQuotaJSON struct {
@@ -76,19 +77,76 @@ type roomJSON struct {
 	Name      string           `json:"name"`
 	CreatedAt string           `json:"created_at"`
 	Members   []roomMemberJSON `json:"members"`
+	PMID      string           `json:"pm_id,omitempty"`
+}
+
+func (h *RoomsHandler) SendToPM(c *fiber.Ctx) error {
+	var body struct {
+		Text          string   `json:"text"`
+		RequestID     string   `json:"request_id"`
+		PMID          string   `json:"pm_id"`
+		AttachmentIDs []string `json:"attachment_ids"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return jsonErr(c, 400, "無效的工作室訊息")
+	}
+	body.Text = strings.TrimSpace(body.Text)
+	if (body.Text == "" && len(body.AttachmentIDs) == 0) || len(body.AttachmentIDs) > 20 || len(body.Text) > 64000 || body.RequestID == "" || len(body.RequestID) > 128 {
+		return jsonErr(c, 400, "請輸入訊息或加入附件（文字最多 64 KB，每則最多 20 個附件）")
+	}
+	if err := h.db.AcceptRoomInput(c.Params("id"), body.PMID, body.RequestID, body.Text, body.AttachmentIDs); err != nil {
+		if errors.Is(err, db.ErrInvalidAttachment) {
+			return jsonErr(c, 400, err.Error())
+		}
+		if errors.Is(err, db.ErrRoomPM) {
+			return jsonErr(c, 409, "工作室的 PM 已變更或未設定，請確認成員後再送出")
+		}
+		if errors.Is(err, db.ErrInputConflict) {
+			return jsonErr(c, 409, err.Error())
+		}
+		return roomsInternal(c, "send", err)
+	}
+	return c.SendStatus(fiber.StatusAccepted)
+}
+
+func (h *RoomsHandler) SaveMemo(c *fiber.Ctx) error {
+	var body struct {
+		Text     *string `json:"text"`
+		Previous *string `json:"previous"`
+	}
+	if err := c.BodyParser(&body); err != nil || body.Text == nil || body.Previous == nil || len(*body.Text) > 32_000 {
+		return jsonErr(c, 400, "請提供備忘，最多 32 KB")
+	}
+	if err := h.db.EditRoomMemo(c.Params("id"), *body.Previous, strings.TrimSpace(*body.Text)); err != nil {
+		return h.writeErr(c, "memo", err)
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *RoomsHandler) Board(c *fiber.Ctx) error {
+	board, err := h.db.RoomBoard(c.Params("id"))
+	if err != nil {
+		return h.writeErr(c, "board", err)
+	}
+	c.Set("Cache-Control", "no-store")
+	return c.JSON(board)
 }
 
 type roomTimelineItemJSON struct {
-	ID          int64  `json:"id"`
-	SessionID   string `json:"session_id"`
-	SessionName string `json:"session_name"`
-	MemberRole  string `json:"member_role"`
-	AgentType   string `json:"agent_type"`
-	Role        string `json:"role"`
-	Author      string `json:"author"`
-	Text        string `json:"text"`
-	Status      string `json:"status"`
-	CreatedAt   string `json:"created_at"`
+	ID          int64           `json:"id"`
+	SessionID   string          `json:"session_id"`
+	SessionName string          `json:"session_name"`
+	MemberRole  string          `json:"member_role"`
+	AgentType   string          `json:"agent_type"`
+	Role        string          `json:"role"`
+	Author      string          `json:"author"`
+	Sender      string          `json:"sender,omitempty"`
+	Recipient   string          `json:"recipient,omitempty"`
+	Mine        bool            `json:"mine,omitempty"`
+	Attachments []db.Attachment `json:"attachments,omitempty"`
+	Text        string          `json:"text"`
+	Status      string          `json:"status"`
+	CreatedAt   string          `json:"created_at"`
 }
 
 // List GET /rooms
@@ -167,7 +225,11 @@ func (h *RoomsHandler) Update(c *fiber.Ctx) error {
 		membersPtr = &members
 	}
 	id := c.Params("id")
-	if err := h.db.UpdateRoom(id, namePtr, membersPtr); err != nil {
+	var expected []string
+	if body.PreviousPMID != nil {
+		expected = append(expected, *body.PreviousPMID)
+	}
+	if err := h.db.UpdateRoom(id, namePtr, membersPtr, expected...); err != nil {
 		return h.writeErr(c, "update", err)
 	}
 	room, err := h.db.GetRoom(id)
@@ -212,7 +274,8 @@ func (h *RoomsHandler) Timeline(c *fiber.Ctx) error {
 	for _, it := range page.Items {
 		msgs = append(msgs, roomTimelineItemJSON{
 			ID: it.MessageID, SessionID: it.SessionID, SessionName: it.SessionName, MemberRole: it.MemberRole,
-			AgentType: it.AgentType, Role: it.Role, Author: it.Author, Text: it.Content, Status: it.Status, CreatedAt: it.CreatedAt,
+			AgentType: it.AgentType, Role: it.Role, Author: db.RoomMessageAuthor(it.Author), Text: it.Content, Status: it.Status, CreatedAt: it.CreatedAt,
+			Sender: it.Sender, Recipient: it.Recipient, Mine: it.Mine, Attachments: it.Attachments,
 		})
 	}
 	next := ""
@@ -261,6 +324,7 @@ func validateRoomMembers(raw []roomMemberBody) ([]db.RoomMember, string) {
 
 func (h *RoomsHandler) detail(r *db.Room) roomJSON {
 	out := roomJSON{ID: r.ID, Name: r.Name, CreatedAt: r.CreatedAt, Members: make([]roomMemberJSON, 0, len(r.Members))}
+	out.PMID, _ = h.db.RoomPM(r.ID)
 	for _, m := range r.Members {
 		out.Members = append(out.Members, roomMemberJSON{
 			SessionID: m.SessionID, Role: m.Role, Position: m.Position,
@@ -296,6 +360,8 @@ func (h *RoomsHandler) writeErr(c *fiber.Ctx, op string, err error) error {
 		return jsonErr(c, 404, err.Error())
 	case errors.Is(err, db.ErrRoomSessionMissing):
 		return jsonErr(c, 400, err.Error())
+	case errors.Is(err, db.ErrRoomPM), errors.Is(err, db.ErrRoomPMChanged), errors.Is(err, db.ErrRoomHandoffBusy), errors.Is(err, db.ErrRoomMemoChanged):
+		return jsonErr(c, 409, err.Error())
 	}
 	return roomsInternal(c, op, err)
 }

@@ -608,13 +608,16 @@ let markdownCacheBytes = 0;
 let markdownLinks = "";
 function parseMarkdown(text, options) {
   const isStreaming = Boolean(options?.streaming || options === true);
-  if (!marked.lexer || !marked.parser) return renderMarkdownHTML(marked.parse(text), isStreaming);
+  const taskMarkers = Boolean(options?.taskMarkers);
+  const withTaskMarkers = (html) => taskMarkers ? html.replace(/<input (checked="" )?disabled="" type="checkbox">/g,
+    (_, checked) => checked ? '<span title="已完成">☑</span>' : '<span title="待完成">☐</span>') : html;
+  if (!marked.lexer || !marked.parser) return renderMarkdownHTML(withTaskMarkers(marked.parse(text)), isStreaming);
   const tokens = marked.lexer(text);
   const links = JSON.stringify(tokens.links || {});
   if (links !== markdownLinks) { markdownBlocks.clear(); markdownCacheBytes = 0; markdownLinks = links; }
   return tokens.map(token => {
     if (token.type === 'space' || token.type === 'def') return '';
-    const key = String(isStreaming) + token.type + '\0' + token.raw;
+    const key = String(isStreaming) + String(taskMarkers) + token.type + '\0' + token.raw;
     if (markdownBlocks.has(key)) return markdownBlocks.get(key);
     const block = [token]; block.links = tokens.links;
     let rendered;
@@ -623,7 +626,7 @@ function parseMarkdown(text, options) {
       const escaped = token.text.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
       rendered = renderMarkdownHTML(`<pre><code class="language-${lang}">${escaped}</code></pre>`, isStreaming, true);
     } else {
-      const html = marked.parser(block);
+      const html = withTaskMarkers(marked.parser(block));
       rendered = /<style\b|<svg\b|\sstyle\s*=/i.test(html)
         ? `<ra-html data-html-b64="${btoa(unescape(encodeURIComponent(html)))}"></ra-html>`
         : renderMarkdownHTML(html, isStreaming);

@@ -5,6 +5,18 @@ function attachmentSize(size) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+async function uploadChatAttachment(sessionId, file, signal) {
+  if (!file) throw new Error('請移除附件後重新選取原檔');
+  if (!file.size) throw new Error('檔案是空的');
+  const body = new FormData();
+  body.append('file', file);
+  const res = await apiFetch(`/sessions/${encodeURIComponent(sessionId)}/uploads`, { method: 'POST', body, signal, timeoutMs: 0 });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || '上傳失敗');
+  if (!data.attachment?.id) throw new Error('附件資訊無法讀取');
+  return data.attachment;
+}
+
 function attachmentMessageParts(message, sessionId) {
   const attachments = Array.isArray(message.attachments) ? [...message.attachments] : [];
   let text = message.content || '';
@@ -47,7 +59,7 @@ function AttachmentChips({ items, onRemove, onRetry, disabled }) {
             <div className={`mt-1 text-[11px] ${a.status === 'error' ? 'text-red-300' : 'text-gray-400'}`}>
               {attachmentSize(a.size)} · {a.status === 'uploading' ? <span role="status">上傳中…</span> : a.status === 'error' ? a.error || '上傳失敗' : '已就緒'}
             </div>
-            {a.status === 'error' && <button type="button" disabled={disabled} onClick={() => onRetry(a.id)} className="mt-1 text-violet-300 hover:underline disabled:opacity-40">重試</button>}
+            {a.status === 'error' && onRetry && <button type="button" disabled={disabled} onClick={() => onRetry(a.id)} className="mt-1 text-violet-300 hover:underline disabled:opacity-40">重試</button>}
           </div>
           <button type="button" disabled={disabled} onClick={() => onRemove(a.id)} aria-label={`移除附件 ${a.name}`} className="absolute right-0 top-0 flex h-7 w-7 items-center justify-center rounded-md text-gray-400 hover:text-red-300 disabled:opacity-40">×</button>
         </div>

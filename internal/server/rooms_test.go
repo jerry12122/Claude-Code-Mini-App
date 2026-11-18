@@ -18,6 +18,10 @@ func TestRoomsRequireAuth(t *testing.T) {
 		{"DELETE", "/rooms/x", ""},
 		{"GET", "/rooms/x/timeline", ""},
 		{"GET", "/rooms/x/timeline?before=abc&limit=5", ""},
+		{"GET", "/rooms/x/board", ""},
+		{"PUT", "/rooms/x/board", `{"text":"memo","previous":""}`},
+		{"POST", "/rooms/x/messages", `{"text":"hi","request_id":"test","pm_id":"x"}`},
+		{"POST", "/mcp/room", "{}"},
 	} {
 		req, err := http.NewRequest(tc.method, base+tc.path, strings.NewReader(tc.body))
 		if err != nil {

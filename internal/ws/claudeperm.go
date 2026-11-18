@@ -34,12 +34,12 @@ func claudePermMCP() (url, token string, ok bool) {
 }
 
 // writePermMCPConfig 把 --mcp-config 內容寫成暫存檔（0600）再傳路徑：token 不進 argv，也就不進 log 與行程列表。
-func writePermMCPConfig(sessionID string) (path string, cleanup func(), err error) {
+func writePermMCPConfig(sessionID string, roomServer ...string) (path string, cleanup func(), err error) {
 	url, token, ok := claudePermMCP()
 	if !ok {
 		return "", nil, fmt.Errorf("perm mcp 未啟用")
 	}
-	cfg := map[string]any{"mcpServers": map[string]any{
+	servers := map[string]any{
 		agent.PermPromptServer: map[string]any{
 			"type": "http",
 			"url":  url,
@@ -48,8 +48,14 @@ func writePermMCPConfig(sessionID string) (path string, cleanup func(), err erro
 				"X-Miniapp-Session": sessionID,
 			},
 		},
-	}}
-	b, err := json.Marshal(cfg)
+	}
+	if len(roomServer) == 2 && roomServer[0] != "" {
+		servers["miniapp_room"] = map[string]any{
+			"type": "http", "url": roomServer[0],
+			"headers": map[string]string{"Authorization": "Bearer " + roomServer[1], "X-Miniapp-Session": sessionID},
+		}
+	}
+	b, err := json.Marshal(map[string]any{"mcpServers": servers})
 	if err != nil {
 		return "", nil, err
 	}

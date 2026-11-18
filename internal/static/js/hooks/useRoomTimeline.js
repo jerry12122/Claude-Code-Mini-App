@@ -1,7 +1,7 @@
 // ── 工作室畫面的資料 hook（無 JSX）──────────────────────────────────────────
 // useRoomDetail：成員清單（狀態點、額度）；useRoomTimeline：合併時間軸。兩者都只在畫面存在、
 // 且頁籤可見時每 ROOM_POLL_MS 輪詢一次（排程見 hooks/roomPoller.js），卸載即停。
-// 唯讀：只發 GET，不新增 WebSocket。工作室被編輯時，RoomsSection 會發出 miniapp:rooms-changed。
+// 工作室被編輯時，RoomsSection 會發出 miniapp:rooms-changed。
 
 const ROOMS_CHANGED_EVENT = 'miniapp:rooms-changed';
 
@@ -123,5 +123,5 @@ function useRoomTimeline(roomId) {
     return startRoomPoller({ tick: refresh });
   }, [refresh, notFound]);
 
-  return { state, error, notFound, loadingOlder, loadOlder };
+  return { state, error, notFound, loadingOlder, loadOlder, refresh };
 }

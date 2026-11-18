@@ -789,16 +789,9 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     uploadControllersRef.current.set(item.id, controller);
     updateAttachments(prev => prev.map(a => a.id === item.id ? { ...a, status: 'uploading', error: '' } : a));
     try {
-      if (!item.file) throw new Error('請移除附件後重新選取原檔');
-      if (!item.file.size) throw new Error('檔案是空的');
-      const fd = new FormData();
-      fd.append('file', item.file);
-      const res = await apiFetch(`/sessions/${sessionId}/uploads`, { method: 'POST', body: fd, signal: controller.signal, timeoutMs: 0 });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || '上傳失敗');
-      if (!data.attachment?.id) throw new Error('附件資訊無法讀取');
+      const attachment = await uploadChatAttachment(sessionId, item.file, controller.signal);
       if (controller.signal.aborted || composerSessionRef.current !== sessionId) return;
-      updateAttachments(prev => prev.map(a => a.id === item.id ? { ...a, attachmentId: data.attachment.id, size: data.attachment.size, name: data.attachment.name, status: 'ready' } : a));
+      updateAttachments(prev => prev.map(a => a.id === item.id ? { ...a, attachmentId: attachment.id, size: attachment.size, name: attachment.name, status: 'ready' } : a));
     } catch (err) {
       if (controller.signal.aborted || composerSessionRef.current !== sessionId) return;
       updateAttachments(prev => prev.map(a => a.id === item.id ? { ...a, status: 'error', error: err.message || '上傳失敗' } : a));

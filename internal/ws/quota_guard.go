@@ -9,7 +9,14 @@ import (
 // HandlerOption 是 NewHandler 的選用設定，避免為單一旗標改動所有呼叫端的簽名。
 type HandlerOption func(*handlerOptions)
 
-type handlerOptions struct{ quotaGuardPercent float64 }
+type handlerOptions struct {
+	quotaGuardPercent float64
+	roomBridge        func(sessionID string) (url, token string)
+}
+
+func WithRoomBridge(bridge func(string) (string, string)) HandlerOption {
+	return func(o *handlerOptions) { o.roomBridge = bridge }
+}
 
 // WithQuotaGuardPercent 設定佇列自動啟動前的額度守門門檻（已用百分比）；0 或負數＝停用。
 func WithQuotaGuardPercent(p float64) HandlerOption {

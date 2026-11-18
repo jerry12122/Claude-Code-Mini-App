@@ -65,6 +65,38 @@
   <link id="hljs-theme-dark" rel="stylesheet" href="./js/vendor/github-dark.min.css" />
   <link id="hljs-theme-light" rel="stylesheet" href="./js/vendor/github.min.css" disabled />
   <style>
+    .room-screen { container-type: inline-size; }
+    .room-header, .room-timeline, .room-composer { padding-inline: 0.875rem; }
+    .room-header { padding-top: calc(0.5rem + env(safe-area-inset-top) + var(--tg-content-safe-top)); }
+    .room-thread { display: flex; }
+    .room-board { display: none; }
+    .room-workspace[data-board-open="true"] .room-board { display: flex; flex: 1; }
+    .room-workspace[data-board-open="true"] .room-thread { display: none; }
+    .room-wrap { min-inline-size: 0; overflow-wrap: anywhere; }
+    .room-composer { padding-bottom: calc(0.625rem + var(--ra-safe-bottom, env(safe-area-inset-bottom))); }
+    .room-composer .ra-cmd-bar { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; gap: 0.25rem; align-items: end; padding: 4px; }
+    .room-composer textarea { max-block-size: min(10rem, 30dvh); }
+    .room-send { background: var(--ra-accent); }
+    .room-file-input:focus-visible + .room-file-label { outline: 2px solid currentColor; outline-offset: 2px; }
+    .room-file-input:disabled + .room-file-label { cursor: default; opacity: .5; }
+    .room-message { max-inline-size: 88%; }
+    .room-message pre, .room-message .table-wrap { max-inline-size: 100%; }
+    .room-job-status[data-tone="done"] { color: oklch(var(--ra-ok)); background: oklch(var(--ra-ok) / 0.12); }
+    .room-job-status[data-tone="warn"] { color: oklch(var(--ra-warn)); background: oklch(var(--ra-warn) / 0.12); }
+    @container (min-width: 640px) {
+      .room-header, .room-timeline, .room-composer { padding-inline: 1.5rem; }
+    }
+    @container (min-width: 800px) {
+      .room-message { max-inline-size: min(82%, 42rem); }
+      .room-screen .room-board-toggle { display: none; }
+      .room-workspace .room-board,
+      .room-workspace[data-board-open="true"] .room-board {
+        display: flex;
+        flex: 0 0 clamp(16rem, 24cqi, 20rem);
+        border-inline-start: 1px solid oklch(var(--ra-line-soft));
+      }
+      .room-workspace[data-board-open="true"] .room-thread { display: flex; }
+    }
     body :is(button, a[href], input, select, summary, [tabindex]):focus-visible {
       outline: 2px solid oklch(var(--ra-accent-text));
       outline-offset: 2px;
@@ -653,6 +685,7 @@
 <script type="text/babel" data-presets="react-classic" src="./js/chat/ForwardModal.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/session/FileBrowserModal.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/session/RoomMessageBubble.js"></script>
+<script type="text/babel" data-presets="react-classic" src="./js/session/RoomControls.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/session/RoomView.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/session/RoomFormModal.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/session/RoomsSection.js"></script>

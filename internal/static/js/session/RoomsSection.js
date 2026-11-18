@@ -1,5 +1,5 @@
 /** 側欄的「工作室」區塊：列表、新增、更多操作（編輯／刪除）。訪客看不到（也打不到 /rooms，後端一律 403）。
- *  工作室是唯讀的合併視圖：刪除工作室只移除這個分組，不會刪除裡面任何 session。 */
+ *  刪除工作室只移除分組與工作室資料，不會刪除成員 session。 */
 
 function RoomDeleteDialog({ room, onClose, onDeleted }) {
   const dialogRef = useRef(null);
@@ -104,15 +104,16 @@ function RoomsSection({ sessions, activeRoomId, onOpenRoom, onRoomDeleted, touch
   };
 
   const menuItems = menuRoom ? [
-    { label: '編輯', onSelect: () => openEdit(menuRoom) },
+    { label: '編輯／交接 PM', onSelect: () => openEdit(menuRoom) },
     { label: '刪除', danger: true, onSelect: () => setDeleting(menuRoom) },
   ] : [];
 
   return (
     <section className="mt-2" aria-label="工作室">
       <div className="flex items-center gap-1 px-2 py-1.5">
-        <h2 className="min-w-0 flex-1 truncate text-[12.5px] font-bold text-ra-t3">
-          <span aria-hidden="true">👥 </span>工作室
+        <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-[12.5px] font-bold text-ra-t3">
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 18v-1a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v1m2-5a4 4 0 0 1 3 4v1M13 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm4-3a3 3 0 0 1 0 6" /></svg>
+          工作室
         </h2>
         <button type="button" onClick={() => setForm({ room: null })} aria-label="新增工作室" title="新增工作室"
           className="shrink-0 rounded-md px-1.5 py-1 text-[13px] leading-none font-semibold text-violet-400 hover:bg-violet-500/10 hover:text-violet-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50">＋</button>

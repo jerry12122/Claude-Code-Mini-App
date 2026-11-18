@@ -1,4 +1,4 @@
-// 工作室（唯讀虛擬群聊）前端：純邏輯（hooks/rooms.js、hooks/roomPoller.js）與唯讀／安全的靜態斷言。
+// 工作室前端：時間軸、輪詢、PM 輸入與安全渲染。
 // 執行：node scripts/rooms.test.cjs
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -13,7 +13,7 @@ const ctx = vm.createContext({});
 vm.runInContext('const AGENT_LABEL = { claude: "Claude", codex: "Codex", cursor: "Cursor" };', ctx);
 for (const f of ['hooks/messageRows.js', 'hooks/rooms.js', 'hooks/roomPoller.js']) vm.runInContext(read(f), ctx, { filename: f });
 const g = vm.runInContext(`({
-  ROOM_POLL_MS, ROOM_PAGE_SIZE, ROOM_READONLY_NOTE,
+  ROOM_POLL_MS, ROOM_PAGE_SIZE,
   roomsUrl, roomUrl, roomTimelineUrl, roomTimelineEmpty, roomMergeMessages, roomTimelineApply,
   roomChip, roomQuotaView, roomMessageMeta, roomIsNearBottom,
   roomFormInit, roomFormToggle, roomFormSetRole, roomFormError, roomFormBody, startRoomPoller,
@@ -304,9 +304,9 @@ async function pollerScenarios() {
   assert.equal(e.timers.size, 0);
 }
 
-// ── 靜態斷言：唯讀、安全渲染、不新增通道 ──────────────────────────────
+// ── 靜態斷言：PM 輸入、安全渲染 ──────────────────────────────
 function staticChecks() {
-  const roomFiles = ['hooks/rooms.js', 'hooks/roomPoller.js', 'hooks/useRoomTimeline.js', 'session/RoomsSection.js', 'session/RoomFormModal.js', 'session/RoomView.js', 'session/RoomMessageBubble.js'];
+  const roomFiles = ['hooks/rooms.js', 'hooks/roomPoller.js', 'hooks/useRoomTimeline.js', 'session/RoomsSection.js', 'session/RoomFormModal.js', 'session/RoomView.js', 'session/RoomMessageBubble.js', 'session/RoomControls.js'];
   const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   for (const f of roomFiles) {
     const src = strip(read(f));
@@ -317,10 +317,9 @@ function staticChecks() {
   }
   // 工作室畫面：沒有輸入框，也沒有任何會觸發成員的呼叫
   const view = strip(read('session/RoomView.js'));
-  assert.ok(!/<textarea|<input|contentEditable|contenteditable/.test(view), '工作室畫面不得有輸入框');
-  assert.ok(!/method:\s*'(POST|PUT|PATCH|DELETE)'/.test(view), '工作室畫面只讀');
-  assert.ok(view.includes('ROOM_READONLY_NOTE'), '底部要有固定的唯讀說明');
-  assert.equal(g.ROOM_READONLY_NOTE, '唯讀：要指示成員請進入該成員的 session');
+  assert.ok(/<RoomComposer\b/.test(view), '工作室掛載 PM 輸入框');
+  const controls = strip(read('session/RoomControls.js'));
+  assert.ok(/apiFetch\(roomUrl\(roomId\) \+ '\/messages'/.test(controls), '輸入只走工作室 PM 入口');
   // 只有助理訊息走 markdown（parseMarkdown 內建 DOMPurify）；使用者與系統訊息是純文字節點
   const bubble = strip(read('session/RoomMessageBubble.js'));
   assert.equal((bubble.match(/dangerouslySetInnerHTML/g) || []).length, 1, '氣泡只能有一處 dangerouslySetInnerHTML');

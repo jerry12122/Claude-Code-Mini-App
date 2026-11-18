@@ -1,4 +1,4 @@
-// ── 工作室（唯讀虛擬群聊）的純邏輯（無 JSX、無 React）──────────────────────
+// ── 工作室的純邏輯（無 JSX、無 React）──────────────────────
 // 資料來自 GET /rooms、/rooms/:id、/rooms/:id/timeline。訊息的排序、游標與分頁都以後端為準：
 // 這裡只負責「以 id 合併、舊在上新在下」與顯示用的換算，不自己組游標、不猜時間順序。
 
@@ -7,7 +7,6 @@ const ROOM_PAGE_SIZE = 50;
 const ROOM_NAME_MAX = 100;
 const ROOM_MEMBERS_MAX = 50;
 const ROOM_STICK_PX = 48; // 距離底部多近算「停在底部」（會自動跟隨新訊息）
-const ROOM_READONLY_NOTE = '唯讀：要指示成員請進入該成員的 session';
 const ROOM_ROLE_LABEL = { pm: 'PM', worker: '執行者' };
 
 function roomsUrl() { return '/rooms'; }
@@ -33,7 +32,8 @@ function roomMergeMessages(existing, incoming) {
   const byId = new Map(existing.map((m) => [m.id, m]));
   for (const m of incoming) {
     const old = byId.get(m.id);
-    if (old && old.text === m.text && old.status === m.status) continue;
+    if (old && old.text === m.text && old.status === m.status && old.sender === m.sender &&
+        old.recipient === m.recipient && old.member_role === m.member_role && old.session_name === m.session_name) continue;
     byId.set(m.id, m);
   }
   return [...byId.values()].sort(roomMessageBefore);
@@ -104,6 +104,9 @@ function roomMessageMeta(m) {
     // 助理訊息在資料庫一律是 claude，所以標籤看 agent 類型；使用者訊息 author 空字串＝擁有者
     roleLabel: side === 'user' ? (m.author || '使用者') : side === 'system' ? '系統' : agentLabel,
     sourceName: m.session_name || '未命名',
+    sender: m.sender || (side === 'user' ? (m.author || '你') : side === 'system' ? '系統' : m.session_name || agentLabel),
+    recipient: m.recipient || '',
+    mine: side === 'user' && (m.mine ?? !m.author),
     agentLabel,
     memberRoleLabel: ROOM_ROLE_LABEL[m.member_role] || m.member_role || '',
     time: formatMessageTime(m.created_at),
@@ -133,7 +136,10 @@ function roomFormToggle(members, sessionId) {
 
 function roomFormSetRole(members, sessionId, role) {
   if (!ROOM_ROLE_LABEL[role]) return members;
-  return members.map((m) => (m.session_id === sessionId ? { ...m, role } : m));
+  return members.map((m) => {
+    if (m.session_id === sessionId) return { ...m, role };
+    return role === 'pm' && m.role === 'pm' ? { ...m, role: 'worker' } : m;
+  });
 }
 
 function roomFormError(form) {

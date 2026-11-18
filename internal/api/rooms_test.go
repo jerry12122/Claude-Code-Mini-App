@@ -258,13 +258,13 @@ func TestRoomsListUpdateDelete(t *testing.T) {
 		t.Errorf("只改名不該動成員: %s", body)
 	}
 
-	// 清空成員
-	if code, _ = e.do("PUT", "/rooms/"+id, map[string]any{"members": []member{}}); code != 200 {
-		t.Fatalf("清空成員 %d", code)
+	// 已配置的工作室需先交接 PM，不能清空全部成員。
+	if code, _ = e.do("PUT", "/rooms/"+id, map[string]any{"members": []member{}}); code != 409 {
+		t.Fatalf("清空成員應被拒絕，狀態 %d", code)
 	}
 	_, body = e.do("GET", "/rooms/"+id, nil)
-	if r := decode(t, body); len(r["members"].([]any)) != 0 {
-		t.Errorf("成員應被清空: %s", body)
+	if r := decode(t, body); len(r["members"].([]any)) != 2 || r["pm_id"] != b.ID {
+		t.Errorf("清空失敗應保留成員與 PM: %s", body)
 	}
 
 	// 失敗案例：原狀不變
@@ -280,7 +280,7 @@ func TestRoomsListUpdateDelete(t *testing.T) {
 		}
 	}
 	_, body = e.do("GET", "/rooms/"+id, nil)
-	if r := decode(t, body); r["name"] != "只改名" || len(r["members"].([]any)) != 0 {
+	if r := decode(t, body); r["name"] != "只改名" || len(r["members"].([]any)) != 2 {
 		t.Errorf("失敗的更新不該改動任何東西: %s", body)
 	}
 
