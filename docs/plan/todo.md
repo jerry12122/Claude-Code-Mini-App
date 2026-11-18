@@ -5,20 +5,21 @@
 ---
 
 ## 🚀 待執行項目
-- [ ] Windows x64 安裝包發版驗收：實作與本機 smoke／46 項發布檢查完成，尚待 Win10／乾淨帳戶、真實 Runtime 缺少、安裝版跨版更新及手動遷移驗收；普通全套 Cursor 測試仍有逾時（見 [紀錄](../reviews/2026-11-18-windows-installer.md)、[規劃](todo/windows-installer.md)）
-- [ ] 桌面自我更新實機驗收：從 v0.13.0 在真實 GitHub 自動更新到下一版（目前只在 fixture 驗證）、點系統匣圖示「檢查更新」、真實 helper 啟動失敗；已知限制：外部／分享連結無法交外部瀏覽器（Wails beta.26 Windows 無導航攔截 API）、替換與還原都被鎖時不自動重啟（見封存的 design.md）
+- [ ] Windows x64 安裝包發版驗收：實作與本機 smoke／46 項發布檢查完成，尚待 Win10／乾淨帳戶、真實 Runtime 缺少、安裝版跨版更新及手動遷移驗收。2026-11-18 再單跑 `TestRunReturnsWhenOrphanHoldsStdoutAfterResult` 約 2 秒通過；普通全套仍未重跑（見 [紀錄](../reviews/2026-11-18-windows-installer.md)、[規劃](todo/windows-installer.md)）
+- [ ] 桌面自我更新實機驗收：從 v0.13.0 在真實 GitHub 自動更新到下一版（目前只在 fixture 驗證）、點系統匣圖示「檢查更新」、真實 helper 啟動失敗。2026-11-18 未對本機已安裝的桌面程式做這些動作（見封存的 design.md）
 - [x] 版本化桌面 EXE 自更新後檔名不變：評估完成（2026-11-18），不需改程式。便攜 ZIP 內本來就是固定名稱 `claude-miniapp-desktop.exe`（`scripts/release/package.sh`），安裝器入口也是固定名稱，README 推薦的預設入口已是 Setup 安裝包；帶版號的 EXE 只是自我更新用的獨立資產，只有手動直接下載該檔執行的人會遇到檔名仍帶舊版號
 - [x] `go mod tidy` 既有差異已處理（2026-11-18）：實際差異是 `x/crypto`、`x/sys` 由 indirect 改為直接依賴，並補／移除 `go.sum` 過期行；原本記載的 `fasthttp`、`jsonschema-go` 與當時現況不符
 - [x] `internal/cursor` 的 `runner_test.go:251`（「Run 卡在孤兒進程占住的 stdout」）偶發失敗已修（2026-11-18）：根因是 result 後放棄等待時 `KillTree` 殺不到已退出 wrapper 底下的孤兒（PID 不存在），`cmd.Wait` 只能等 `WaitDelay` 5 秒；負載下前段啟動時間再疊加就超過 7 秒逾時。這也是產品行為問題（result 後有孤兒時任務多卡約 5 秒）。放棄分支把 `WaitDelay` 縮到 200ms；同負載條件下 8 次由失敗 7 次變為 0 次，單次耗時 6.1s→約 1.4s。已知餘險：孤兒進程本身未被殺掉（Windows 限制），約 7 秒後自行結束；前段啟動時間在本機波動大，原因未查
 - [ ] Antigravity 後續驗收：真實 CLI 多輪對話、權限模式、帳戶配額與 TG WebView；回合 Token 統計串接待補（見 [整合計劃](agy-integration.md)）；補充（2026-11-18 核對）：「回合 Token 統計」不是只補 agy 一條線，而是尚未設計的跨 provider 資料流（`agent.Event` 沒有用量欄位；`internal/usage` 的單回合 `Info` 與 `FromClaudeResult` 等解析函式沒有呼叫者，該套件其餘部分則被額度功能使用）。已寫設計草案並建議預設不做，待使用者決定（見 [草案](todo/turn-token-usage.md)）
 - [x] 附件輸入與聊天呈現：輸入框內佔位／重試、訊息附件卡片、驗證預覽與歷史持久化；實機驗證待補（見 [計劃](todo/attachment-experience.md)）
-- [ ] Claude ask 規則走 miniapp 授權：`bypassPermissions` 下命中 `permissions.ask` 時跳出允許／拒絕，按允許同輪執行（見 [計劃](todo/claude-permission-prompt.md)）；補充（2026-11-18 核對）：實作已在 `150c406`、`3b3228a`（`internal/ws/claudeperm.go`、`/mcp/perm`），計劃文件狀態寫「尚未實作」已過時；仍待補的是計劃第 6 節的真實 `claude -p` 整合驗證與桌面／瀏覽器／TG 手動驗證
+- [ ] Claude ask 規則走 miniapp 授權：瀏覽器已驗（2026-11-18，臨時實例，`bypassPermissions`，既有 `Bash(curl *)`）：面板顯示 `Bash` 與 `curl --version`；允許後同輪執行（回覆為 curl 8.8.0）；拒絕後不執行、也不再跳第二次允許。單元測試 `TestClaudeAsker`／handoff 通過。尚未做：桌面版、Telegram 通知、連續 20 次、等待超過 5 分鐘、未命中規則不詢問（見 [計劃](todo/claude-permission-prompt.md)）
 - [ ] 手機實機驗證：TG WebView（iOS／Android）📎 檔案選擇器、佇列 UI
 - [x] 驗證 Codex／Cursor／Kiro 能以絕對路徑讀取工作目錄外的圖片（2026-11-18）：claude／codex／kiroacp／antigravity／cursor 皆讀到影像且像素核對正確；測試路徑是 `workspace/rooms/…`，不是真實附件上傳流程，附件流程的實機驗證仍待補（見 [supervisor 試跑紀錄](todo/supervisor-room.md)）
 - [ ] （未來優化，2026-10-06 決定暫緩）agent 圖片的 session／分享驗證與歷史 URL 遷移；目前 `internal/static/uploads` 仍由公開靜態路由讀取，需先確認相容性與授權載入方式
-- [ ] 主要情境即時回饋與可靠性：授權／中斷 send 失敗處理、WS 斷線指示、用量刷新（手機）、建立 session 重複、載入中與登入卡住（見 [計劃](todo/ux-feedback.md)）；2026-11-18 已用臨時實例實測 2.2 斷線橫幅、2.1 離線 `/reset`、2.6 離線登入皆通過，其餘（授權／中斷按鈕、用量刷新、建立 session 重試、Slow 3G）與手機實機仍待補，見計劃第 7 節
-- [ ] Kiro 故障復原：重新建置／啟動新版後觀察真實 EmptyResponse；自動接手的權限／工具設定與連鎖防護仍待 review（手動入口及 handoff 測試 race 已完成，見 [驗收紀錄](done/kiro-fault-recovery.md)）
-- [ ] 接手提示的整頁重載／離線恢復，及 TG WebView／真實供應商接手實機驗收（目前提示保存在 App 記憶體，見 [紀錄](done/manual-session-handoff.md)）
+- [ ] 主要情境即時回饋與可靠性：同一登入下的斷線橫幅、Shell 確認斷線提示、單次允許、中斷回饋、用量刷新成功、建立 session 失敗不重複、Slow 3G 載入文字已在臨時實例通過。未通過：Shell「允許一次」同步連點會送出兩次並把指令中止。未做：用量的錯誤／逾時提示、手機實機（見 [計劃](todo/ux-feedback.md) 第 7、8 節）
+- [ ] Kiro 故障復原：真實 EmptyResponse 這次沒有重現。自動接手的設定沿用與連鎖防護已對過程式與既有測試（權限／模型／effort 複製、交接標記擋連鎖、自動接手失敗不留半成品會話）；300／60 秒完整門檻與 Unix pipe 仍未實機驗證（見 [驗收紀錄](done/kiro-fault-recovery.md)）
+- [ ] 額度用盡後自動復原（開關，預設關）：5 小時視窗用盡停下後，伺服器輪詢到重置再自動重跑。**只有計劃（2026-11-18），未實作**；第一步要先撞一次上限取樣，並待使用者確認預設值與守門暫停是否納入（見 [計劃](todo/quota-auto-resume.md) 第 6 節）
+- [ ] 接手提示的整頁重載／離線恢復，及 TG WebView／真實供應商接手實機驗收（提示仍只在這次連線的畫面狀態，重新整理不會恢復，見 [紀錄](done/manual-session-handoff.md)）
 
 ## ✅ 本輪完成（2026-10-16，v0.12.0／v0.13.0）
 
@@ -58,7 +59,7 @@
 - [x] 桌面視窗殼第一版（Wails，見 `docs/plan/todo/desktop-window.md`）
 - [x] 桌面版系統匣：關視窗後從匣裡叫回／結束（見 `docs/plan/todo/desktop-window.md`）
 - [x] 臨時共享聊天室：PIN + 連結 + 暱稱，讓朋友限時加入同一聊天室協作；實機驗證待補（見 [紀錄](done/share-chat.md)）
-- [ ] 共享聊天室實機驗證：snapshot 橫幅、到期前 5 分鐘提示、editor 實際送訊息、非內網 IP 帶 guest token 的存取測試
+- [x] 共享聊天室實機驗證（2026-11-18，臨時實例＋第二個瀏覽器情境，不是另一台實體電腦）：snapshot 顯示「唯讀快照（截至 HH:MM）」；到期前顯示「分享將在 3 分鐘內結束」；editor 送出的 Shell 指令帶暱稱並執行成功；非內網 IP（203.0.113.10）帶 guest token 可讀該 session 訊息（200），讀 session 列表與未帶 token 的擁有者請求皆 403
 - [ ] 共享聊天室對外開放：Cloudflare Tunnel 部署與實機驗證；`RealIP` 可信代理檢查已完成，其他代理須設定 `web.trusted_proxies`
 - [x] Telegram 改為可選模組（第一、二期已完成，2026-11-18 核對並補上缺的啟動提示）：`bot_token` 可留空（需 `web.password`）、空 token 時 `tg.Verify` 拒絕且標頭／查詢的 `initData` 一律當沒帶（測試 `TestEmptyBotTokenIgnoresInitData`）、`RealIP` 只信任設定的代理；第三期（信任上游認證）仍為選做、未決定（見 [計劃](todo/telegram-optional.md)）
 - [ ] Supervisor 工作室：合併時間軸和額度守門已驗證。群聊 demo 支援專用 PM、並行派工、回報與工作室備忘。仍待真實模型與手機／Telegram WebView 驗收。[工作室計劃](todo/supervisor-room.md)

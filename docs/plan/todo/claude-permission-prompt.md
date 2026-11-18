@@ -1,6 +1,6 @@
 # 功能計劃：Claude 的 ask 規則改走 miniapp 授權（`--permission-prompt-tool`）
 
-> 狀態：規劃中（尚未實作）
+> 狀態：已實作。2026-11-18 瀏覽器驗過允許與拒絕（見 `docs/plan/todo.md`）；桌面版、Telegram、長等待與重複次數尚未驗
 > 建立日期：2026-10-06
 > 目標：
 > - 第 0 期：指令被 Claude 權限規則（使用者 `~/.claude/settings.json` 等）擋下時，明確告訴使用者「是規則擋的、按允許無效」，不再顯示會失敗的「允許此操作」。
