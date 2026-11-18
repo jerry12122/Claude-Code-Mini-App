@@ -28,6 +28,11 @@ jobs:
       - name: gofmt
         run: test -z "$(gofmt -l internal cmd)"
 
+      - name: Windows 版本資源
+        run: |
+          export PATH="/c/mingw64/bin:$PATH"
+          go generate ./cmd/desktop
+
       # docs/spec/backend-architecture.md 第 7 節的驗證清單
       - name: go vet
         run: go vet ./internal/... ./cmd/...

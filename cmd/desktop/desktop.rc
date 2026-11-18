@@ -1,2 +1,27 @@
 // Wails uses icon resource ID 3; Windows also reads this icon when the EXE is pinned.
 3 ICON "../../internal/static/favicon.ico"
+
+// VERSION is supplied by scripts/release/version-resource.py.
+1 VERSIONINFO
+FILEVERSION APP_VERSION
+PRODUCTVERSION APP_VERSION
+FILEFLAGSMASK 0x3fL
+FILEFLAGS 0
+FILEOS 0x40004L
+FILETYPE 1
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904b0"
+    BEGIN
+      VALUE "FileDescription", "Claude MiniApp\0"
+      VALUE "FileVersion", APP_VERSION_STRING
+      VALUE "ProductName", "Claude MiniApp\0"
+      VALUE "ProductVersion", APP_VERSION_STRING
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0409, 1200
+  END
+END

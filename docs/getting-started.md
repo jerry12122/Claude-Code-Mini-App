@@ -8,15 +8,18 @@ Follow this guide to start the console on your computer, create a session, and r
 
 Open [Releases](https://github.com/jerry12122/Claude-Code-Mini-App/releases/latest) and download from Assets:
 
-| Computer | Archive | How to start |
+| Computer | Download | How to start |
 |---|---|---|
-| Windows x64 | `claude-miniapp-vVERSION-windows-amd64.zip` | Desktop: `claude-miniapp-desktop.exe`; server only: `claude-miniapp.exe`. Choose one |
+| Windows x64 desktop (recommended) | `claude-miniapp-vVERSION-windows-amd64-setup.exe` | Install for the current user, then launch from the Start menu |
+| Windows x64 portable / server | `claude-miniapp-vVERSION-windows-amd64.zip` | Extract all files; desktop: `claude-miniapp-desktop.exe`; server only: `claude-miniapp.exe`. Choose one |
 | Linux x64 | `claude-miniapp-vVERSION-linux-amd64.tar.gz` | Run `./claude-miniapp` from the extracted directory |
 | Other platforms / architectures | No matching prebuilt archive | See [building from source](#building-from-source); your agent CLI must also support that environment |
 
-Do not choose GitHub's automatic “Source code” archives unless you intend to build. Extract the **whole folder** to a writable location. Keep `internal/static/`, `config.example.yaml`, and the executables together. The downloaded console does not require Go or Node.js; your chosen CLI may have its own requirements.
+Setup installs without administrator rights to `%LOCALAPPDATA%\Programs\ClaudeMiniApp`, creates a Start menu entry, and offers an optional desktop shortcut. Configuration, database, logs and attachments use `%LOCALAPPDATA%\ClaudeMiniApp\data`; the WebView2 profile uses its `webview2` subdirectory. Uninstall retains this data. Existing portable users should [migrate before first launch](#portable-to-installed-migration).
 
-The Windows desktop app needs [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/). The executables are unsigned. If SmartScreen blocks them, verify that they came from this project's Release, then choose **More info → Run anyway**.
+Do not choose GitHub's automatic “Source code” archives unless you intend to build. For server use, extract the **whole folder** to a writable location and keep `internal/static/` beside the server executable. The desktop EXE embeds its frontend and can run standalone; keep existing portable configuration and data in place. The separate `claude-miniapp-desktop-vVERSION-windows-amd64.exe` is for in-app updates. The downloaded console does not require Go or Node.js; your chosen CLI may have its own requirements.
+
+The Windows desktop app needs [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/). Setup checks for it and, if missing, runs a bundled, Microsoft-signed bootstrapper that needs network access to download the Runtime. If this fails (including an offline machine without the Runtime), install the Runtime from that Microsoft page and retry Setup. Portable users must install it themselves. The app and Setup are unsigned. If SmartScreen blocks them, verify that they came from this project's Release, then choose **More info → Run anyway**.
 
 ## 2. Install and sign in to one agent
 
@@ -61,7 +64,7 @@ The wizard guides you through:
 1. **Local CLI check:** see which agents are installed and their versions. Missing tools show official install links; you can still finish setup without one.
 2. **Sign-in and storage:** enter a password of at least 8 characters, or generate one and keep it somewhere safe. Blank passwords and `change-me` are rejected. Keep port `8080` and `./claude-miniapp.db` unless you need different values; the database directory must already exist and be writable. **Allow LAN devices to sign in** is off by default.
 3. **Telegram Mini App:** off by default. Desktop and browser use need no Bot Token, domain, or tunnel. Turn it on only if needed, then supply your BotFather token and numeric Telegram user IDs. Telegram requires an externally reachable HTTPS URL; the wizard does not create a tunnel.
-4. **Review and save:** writes a minimal `config.yaml` in the app's working directory (beside the packaged desktop executable). With the same port, it switches to password sign-in immediately. If you change the port, fully quit and restart, then open the new URL shown on screen.
+4. **Review and save:** writes a minimal `config.yaml` in the app's working directory (`%LOCALAPPDATA%\ClaudeMiniApp\data` for installed desktop; beside the portable desktop executable). With the same port, it switches to password sign-in immediately. If you change the port, fully quit and restart, then open the new URL shown on screen.
 
 Setup APIs accept only local connections with the one-time setup token. After the page reads the token, it removes it from the address bar; reopen the full logged URL if you reload before saving. The token changes each launch. After setup, the wizard and save API cannot edit your configuration. Edit `config.yaml` manually and restart for later changes.
 
@@ -77,7 +80,7 @@ Keep SSH running and open the complete `http://127.0.0.1:8080/?setup=…` URL fr
 
 ### Manual configuration (optional)
 
-Instead of the wizard, create `config.yaml` in the app directory with the following, replacing the example password. This enables local password sign-in without Telegram:
+Instead of the wizard, create `config.yaml` in the data directory for installed desktop, or the app directory for portable/server, with the following, replacing the example password. This enables local password sign-in without Telegram:
 
 ```yaml
 no_auth: false
@@ -96,7 +99,7 @@ The desktop window uses this same password. See the [configuration example](../c
 
 ## 4. Start and sign in
 
-**Windows desktop:** Double-click `claude-miniapp-desktop.exe`. Its window opens automatically. Complete the wizard on first launch; with an existing configuration, enter your `web.password`.
+**Windows desktop:** Open the installed app from the Start menu, or double-click the portable `claude-miniapp-desktop.exe`. Its window opens automatically. Complete the wizard on first launch; with an existing configuration, enter your `web.password`.
 
 **Windows server:** Open PowerShell in the extracted folder and run:
 
@@ -179,7 +182,7 @@ Pasting the public URL into an ordinary browser does not supply Telegram identit
 
 | Symptom | First check |
 |---|---|
-| Wizard missing / static page 404 | An existing `config.yaml` hides the wizard. On first launch, start from the whole extracted folder and open the logged setup URL; check that the config filename is not `.yaml.txt` |
+| Wizard missing / static page 404 | An existing `config.yaml` hides the wizard. Launch installed desktop from the Start menu or portable from the whole extracted folder, and open the logged setup URL; check that the config filename is not `.yaml.txt` |
 | Missing `bot_token` or `web.password` | Local use needs only a valid web password (at least 8 characters, not `change-me`); Telegram needs a real Bot Token |
 | Wrong password / still asks to sign in | Use `web.password`. Fully quit and restart after editing configuration; desktop also requires sign-in |
 | `僅允許內網存取` (LAN access only) / 403 | First try `127.0.0.1` on the host. For LAN access, add only your trusted subnet to `web.allowed_cidrs`. For Telegram, open through the bot menu and check your allowlisted ID |
@@ -193,7 +196,7 @@ Pasting the public URL into an ordinary browser does not supply Telegram identit
 | Telegram authentication fails | The token must belong to the bot whose menu you use; allowlist your own User ID. Close the Mini App and reopen through the bot menu |
 | No Telegram notifications | Press Start in your own bot's chat; check notification ID, allowlist, and `notify` settings. Successful replies do not notify by default |
 
-Open **設定 → 日誌** (Settings → Logs). If the UI cannot load, inspect `logs/server.log` in the program directory or launch the server build in a terminal. Include platform, agent, reproduction steps, and relevant errors when reporting a problem; redact tokens, passwords, and private content.
+Open **設定 → 日誌** (Settings → Logs). If the UI cannot load, inspect `logs/server.log` under the installed data directory (or portable/server program directory), or launch the server build in a terminal. Include platform, agent, reproduction steps, and relevant errors when reporting a problem; redact tokens, passwords, and private content.
 
 ## Building from source
 
@@ -231,4 +234,15 @@ Continue with steps 4 and 5. The first build downloads Go dependencies; no separ
 
 ## Restarting and updating
 
-Start from the same program directory to retain your sessions. Before updating, fully stop the app and back up `config.yaml`, your database (default `claude-miniapp.db`), and `workspace/`. Replace the executable and the entire `internal/static/` directory. Do not overwrite your configuration with the example. Restoring or moving agent conversations also requires preserving that agent's own local data. See [all features](features.md) for more.
+Installed and portable desktops share the in-app EXE updater; it preserves installed mode and your data. Before running Setup again or uninstalling, finish active work and choose **結束 (Quit)** in the tray (closing the window only hides it). Maintenance refuses a running desktop or locked files; it does not force the app to stop. Setup also refuses a downgrade or an installed executable whose version cannot be determined. Uninstall keeps the separate data directory, including the WebView2 profile.
+
+Before any upgrade, fully stop the app and back up its configuration, database and attachments. For portable/server manual updates, keep the same program directory and replace the executable; server builds also need the updated `internal/static/` frontend files. Preserve uploads and never overwrite your configuration with the example. Do not run an older EXE against a database already upgraded by a newer version; rollback needs a matching pre-upgrade database backup. Restoring or moving agent conversations also requires preserving that agent's own local data. See [all features](features.md) for more.
+
+### Portable to installed migration
+
+Migration is manual; Setup does not import portable data. Do not run the portable and installed copies together.
+
+1. Finish active work, choose **結束 (Quit)** from the portable desktop's tray (or Ctrl+C for server), and confirm it has stopped. Back up the entire portable data folder. Include `config.yaml`, the configured SQLite database (default `claude-miniapp.db`), `workspace/`, `internal/static/uploads/`, and `telegram.session` if present. A SQLite backup must include any remaining `-wal` file with its database; do not copy a live database or discard its WAL. Keep any accompanying `-shm` file with the backup as well.
+2. Install Setup and keep the app closed. **Before the first installed launch**, create `%LOCALAPPDATA%\ClaudeMiniApp\data` if needed and copy those files/directories into it, preserving their relative layout. Keep the original backup; do not overwrite existing installed data without a separate backup.
+3. Review custom paths in `config.yaml`: relative paths now resolve under the installed data directory; absolute paths still point at their old locations. Copy data referenced by custom paths and adjust configuration as needed. Historical attachment paths stored as absolute paths are not rewritten; keep their original files and locations while they are referenced.
+4. Launch from the Start menu and verify sessions and attachments before retiring the portable copy. Never open the upgraded database with the old portable EXE; restore the pre-upgrade backup if you need to return to it.

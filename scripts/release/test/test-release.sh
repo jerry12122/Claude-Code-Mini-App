@@ -49,7 +49,8 @@ export GH_TOKEN="fixture-token-not-real"
 export GITHUB_SHA="$(git -C "$root" rev-parse HEAD)"
 tag="$GITHUB_REF_NAME"
 desktop="claude-miniapp-desktop-v$ver-windows-amd64.exe"
-expected=("claude-miniapp-$tag-windows-amd64.zip" "claude-miniapp-$tag-linux-amd64.tar.gz" "$desktop" "checksums.txt")
+setup="claude-miniapp-$tag-windows-amd64-setup.exe"
+expected=("claude-miniapp-$tag-windows-amd64.zip" "claude-miniapp-$tag-linux-amd64.tar.gz" "$desktop" "$setup" "checksums.txt")
 
 # ── 1. 語法 ───────────────────────────────────────────────────────────
 for f in check-version.sh package.sh publish.sh; do
@@ -78,15 +79,17 @@ git -C "$vrepo" -c user.name=test -c user.email=test@example.invalid commit -qam
 git -C "$vrepo" tag -f "$tag" >/dev/null
 expect_fail "version.go 的 Version 與 VERSION 不符" run_check "$tag" "$(git -C "$vrepo" rev-parse HEAD)"
 
-# ── 3. 打包：四個資產、checksums 涵蓋三個程式資產、ZIP 內 EXE 與版本化 EXE 位元組相同 ──
+# ── 3. 打包：五個資產、checksums 涵蓋四個程式資產、共用桌面 EXE ──
+expect_fail "不受信任的 bootstrapper：打包失敗" env WEBVIEW2_BOOTSTRAPPER="$(wpath "$root/LICENSE")" bash "$rel/package.sh" "$work/untrusted-dist"
+check "不受信任的 bootstrapper：未產生程式資產" bash -c '[ -z "$(ls -A "$1")" ]' _ "$work/untrusted-dist"
 dist="$work/dist"
 check "package.sh 產出發佈資產" bash "$rel/package.sh" "$dist"
 for n in "${expected[@]}"; do
   [ -s "$dist/$n" ] || bad "缺少資產 $n"
 done
-check "dist 恰好包含預期的四個檔案" bash -c '[ "$(ls "$1" | wc -l)" -eq 4 ]' _ "$dist"
-check "checksums.txt 恰好三行，且包含桌面 EXE" bash -c \
-  '[ "$(wc -l < "$1/checksums.txt")" -eq 3 ] && grep -qF "  $2" "$1/checksums.txt"' _ "$dist" "$desktop"
+check "dist 恰好包含預期的五個檔案" bash -c '[ "$(ls "$1" | wc -l)" -eq 5 ]' _ "$dist"
+check "checksums.txt 恰好四行，且包含桌面 EXE 與 Setup" bash -c \
+  '[ "$(wc -l < "$1/checksums.txt")" -eq 4 ] && grep -qF "  $2" "$1/checksums.txt" && grep -qF "  $3" "$1/checksums.txt"' _ "$dist" "$desktop" "$setup"
 (cd "$dist" && sha256sum --text "${expected[@]}") | sed 's/^/      /'
 # 本機 internal/static/uploads 有使用者截圖（已 gitignore）；產物不得包含它們
 check "產物不含 internal/static/uploads（使用者資料）" bash -c \
@@ -110,7 +113,7 @@ st="$(new_state fresh)"
 check "全新發佈：建立草稿、上傳、比對、公開為 latest" run_publish "$st"
 check "全新發佈後狀態為 published latest" bash -c \
   '[ "$(python "$1" status "$2" "$3")" = "published latest" ]' _ "$sc" "$(wpath "$st")" "$tag"
-check "全新發佈後資產恰為預期四個" names_ok "$st"
+check "全新發佈後資產恰為預期五個" names_ok "$st"
 check "全新發佈：更新內容在最上方，下載與更新方法在下方" sc_run notes-order "$(wpath "$st")" "$tag"
 check "全新發佈：公開是最後一個寫入動作" sc_run publish-last "$(wpath "$st")"
 
@@ -125,7 +128,7 @@ st="$(new_state draft)"
 seed "$st" draft "claude-miniapp-desktop-v0.11.0-windows-amd64.exe" "claude-miniapp-v0.11.0-windows-amd64.zip"
 check "草稿重跑：重用草稿並公開" run_publish "$st"
 check "草稿重跑：說明採用更新內容在前的新順序" sc_run notes-order "$(wpath "$st")" "$tag"
-check "草稿重跑：舊資產已移除，只剩預期四個" names_ok "$st"
+check "草稿重跑：舊資產已移除，只剩預期五個" names_ok "$st"
 check "草稿重跑：舊資產以 delete-asset 移除（2 次）" bash -c \
   '[ "$(grep -c "^WRITE delete-asset" "$1/calls.log")" -eq 2 ]' _ "$st"
 
@@ -160,6 +163,25 @@ rm -rf "$badsum"; cp -r "$dist" "$badsum"; printf 'x' >> "$badsum/$desktop"
 st="$(new_state badsum)"
 expect_fail "本機 checksums 不符：腳本失敗" env FAKE_GH_STATE="$(wpath "$st")" bash "$rel/publish.sh" "$badsum"
 check "本機 checksums 不符：零寫入" bash -c '[ "$(python "$1" writes "$2")" -eq 0 ]' _ "$sc" "$(wpath "$st")"
+
+# Setup 與桌面 EXE 同樣是強制資產，不得發布缺少／毀損的安裝包。
+rm "$miss/$setup"
+cp "$dist/$desktop" "$miss/$desktop"
+st="$(new_state missing-setup)"
+expect_fail "缺少 Setup：腳本失敗" env FAKE_GH_STATE="$(wpath "$st")" bash "$rel/publish.sh" "$miss"
+check "缺少 Setup：零寫入" bash -c '[ "$(python "$1" writes "$2")" -eq 0 ]' _ "$sc" "$(wpath "$st")"
+st="$(new_state corrupt-setup)"
+expect_fail "遠端 Setup 不符：腳本失敗" run_publish "$st" FAKE_GH_CORRUPT="$setup"
+check "遠端 Setup 不符：停在草稿" bash -c \
+  '[ "$(python "$1" status "$2" "$3")" = "draft" ] && ! grep -q "^WRITE edit-publish" "$4/calls.log"' _ "$sc" "$(wpath "$st")" "$tag" "$st"
+nosetupsum="$work/dist-no-setup-sum"
+mkdir "$nosetupsum"
+# Small synthetic assets exercise the publisher preflight without duplicating the binaries.
+for n in "${expected[@]:0:4}"; do printf 'fixture' > "$nosetupsum/$n"; done
+(cd "$nosetupsum" && sha256sum --text "${expected[@]:0:3}" > checksums.txt)
+st="$(new_state no-setup-sum)"
+expect_fail "checksums 遺漏 Setup：腳本失敗" env FAKE_GH_STATE="$(wpath "$st")" bash "$rel/publish.sh" "$nosetupsum"
+check "checksums 遺漏 Setup：零寫入" bash -c '[ "$(python "$1" writes "$2")" -eq 0 ]' _ "$sc" "$(wpath "$st")"
 
 # ── 5. provider 契約：真實打包產物通過 desktopupdate 的解析與驗證 ─────────
 check "TestReleaseDistContract：真實 checksums.txt 與桌面 EXE 通過 provider 規則" \

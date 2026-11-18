@@ -5,6 +5,7 @@
 *.exe~
 *.out
 *.test
+/dist/
 
 # 資料庫（含 WAL 模式的 -wal／-shm 附屬檔）
 *.db

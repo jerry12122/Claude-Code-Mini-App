@@ -3,7 +3,8 @@
 #   claude-miniapp-<tag>-windows-amd64.zip      （原有：server + 桌面 production EXE + 前端與文件）
 #   claude-miniapp-<tag>-linux-amd64.tar.gz     （原有：Linux server）
 #   claude-miniapp-desktop-v<X.Y.Z>-windows-amd64.exe   （新增：桌面 production EXE，供自我更新）
-#   checksums.txt                               （sha256sum 格式，涵蓋以上三個程式資產）
+#   claude-miniapp-<tag>-windows-amd64-setup.exe （目前使用者桌面安裝包）
+#   checksums.txt                               （sha256sum 格式，涵蓋以上四個程式資產）
 # 桌面 EXE 只建置一次，ZIP 內與版本化 EXE 的位元組必須相同（本腳本會檢查）。
 # 檔名 claude-miniapp-desktop-v<X.Y.Z>-windows-amd64.exe 必須與 internal/desktopupdate/provider.go 的
 # AssetName / desktopAssetPattern 一致，由 internal/desktopupdate/release_contract_test.go 驗證。
@@ -14,6 +15,11 @@ fail() { echo "package failed: $*" >&2; exit 1; }
 tag="${GITHUB_REF_NAME:?GITHUB_REF_NAME 未設定}"
 sha="${GITHUB_SHA:-$(git rev-parse HEAD)}"
 ver="${tag#v}"
+[[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "tag 必須是 vX.Y.Z"
+[ "$tag" = "v$ver" ] && [ "$ver" = "$(tr -d '\r\n' < VERSION)" ] || fail "tag 與 VERSION 不符"
+winpath() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else echo "$1"; fi; }
+iscc="${ISCC:-/c/Program Files (x86)/Inno Setup 6/ISCC.exe}"
+[ -x "$iscc" ] || fail "找不到 Inno Setup 6 ISCC；請安裝或設定 ISCC"
 out_arg="${1:-dist}"
 mkdir -p "$out_arg"
 out="$(cd "$out_arg" && pwd)"
@@ -24,10 +30,19 @@ l="claude-miniapp-$tag-linux-amd64"
 zip_name="$w.zip"
 tgz_name="$l.tar.gz"
 desktop_name="claude-miniapp-desktop-v$ver-windows-amd64.exe"
+setup_name="$w-setup.exe"
 
 stage_root="$(mktemp -d)"
 verify_root="$(mktemp -d)"
 trap 'rm -rf "$stage_root" "$verify_root"' EXIT
+
+# 信任邊界：先驗證 prerequisite，再產生任何可下載的程式資產。
+bootstrapper="${WEBVIEW2_BOOTSTRAPPER:-$stage_root/MicrosoftEdgeWebview2Setup.exe}"
+prepare_args=()
+if [ -n "${WEBVIEW2_BOOTSTRAPPER:-}" ]; then prepare_args+=(-ValidateOnly); fi
+# Windows PowerShell must build its own module path, rather than inherit pwsh's modules.
+env -u PSModulePath powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/release/prepare-webview2.ps1 \
+  -OutputFile "$(winpath "$bootstrapper")" "${prepare_args[@]}"
 
 # 前端由磁碟讀取（./internal/static），不能只發 binary
 stage() { # $1=目錄名（位於 stage_root 底下）
@@ -40,6 +55,7 @@ stage() { # $1=目錄名（位於 stage_root 底下）
 }
 
 # Windows：server + 桌面（production 標籤，前端嵌入）
+go generate ./cmd/desktop
 stage "$w"
 go build -o "$stage_root/$w/claude-miniapp.exe" ./cmd/server
 go build -tags "production,devtools" -ldflags "-H windowsgui" -buildvcs=true \
@@ -48,6 +64,11 @@ go build -tags "production,devtools" -ldflags "-H windowsgui" -buildvcs=true \
 
 # 版本化桌面 EXE：與 ZIP 內的桌面 EXE 同一份位元組
 cp "$stage_root/$w/claude-miniapp-desktop.exe" "$out/$desktop_name"
+
+MSYS_NO_PATHCONV=1 "$iscc" /Qp "/DAppVersion=$ver" \
+  "/DSourceDir=$(winpath "$stage_root/$w")" "/DOutputDir=$(winpath "$out")" \
+  "/DBootstrapperFile=$(winpath "$bootstrapper")" scripts/release/windows-installer.iss
+[ -s "$out/$setup_name" ] || fail "缺少安裝包 $setup_name"
 
 # 嵌入的 vcs.revision 必須是觸發 tag 的 commit
 go version -m "$out/$desktop_name" | grep -q "vcs.revision=$sha" \
@@ -58,14 +79,13 @@ stage "$l"
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "$stage_root/$l/claude-miniapp" ./cmd/server
 tar -czf "$out/$tgz_name" -C "$stage_root" "$l"
 
-# checksums.txt 涵蓋所有程式資產（ZIP、tar.gz、桌面 EXE）
-(cd "$out" && sha256sum --text "$zip_name" "$tgz_name" "$desktop_name" > checksums.txt)
+# checksums.txt 涵蓋所有程式資產（ZIP、tar.gz、桌面 EXE、Setup）
+(cd "$out" && sha256sum --text "$zip_name" "$tgz_name" "$desktop_name" "$setup_name" > checksums.txt)
 
 # 驗證 1：checksums 與檔案相符
 (cd "$out" && sha256sum -c checksums.txt >/dev/null) || fail "checksums.txt 與產物不符"
 
 # 驗證 2：ZIP 內的桌面 EXE 與版本化 EXE 位元組相同
-winpath() { if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else echo "$1"; fi; }
 (cd "$verify_root" && 7z x -y "$(winpath "$out/$zip_name")" >/dev/null)
 [ ! -e "$verify_root/$w/internal/static/uploads" ] || fail "ZIP 含 internal/static/uploads（使用者資料）"
 if tar -tzf "$out/$tgz_name" | grep -q '/internal/static/uploads/'; then fail "tar.gz 含 internal/static/uploads（使用者資料）"; fi

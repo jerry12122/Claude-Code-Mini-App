@@ -2,7 +2,7 @@
 # 草稿優先的發佈（只在 CI 發佈步驟執行；需要 GITHUB_REF_NAME、GITHUB_REPOSITORY、GH_TOKEN）：
 #   1. 同 tag 已有「公開」Release → 停止，禁止覆寫公開版本。
 #   2. 同 tag 有草稿 → 重用：移除不在預期清單內的舊資產，更新說明；沒有草稿 → 建立草稿。
-#   3. 上傳預期的四個資產（同名以 --clobber 覆寫，只發生在草稿上）。
+#   3. 上傳預期的五個資產（同名以 --clobber 覆寫，只發生在草稿上）。
 #   4. 從草稿下載每個資產，比對位元組與 checksums.txt。
 #   5. 全部通過後才把草稿改為公開並設為 latest。
 # 任一步失敗都停在草稿：草稿不會成為 latest，updater 看不到半成品。
@@ -21,6 +21,7 @@ expected=(
   "claude-miniapp-$tag-windows-amd64.zip"
   "claude-miniapp-$tag-linux-amd64.tar.gz"
   "$desktop_name"
+  "claude-miniapp-$tag-windows-amd64-setup.exe"
   "checksums.txt"
 )
 
@@ -35,7 +36,9 @@ is_expected() {
 
 # 0. 上傳前的本機檢查：資產齊備、checksums 與檔案相符（不發出任何寫入請求）
 for n in "${expected[@]}"; do [ -s "$dist/$n" ] || fail "缺少資產 $n"; done
-(cd "$dist" && sha256sum -c checksums.txt >/dev/null) || fail "本機 checksums.txt 驗證失敗"
+(cd "$dist" && sha256sum --text "${expected[@]:0:4}" | sort) > "$work/expected-checksums.txt"
+sort "$dist/checksums.txt" | cmp -s - "$work/expected-checksums.txt" \
+  || fail "本機 checksums.txt 必須精確涵蓋四個程式資產且雜湊相符"
 
 # 說明：先放 CHANGELOG 對應版本的更新內容，再附上下載、更新方法與首次設定。
 sed "s/@TAG@/$tag/g" "$repo_root/.github/release-header.md" > "$work/header.md"
