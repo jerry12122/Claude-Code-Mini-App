@@ -1,5 +1,5 @@
 // ── Session 列表畫面 ──────────────────────────────────────────────────────────
-function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, activeSessionId = null, onCreateNew, onOpenSettings, hasUpdate = false, onOpenUpdate, onToggleSidebar, collapsed = false, isSplit = false, onToggleSplit = null, isWideScreen = true, onOpenOtherPane, canOpenOtherPane }) {
+function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, activeSessionId = null, onCreateNew, onOpenSettings, hasUpdate = false, onOpenUpdate, onToggleSidebar, collapsed = false, isSplit = false, onToggleSplit = null, isWideScreen = true, onOpenOtherPane, canOpenOtherPane, activeRoomId = null, onOpenRoom = null, onRoomDeleted = null }) {
   const [sessionMenu, setSessionMenu] = useState(null);
   const [browseSession, setBrowseSession] = useState(null);
   const bindSessionMenu = useLongPress(setSessionMenu);
@@ -636,6 +636,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
       {/* Session 列表 */}
       <div className="flex-1 overflow-y-auto app-scroll px-3.5 pb-5">
         {(listLoading || listError) && listStatus}
+        {onOpenRoom && <RoomsSection sessions={sessions} activeRoomId={activeRoomId} onOpenRoom={onOpenRoom} onRoomDeleted={onRoomDeleted || (() => {})} touch={!isWideScreen} />}
         {!listLoaded ? null : sessions.length === 0 ? (
           <div className="text-center text-ra-t5 mt-24 text-sm px-4">尚無 Session，點 + 建立</div>
         ) : displaySessions.length === 0 ? (

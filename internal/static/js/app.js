@@ -95,6 +95,7 @@ function App() {
   const [mobileSessionList, setMobileSessionList] = useState(false);
   const [creating, setCreating] = useState(false);
   const [composerPrefill, setComposerPrefill] = useState(null);
+  const [openRoomId, setOpenRoomId] = useState(null); // 工作室（唯讀合併時間軸）：主區域的獨立畫面，不進分頁／分割系統
   const [authed, setAuthed]   = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const lastEscTimeRef = useRef(0);
@@ -152,9 +153,12 @@ function App() {
     setCreating(true);
   }, []);
   const closeComposer = useCallback(() => setCreating(false), []);
+  const openRoom = useCallback((id) => { setCreating(false); setMobileSessionList(false); setOpenRoomId(id); }, []);
+  const closeRoom = useCallback(() => { setOpenRoomId(null); setMobileSessionList(true); }, []);
 
   const handleCreated = useCallback((s) => {
     setCreating(false);
+    setOpenRoomId(null);
     if (!s || !s.id) return;
     setMobileSessionList(false);
     setKnownSessionsMap((prev) => ({ ...prev, [s.id]: s }));
@@ -164,6 +168,7 @@ function App() {
 
   const selectSession = useCallback((s, targetPane = null) => {
     setCreating(false);
+    setOpenRoomId(null);
     if (!s) {
       if (!isWideScreen) {
         // Returning to the mobile list must not discard the desktop's pinned tabs.
@@ -472,11 +477,21 @@ function App() {
     return <div className="flex items-center justify-center h-app"><div className="text-gray-500 text-sm">載入中…</div></div>;
   }
 
+  const openRoomMember = (sessionId) => {
+    const s = sidebarSortedSessions.find((x) => x.id === sessionId) || knownSessionsMap[sessionId];
+    if (s) selectSession(s); else showToast('找不到這個 session（可能已被刪除）', { error: true });
+  };
+  const roomScreen = openRoomId
+    ? <RoomView key={openRoomId} roomId={openRoomId} onClose={closeRoom} onOpenSession={openRoomMember} />
+    : null;
+  const roomListProps = { activeRoomId: openRoomId, onOpenRoom: openRoom, onRoomDeleted: (id) => { if (id === openRoomId) setOpenRoomId(null); } };
+
   const renderAuthedLayout = () => {
     if (!isWideScreen) {
       if (creating) {
         return <NewSessionComposer prefill={composerPrefill} onCreated={handleCreated} onCancel={closeComposer} />;
       }
+      if (roomScreen) return roomScreen;
       if (session && !mobileSessionList) {
         if (isSplit) {
           const effectiveSecondary = secondarySession || (Array.isArray(sidebarSortedSessions) ? sidebarSortedSessions.find((s) => s.id !== session.id) : null);
@@ -576,6 +591,7 @@ function App() {
           isWideScreen={false}
           onOpenOtherPane={openInOtherPane}
           canOpenOtherPane={canOpenOtherPane}
+          {...roomListProps}
         />
       );
     }
@@ -602,6 +618,7 @@ function App() {
             isSplit={isSplit}
             onToggleSplit={toggleSplit}
             isWideScreen={isWideScreen}
+            {...roomListProps}
           />
         </aside>
         {!sidebarCollapsed && (
@@ -625,7 +642,7 @@ function App() {
         <main className="flex-1 min-w-0 min-h-0">
           {creating ? (
             <NewSessionComposer prefill={composerPrefill} onCreated={handleCreated} onCancel={closeComposer} />
-          ) : session ? (
+          ) : roomScreen ? roomScreen : session ? (
             <SplitChatContainer
               isSplit={isSplit}
               splitRatio={splitRatio}
