@@ -190,7 +190,7 @@ function ChatSessionHeader({
       </div>
 
       {/* 桌面：Row 1 標題＋分支（左）｜ 操作控制（右）。Row 2 只放細的 repo/model/quota 副標，不跟控制項搶版面。 */}
-      <div className="ra-chat-header-desktop hidden lg:block px-7 py-4">
+      <div className="ra-chat-header-desktop hidden lg:block px-7 pt-1 pb-3">
         <div className="flex items-center justify-between gap-x-4 gap-y-2 flex-wrap">
           {/* ponytail: 標題直接顯示，完整名稱與路徑用原生 title，避免展開重複資訊。 */}
           <div className="flex flex-1 items-center gap-2 min-w-0">
