@@ -9,6 +9,7 @@ const SETTINGS_SECTIONS = [
   { id: 'general', label: '一般' },
   { id: 'appearance', label: '外觀' },
   { id: 'shares', label: '分享' },
+  { id: 'system', label: '系統資源' },
   { id: 'logs', label: '日誌' },
 ];
 
@@ -481,6 +482,7 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
             {section === 'general' && <GeneralSection />}
             {section === 'appearance' && <AppearanceSection draft={draft} setDraft={setDraft} />}
             {section === 'shares' && <SharesSection onJumpToSession={onJumpToSession} />}
+            {section === 'system' && <SystemStatsSection />}
             {section === 'logs' && <LogsSection />}
             {section === 'update' && updateBridge && (
               <DesktopUpdateSection
@@ -495,7 +497,7 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
           </div>
           <div className={`shrink-0 flex items-center justify-between gap-2 px-5 py-3 border-t border-ra-line-soft ${mobile ? '[&_button]:min-h-11' : ''}`}>
             {/* 還原預設／儲存只對外觀有效，日誌頁不顯示 */}
-            {section !== 'logs' && section !== 'shares' && section !== 'update' && (
+            {section !== 'logs' && section !== 'shares' && section !== 'system' && section !== 'update' && (
               <button
                 type="button"
                 onClick={handleReset}
@@ -515,7 +517,7 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
               >
                 關閉
               </button>
-              {section !== 'logs' && section !== 'shares' && section !== 'update' && (
+              {section !== 'logs' && section !== 'shares' && section !== 'system' && section !== 'update' && (
                 <button
                   type="button"
                   onClick={handleSave}
