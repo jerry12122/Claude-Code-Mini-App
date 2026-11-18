@@ -79,5 +79,6 @@
 | 真任務（go mod tidy） | 完成；驗收條件曾寫錯（`go build ./...` 會被被忽略的 `poc/` 擋住），獨立驗收抓到並改為排除 `poc` |
 | 待決策 session + `post_message` 未讀徽章 | 徽章可見（使用者確認）；`notify` 的 Telegram 推播未測 |
 | `context.md` 並行寫入防護 | 未測（試跑期間只有 supervisor 一人寫） |
+| 第二個真任務（`internal/cursor` 偶發測試失敗，調查→修復→驗證） | 完成。執行者重現（負載下 8 次失敗 7 次）、找出根因並提出修法但未套用；supervisor 讀程式碼核對後自行套用，同負載 8/8 通過。踩到 `ask_session` 的 MCP 閒置逾時（300 秒無回應即中斷，執行者仍在跑），改用 `get_status` 輪詢；長任務不要用 `ask_session`，用 `send_message` 加輪詢 |
 
 後續（先不做）：多跑 2～3 個多階段實作任務，再依「是否仍常需要切 session 才看得到全局」決定要不要做第二期。
