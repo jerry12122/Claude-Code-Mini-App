@@ -40,6 +40,8 @@ type Config struct {
 	McpToken string `mapstructure:"mcp_token"`
 	// McpMaxHops 為 session 互問（send_message / ask_session 帶 from_session_id）的跳數上限，預設 5。
 	McpMaxHops int `mapstructure:"mcp_max_hops"`
+	// QuotaGuardPercent：伺服器自動啟動佇列下一則前，該 provider 任一有 percent 的額度視窗已用 ≥ 此值就暫停佇列；預設 90，0 停用。
+	QuotaGuardPercent float64 `mapstructure:"quota_guard_percent"`
 	// TelegramClient MTProto 個人客戶端設定（api_id 與 api_hash）
 	TelegramClient TelegramClient `mapstructure:"telegram_client"`
 }
@@ -116,6 +118,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("notify.include_prompt", true)
 	viper.SetDefault("notify.prompt_preview_len", 120)
 	viper.SetDefault("mcp_max_hops", 5)
+	viper.SetDefault("quota_guard_percent", 90)
 	viper.SetDefault("telegram_client.enabled", false)
 	viper.SetDefault("telegram_client.session_file", "./telegram.session")
 

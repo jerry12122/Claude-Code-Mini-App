@@ -18,6 +18,8 @@ type sessionDispatcher struct {
 	reply                    func(serverMsg) bool
 	broadcastQueue           func()
 	broadcast                func(serverMsg)
+	// quotaGuard 非 nil 時，伺服器自動啟動佇列下一則前先呼叫；回傳非空字串＝額度不足的原因，需暫停佇列。
+	quotaGuard func() string
 }
 
 func (d *sessionDispatcher) busy(s *db.Session) bool {
@@ -26,7 +28,8 @@ func (d *sessionDispatcher) busy(s *db.Session) bool {
 
 // drainLocked requires the session dispatch lock. Failed preparation leaves the
 // queued item untouched and paused, preserving the existing attachment guarantee.
-func (d *sessionDispatcher) drainLocked() {
+// guarded 只在伺服器自動啟動（任務收尾、重連、授權解除）時為 true；使用者直接送出與按「繼續」不受額度守門影響。
+func (d *sessionDispatcher) drainLocked(guarded bool) {
 	if paused, err := d.database.QueuePaused(d.sessionID); err != nil || paused {
 		return
 	}
@@ -37,6 +40,14 @@ func (d *sessionDispatcher) drainLocked() {
 	}
 	if len(items) == 0 {
 		return
+	}
+	if guarded && d.quotaGuard != nil {
+		if reason := d.quotaGuard(); reason != "" {
+			_ = d.database.SetQueuePaused(d.sessionID, true)
+			_ = d.database.SetSessionLastError(d.sessionID, reason)
+			d.broadcast(serverMsg{Type: "error", Content: reason})
+			return
+		}
 	}
 	q := items[0]
 	if err := d.start(clientMsg{Data: q.Content, AttachmentIDs: q.AttachmentIDs}, &q); err != nil {
@@ -88,7 +99,7 @@ func (d *sessionDispatcher) Dispatch(input clientMsg) {
 		if accepted {
 			d.reply(serverMsg{Type: "input_accepted", RequestID: input.RequestID})
 			if s, err := d.database.GetSession(d.sessionID); err == nil && !d.busy(s) && strings.TrimSpace(s.ShellPending) == "" {
-				d.drainLocked()
+				d.drainLocked(false)
 			}
 			return
 		}
@@ -115,7 +126,7 @@ func (d *sessionDispatcher) Dispatch(input clientMsg) {
 		d.reply(serverMsg{Type: "input_accepted", RequestID: input.RequestID})
 		d.broadcastQueue()
 		if !d.busy(s) {
-			d.drainLocked()
+			d.drainLocked(false)
 		}
 		return
 	}
@@ -132,7 +143,7 @@ func (d *sessionDispatcher) Dispatch(input clientMsg) {
 		}
 		d.broadcastQueue()
 		if !d.busy(s) {
-			d.drainLocked()
+			d.drainLocked(false)
 		}
 		return
 	}
@@ -141,7 +152,10 @@ func (d *sessionDispatcher) Dispatch(input clientMsg) {
 	}
 }
 
-func (d *sessionDispatcher) Drain() {
+// Drain 是伺服器自動啟動佇列的入口，會過額度守門。
+func (d *sessionDispatcher) Drain() { d.drain(true) }
+
+func (d *sessionDispatcher) drain(guarded bool) {
 	release, err := admitWork()
 	if err != nil {
 		return
@@ -151,7 +165,7 @@ func (d *sessionDispatcher) Drain() {
 	dl.Lock()
 	defer dl.Unlock()
 	if s, err := d.database.GetSession(d.sessionID); err == nil && !d.busy(s) && strings.TrimSpace(s.ShellPending) == "" {
-		d.drainLocked()
+		d.drainLocked(guarded)
 	}
 	d.broadcastQueue()
 }
@@ -167,5 +181,5 @@ func (d *sessionDispatcher) Resume() {
 		d.reply(serverMsg{Type: "error", Content: "無法恢復佇列，請稍後再試"})
 		return
 	}
-	d.Drain()
+	d.drain(false) // 使用者明確按「繼續」，不再被額度守門擋回
 }

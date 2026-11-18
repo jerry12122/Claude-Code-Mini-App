@@ -163,7 +163,11 @@ type ShellOpts struct {
 	AllowedCommands []string // 非空時啟用指令白名單（見 internal/shell/allowlist.go）
 }
 
-func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *quota.Service, notifyCfg tg.NotifyConfig) func(*fiberws.Conn) {
+func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *quota.Service, notifyCfg tg.NotifyConfig, opts ...HandlerOption) func(*fiberws.Conn) {
+	var ho handlerOptions
+	for _, opt := range opts {
+		opt(&ho)
+	}
 	notifyCfg = notifyConfigFrom(notifyCfg)
 	setGateDB(database)
 	return func(c *fiberws.Conn) {
@@ -1081,6 +1085,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 		dispatcher := &sessionDispatcher{
 			database: database, sessionID: sessionID, actor: actor, author: author,
 			start: startInput, reply: send, broadcastQueue: broadcastQueue, broadcast: broadcast,
+			quotaGuard: quotaGuardFor(quotaSvc, agentType, ho.quotaGuardPercent),
 		}
 		drainIfIdle = dispatcher.Drain
 		resumeQueue := dispatcher.Resume
