@@ -78,7 +78,13 @@
 
 **Supersedes**: `session-git-controls` / 原 Implementation Contract「前端行為」與已完成 task 3.1、3.2 的 Git 面板決策。使用者取消彈窗與檔案清單，改由分支徽章按鈕與深色分支 popover 與 Pull／Push popover；歷史任務保留，新增 5.1、5.2 補償實作。
 
-`GET .../git/status` 在原回應上加入 `additions`、`deletions` 非負整數。保留單一 porcelain 查詢函式供寫入前置檢查；HTTP 狀態查詢另呼叫 `gitinfo.ChangeStats` 使用 `git diff --numstat -z --no-ext-diff --no-textconv HEAD --` 計算已追蹤檔案相對 HEAD 的淨差異。未建立第一個提交時與空 tree 比較。二進位 `-` 記錄不計行數；未追蹤檔案不列入 diff。正確解析包含 tab、換行、rename 的路徑；錯誤沿用 422／504／500，不偽造零值。不增加 `/sessions` 列表成本。
+`GET .../git/status` 在原回應上加入 `additions`、`deletions` 非負整數。保留單一 porcelain 查詢函式供寫入前置檢查；HTTP 狀態查詢另呼叫 `gitinfo.ChangeStats` 使用 `git diff --numstat -z --no-ext-diff --no-textconv HEAD --` 計算已追蹤檔案相對 HEAD 的淨差異。未建立第一個提交時與空 tree 比較。二進位 `-` 記錄不計行數。另依「未追蹤文字檔計入新增行數」將未追蹤文字檔納入徽章。正確解析包含 tab、換行、rename 的路徑；錯誤沿用 422／504／500，不偽造零值。不增加 `/sessions` 列表成本。
+
+### 未追蹤文字檔計入新增行數
+
+**Supersedes**: session-git-controls / 行內 Git 控制與增刪徽章（task 5.1 中排除未追蹤檔案的決定）。
+
+Git 從工作樹根目錄列舉未追蹤且未忽略的檔案，使用對空檔的 numstat 判定文字行數與二進位，與已追蹤檔案的淨差異合計。行數查詢共用既有查詢期限，逾時或失敗沿用 Git 錯誤。此查詢不修改工作樹或暫存區。
 
 ### 沿用原有徽章與深色選單
 
@@ -127,7 +133,7 @@
 **前端行為**
 
 - 以 `GitControls.js` 取代 `GitPanel.js`。聊天標題列顯示沿用 GitBranchBadge 的分支按鈕、同步徽章 `↑N ↓N`、變更徽章綠色 `+N`／紅色 `-N`，以及獨立 Git 按鈕。手機與桌面皆能使用，訪客維持唯讀分支徽章且不查詢 Git API。
-- 不再渲染 Git dialog、檔案清單、上游說明或「同步數字依本機已知的上游狀態顯示。」；增刪徽章的 title 可說明只計已追蹤文字 diff。
+- 不再渲染 Git dialog、檔案清單、上游說明或「同步數字依本機已知的上游狀態顯示。」；增刪徽章的 title 說明以 HEAD 為基準，並計入未追蹤文字檔。
 - Git 按鈕展開非 modal 的原生 `popover="auto"`，只放 Pull／Push 兩個操作；使用原生按鈕群組與 Tab，不假裝 ARIA menu。Popover 使用 CSS anchor positioning，缺少支援時以不超過 20 行的定位邏輯緊貼按鈕並限制於視窗內，不新增 polyfill。
 - 分支選單選中另一個既有本機分支就呼叫 checkout；分支名與同步、變更數在成功後更新。失敗保留原值並以標題列內的 `role="alert"` 顯示錯誤。
 - 非 `idle`／即時狀態非 `IDLE` 或寫入中，分支切換、Pull、Push 停用並提供原因；無上游／detached 時 Pull、Push 停用。操作中避免重複送出；完成／錯誤訊息不使用彈窗。
@@ -137,7 +143,7 @@
 
 - `go test ./internal/gitinfo/ ./internal/api/` 通過；測試用 `t.TempDir()` 建立真實 repo 與 bare 遠端，找不到 `git` 時 `t.Skip`。
 - `go test ./internal/arch/` 與 `node scripts/frontend-layering.test.cjs` 通過，且未新增例外條目。
-- 手動：開啟有未提交修改、領先遠端 1 個提交的 repo，同步徽章與 `git status -sb` 一致，增刪徽章與 `git diff HEAD --numstat` 合計一致；切到另一分支後側欄徽章在下一次列表更新內顯示新分支。
+- 手動：開啟有未提交修改、領先遠端 1 個提交的 repo，同步徽章與 `git status -sb` 一致，增刪徽章等於 `git diff HEAD --numstat` 加上未追蹤、未忽略文字檔的新增行數；切到另一分支後側欄徽章在下一次列表更新內顯示新分支。
 
 **範圍邊界**
 

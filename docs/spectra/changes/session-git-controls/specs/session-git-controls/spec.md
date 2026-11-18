@@ -236,7 +236,7 @@ For a signed-in non-guest user, the chat header SHALL show a branch button reusi
 
 ### Requirement: Uncommitted line counts
 
-The status response SHALL include nonnegative `additions` and `deletions` counting tracked text changes relative to HEAD across the index and working tree without double-counting. An unborn repository SHALL use the empty tree as its baseline. Binary and untracked files SHALL NOT contribute text line counts. Query failures SHALL use the existing Git error response.
+The status response SHALL include nonnegative `additions` and `deletions` for the session’s Git working tree. It SHALL count tracked text changes relative to HEAD across the index and working tree without double-counting, and SHALL count all lines in untracked text files as additions when Git does not ignore those files. An unborn repository SHALL use the empty tree as its baseline. Binary files SHALL NOT contribute text line counts. Query failures SHALL use the existing Git error response. The chat header line-count hint SHALL state that untracked text is included.
 
 #### Scenario: Combined staged and unstaged changes
 
@@ -246,13 +246,14 @@ The status response SHALL include nonnegative `additions` and `deletions` counti
 
 #### Scenario: New repository and unusual paths
 
-- **WHEN** an unborn repository contains a staged two-line text file with whitespace in its name
-- **THEN** additions is 2 and deletions is 0
+- **WHEN** an unborn repository contains a staged two-line text file and an untracked one-line text file with whitespace in its name
+- **THEN** additions is 3 and deletions is 0
 
-#### Scenario: Binary and untracked files
+#### Scenario: Untracked text alongside ignored and binary files
 
-- **WHEN** only a tracked binary file and an untracked text file have changed
-- **THEN** additions and deletions are both 0
+- **GIVEN** a tracked text file has a net change of one added line and an untracked text file outside the session’s subdirectory has two lines, with no trailing newline
+- **WHEN** line counts are requested from the session subdirectory while ignored text and untracked binary files are also present
+- **THEN** additions is 3 and deletions is 0, and the Git index is unchanged
 
 ### Requirement: Branch lookup cache is invalidated by a switch
 

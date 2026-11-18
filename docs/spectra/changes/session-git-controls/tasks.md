@@ -31,3 +31,7 @@ task 3.1、3.2 是已完成的前一版歷史；其彈窗與清單行為由「�
 5.2 的原生 select 是完成歷史，由下列補償任務取代。徽章比例與單一畫面間距屬本畫面視覺驗證，不增加像素斷言。
 
 - [x] 6.1 依「沿用原有徽章與深色選單」修訂 Inline Git controls：分支重用 GitBranchBadge 並開啟深色 popover、標示目前分支；分支與 Git 選單樣式統一、保留外點／Escape／Tab、忙碌與失敗處理。驗證：`python scripts/git-panel-ui.test.py`、`node scripts/git-panel.test.cjs`、`node scripts/frontend-layering.test.cjs`、`go test ./internal/static/` 通過；實際查看 8081 桌面與手機開啟選單的截圖並重建預覽。[after: 5.2]
+
+## 7. 補計未追蹤文字檔
+
+- [x] 7.1 未追蹤文字檔計入新增行數（Uncommitted line counts）。Git 狀態 API 與標題列加總未忽略的新文字檔行數，保留已追蹤的淨差異、二進位判斷和既有錯誤，並更新徽章提示。驗證 `go test ./internal/gitinfo/ ./internal/api/`、`node scripts/frontend-layering.test.cjs` 與徽章提示文案。[after: 5.1, 6.1]

@@ -58,7 +58,7 @@ function GitControls({ session, state, git }) {
       <span className="rounded-md bg-ra-card px-[7px] py-[3px] ra-mono text-[11px] font-semibold text-ra-t3" aria-label={status ? `上游同步：領先 ${status.ahead}，落後 ${status.behind}` : '正在取得同步狀態'}>
         ↑{status ? status.ahead : '…'} ↓{status ? status.behind : '…'}
       </span>
-      <span className="inline-flex gap-1.5 rounded-md bg-ra-card px-[7px] py-[3px] ra-mono text-[11px] font-semibold" title="已追蹤文字檔的未提交增刪行數（相對 HEAD）">
+      <span className="inline-flex gap-1.5 rounded-md bg-ra-card px-[7px] py-[3px] ra-mono text-[11px] font-semibold" title="目前工作樹相對 HEAD 的未提交增刪行數，包含未追蹤文字檔">
         <span className="text-emerald-400">+{status?.additions ?? '…'}</span>
         <span className="text-red-400">-{status?.deletions ?? '…'}</span>
       </span>

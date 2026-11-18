@@ -425,24 +425,41 @@ func TestChangeStatsUnborn(t *testing.T) {
 			testGit(t, dir, "config", "core.autocrlf", "false")
 			testFile(t, dir, "staged file with whitespace", "one\ntwo\n")
 			testGit(t, dir, "add", ".")
+			testFile(t, dir, "new file with whitespace", "three\n")
 			stats, err := ChangeStats(dir)
-			if err != nil || stats != (LineStats{Additions: 2}) {
+			if err != nil || stats != (LineStats{Additions: 3}) {
 				t.Fatalf("unborn counts: %+v, %v", stats, err)
 			}
 		})
 	}
 }
 
-func TestChangeStatsBinaryAndUntrackedExcluded(t *testing.T) {
+func TestChangeStatsIncludesUntrackedText(t *testing.T) {
 	dir := testRepo(t)
+	subdir := filepath.Join(dir, "subdir")
+	if err := os.Mkdir(subdir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	testFile(t, dir, ".gitignore", "ignored.txt\n")
+	testFile(t, dir, ".gitattributes", "*.bin -diff\n")
+	testFile(t, dir, "tracked", "old\n")
 	testFile(t, dir, "binary", "before\x00\n")
 	testGit(t, dir, "add", ".")
-	testGit(t, dir, "commit", "-m", "binary baseline")
+	testGit(t, dir, "commit", "-m", "baseline")
+	testFile(t, dir, "tracked", "old\nnew\n")
 	testFile(t, dir, "binary", "after\x00\nmore\n")
-	testFile(t, dir, "untracked text", "one\ntwo\nthree\n")
-	stats, err := ChangeStats(dir)
-	if err != nil || stats != (LineStats{}) {
-		t.Fatalf("binary or untracked text contributed lines: %+v, %v", stats, err)
+	testFile(t, dir, "-untracked text", "one\ntwo")
+	testFile(t, dir, "new binary", "binary\x00\n")
+	testFile(t, dir, "attributes.bin", "Git treats this as binary\n")
+	testFile(t, dir, "ignored.txt", "ignored\n")
+	testFile(t, dir, "empty", "")
+	const untracked = "?? -untracked text\x00"
+	stats, err := ChangeStats(subdir)
+	if err != nil || stats != (LineStats{Additions: 3}) {
+		t.Fatalf("tracked and untracked text counts: %+v, %v", stats, err)
+	}
+	if status := testGit(t, dir, "status", "--porcelain=v1", "-z", "--", "-untracked text"); status != untracked {
+		t.Fatalf("line counts changed the index: %q", status)
 	}
 }
 
