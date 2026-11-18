@@ -46,6 +46,7 @@ python -m pytest scripts/browser/test_ui_review.py -q --junitxml=test-results/ui
 截圖必須另做人工視覺檢查；這不是自動像素差異核准，也不能以測試綠燈取代畫面驗收。
 
 真機 iOS 使用支援的 locator 等待與明確狀態斷言；本次 Python bridge 的 `expect(...).to_be_visible()` 在可見登入欄位上回報空白 AssertionError。
-macOS WebKit 的 HTTP 可用，但本次 Local tunnel 的 WebSocket 握手未完成，因此聊天流程會失敗，不能視為已驗收。
-已確認 768px 返回入口與 iPhone 分享視窗兩項缺陷；最終結果、版本差異與畫面證據見 [UI 驗收報告](../../docs/reviews/2026-11-17-browserstack-ui.md)。
+macOS WebKit 使用隔離的 HTTPS/WSS 反向代理，避開遠端 HTTP proxy 的明文 WebSocket 握手失敗。代理僅綁定 loopback，使用記憶體中的臨時自簽憑證；只有這個測試 context 允許該憑證。
+`python scripts/browser/check_tls_proxy.py` 驗證代理拒絕非本機上游，CI 也會執行。正式伺服器與授權流程不變。
+768px 返回入口與 iPhone 分享內容的修復、版本差異與畫面證據見 [UI 驗收報告](../../docs/reviews/2026-11-17-browserstack-ui.md)。
 報告內 `.spectra/design-cache/` 圖片連結只在保存證據的本機有效；GitHub 上請從報告的 Actions 連結下載對應 `ui-*` artifact。

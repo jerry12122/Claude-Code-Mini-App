@@ -156,7 +156,7 @@ function ChatSessionHeader({
       style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top) + var(--tg-content-safe-top))' }}
     >
       {/* 手機預設單列；會話資訊與次要操作按需展開。 */}
-      <div className="ra-chat-header-mobile sm:hidden flex items-start gap-1 px-3 py-1">
+      <div className="ra-chat-header-mobile lg:hidden flex items-start gap-1 px-3 py-1">
         {showBack && !isGuest && (
           <button type="button" onClick={onBack} aria-label="回到會話列表"
             className="shrink-0 flex h-11 w-11 items-center justify-center rounded-lg text-ra-t3 hover:text-ra-t1 focus-visible:ring-2 focus-visible:ring-violet-400">
@@ -190,7 +190,7 @@ function ChatSessionHeader({
       </div>
 
       {/* 桌面：Row 1 標題＋分支（左）｜ 操作控制（右）。Row 2 只放細的 repo/model/quota 副標，不跟控制項搶版面。 */}
-      <div className="ra-chat-header-desktop hidden sm:block px-7 py-4">
+      <div className="ra-chat-header-desktop hidden lg:block px-7 py-4">
         <div className="flex items-center justify-between gap-x-4 gap-y-2 flex-wrap">
           {/* ponytail: 標題直接顯示，完整名稱與路徑用原生 title，避免展開重複資訊。 */}
           <div className="flex flex-1 items-center gap-2 min-w-0">

@@ -54,7 +54,10 @@ def page(app, request):
                 else:
                     browser = p.chromium.connect(endpoint, timeout=120000)
             if context is None:
-                context = browser.new_context(**({"no_viewport": True} if NATIVE else {}))
+                options = {"no_viewport": True} if NATIVE else {}
+                if app["url"].startswith("https:"):
+                    options["ignore_https_errors"] = True  # Isolated fixture's ephemeral self-signed certificate.
+                context = browser.new_context(**options)
             current = context.new_page()
             current.set_default_timeout(30000)
             yield current
@@ -156,7 +159,7 @@ def test_ui_review(page, app, viewport):
     page.get_by_role("button", name="建立", exact=True).click()
     draft = page.locator("textarea[data-chat-input]")
     draft.wait_for(state="visible")
-    assert draft.is_enabled()
+    page.wait_for_function("document.querySelector('textarea[data-chat-input]')?.disabled === false")
     page.get_by_text("載入對話中…", exact=True).wait_for(state="hidden", timeout=30000)
     page.evaluate("() => document.activeElement?.blur()")
     capture(page, folder, "08-chat-empty-dark", issues, draft)
@@ -203,5 +206,9 @@ def test_ui_review(page, app, viewport):
     if share_layout["bodyHeight"] + 1 < share_layout["createHeight"]:
         issues.append("14-share-dark: 分享內容區高度不足以完整呈現建立分享按鈕")
     share.get_by_role("button", name="關閉", exact=True).click()
+    back = page.get_by_role("button", name="回到會話列表", exact=True)
+    if page.evaluate("innerWidth < 1024") and back.is_visible():
+        back.click()
+        page.get_by_role("button", name="建立新 Session", exact=True).wait_for(state="visible")
     (folder / "issues.json").write_text(json.dumps(issues, ensure_ascii=False, indent=2), encoding="utf-8")
     assert not issues, issues
