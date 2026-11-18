@@ -10,7 +10,7 @@
 - [x] 版本化桌面 EXE 自更新後檔名不變：評估完成（2026-11-18），不需改程式。便攜 ZIP 內本來就是固定名稱 `claude-miniapp-desktop.exe`（`scripts/release/package.sh`），安裝器入口也是固定名稱，README 推薦的預設入口已是 Setup 安裝包；帶版號的 EXE 只是自我更新用的獨立資產，只有手動直接下載該檔執行的人會遇到檔名仍帶舊版號
 - [x] `go mod tidy` 既有差異已處理（2026-11-18）：實際差異是 `x/crypto`、`x/sys` 由 indirect 改為直接依賴，並補／移除 `go.sum` 過期行；原本記載的 `fasthttp`、`jsonschema-go` 與當時現況不符
 - [x] `internal/cursor` 的 `runner_test.go:251`（「Run 卡在孤兒進程占住的 stdout」）偶發失敗已修（2026-11-18）：根因是 result 後放棄等待時 `KillTree` 殺不到已退出 wrapper 底下的孤兒（PID 不存在），`cmd.Wait` 只能等 `WaitDelay` 5 秒；負載下前段啟動時間再疊加就超過 7 秒逾時。這也是產品行為問題（result 後有孤兒時任務多卡約 5 秒）。放棄分支把 `WaitDelay` 縮到 200ms；同負載條件下 8 次由失敗 7 次變為 0 次，單次耗時 6.1s→約 1.4s。已知餘險：孤兒進程本身未被殺掉（Windows 限制），約 7 秒後自行結束；前段啟動時間在本機波動大，原因未查
-- [ ] Antigravity 後續驗收：真實 CLI 多輪對話、權限模式、帳戶配額與 TG WebView；回合 Token 統計串接待補（見 [整合計劃](agy-integration.md)）；補充（2026-11-18 核對）：`internal/usage` 已有跨 provider 正規化的單回合用量結構，但專案內沒有任何呼叫者，codex 也同樣只解析不傳遞，所以「回合 Token 統計」不是只補 agy 一條線，而是尚未設計的跨 provider 功能（存哪裡、顯示在哪），需先決定範圍
+- [ ] Antigravity 後續驗收：真實 CLI 多輪對話、權限模式、帳戶配額與 TG WebView；回合 Token 統計串接待補（見 [整合計劃](agy-integration.md)）；補充（2026-11-18 核對）：「回合 Token 統計」不是只補 agy 一條線，而是尚未設計的跨 provider 資料流（`agent.Event` 沒有用量欄位；`internal/usage` 的單回合 `Info` 與 `FromClaudeResult` 等解析函式沒有呼叫者，該套件其餘部分則被額度功能使用）。已寫設計草案並建議預設不做，待使用者決定（見 [草案](todo/turn-token-usage.md)）
 - [x] 附件輸入與聊天呈現：輸入框內佔位／重試、訊息附件卡片、驗證預覽與歷史持久化；實機驗證待補（見 [計劃](todo/attachment-experience.md)）
 - [ ] Claude ask 規則走 miniapp 授權：`bypassPermissions` 下命中 `permissions.ask` 時跳出允許／拒絕，按允許同輪執行（見 [計劃](todo/claude-permission-prompt.md)）；補充（2026-11-18 核對）：實作已在 `150c406`、`3b3228a`（`internal/ws/claudeperm.go`、`/mcp/perm`），計劃文件狀態寫「尚未實作」已過時；仍待補的是計劃第 6 節的真實 `claude -p` 整合驗證與桌面／瀏覽器／TG 手動驗證
 - [ ] 手機實機驗證：TG WebView（iOS／Android）📎 檔案選擇器、佇列 UI
