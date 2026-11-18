@@ -1,13 +1,14 @@
 # BrowserStack 自動化測試規劃
 
-狀態：GitHub／BrowserStack 串接與七項功能回歸通過；六環境 UI 已實跑，存在驗收缺陷與 WebKit 通道阻塞。程式位於獨立分支，尚未合併至 main。
-分支：`codex/browserstack-4229eb6a`；最新測試提交 `caf3b5c`。
+狀態：GitHub／BrowserStack 串接完成；768px 返回入口、iPhone 分享內容與 WebKit 測試通道已修復，完整六環境 CI 通過：UI 18／18、功能回歸各 7／7；截圖已複核。程式位於獨立分支，尚未合併至 main。
+分支：`codex/browserstack-4229eb6a`；最新測試提交 `74da7e2`。
+[修復後全通過 CI](https://github.com/jerry12122/Claude-Code-Mini-App/actions/runs/44217281764)。
 [通過的 Actions 執行](https://github.com/jerry12122/Claude-Code-Mini-App/actions/runs/44107518837)：Edge 與 BrowserStack Windows 11 Chrome 各七個案例，均為零失敗、零錯誤、零跳過。
 [BrowserStack build](https://automate.browserstack.com/dashboard/v2/builds/dfb54960a3b9ea679ebe486f4e5dd3e2c37a17ff)。
 首次執行發現 Windows 中文設定檔編碼問題，已設定 `PYTHONUTF8=1`，並改用官方維護下載來源的 SDK（本次版本 1.63.0）。
 使用者已確認測試標的是此專案，且已有 BrowserStack 帳號與方案。
 已透過 API 確認方案為 Automate Mobile，最多五個並行 session；裝置清單包含 Samsung Galaxy S25 Ultra／Android 15 與 iPhone 17 Pro／iOS 26。
-新增需求：除功能測試外，需截圖並實際檢查各環境 UI。已新增六環境視覺檢查，確認 768px 單欄聊天缺少返回列表按鈕，並發現 iPhone 分享視窗內容縮小。
+新增需求：除功能測試外，需截圖並實際檢查各環境 UI。已新增六環境視覺檢查，發現的 768px 返回入口與 iPhone 分享視窗問題已修復；WebKit 經隔離 HTTPS/WSS 測試通道完成定向驗證。
 執行結果、畫面證據與尚未驗收範圍見 [UI 驗收報告](../../reviews/2026-11-17-browserstack-ui.md)。
 
 ## 目標與工具
