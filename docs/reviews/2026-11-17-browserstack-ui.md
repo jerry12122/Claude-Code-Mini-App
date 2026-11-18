@@ -1,5 +1,44 @@
 # 跨環境 UI 視覺驗收
 
+## 2026-11-18 修復與驗證
+
+修復提交：`57d892a`；報告憑證遮罩補強：`74da7e2`，分支 `codex/browserstack-4229eb6a`。
+[修復後六環境 CI](https://github.com/jerry12122/Claude-Code-Mini-App/actions/runs/44217281764) 全部通過：UI 18／18，功能回歸本機與雲端各 7／7，零失敗、零 error、零 skip。
+
+- UI-01：聊天頂欄改用與 App 相同的 1024px 斷點；768px 可見返回按鈕，回歸也檢查點擊後回到會話列表。
+- UI-02：分享內容由 `flex-1` 改為 `flex-auto`，讓高度依內容計算。iPhone 定向重跑通過，內容區從 20px 恢復到 398px，主要按鈕高 36px。
+- WebKit：在隔離 fixture 加入 loopback HTTPS/WSS 反向代理。HTTP/WS 失敗的同一登入／授權／歷史／分享流程，改走 HTTPS/WSS 後定向通過；沒有修改產品的 WebSocket、授權或訊息處理。
+- 代理使用 Go 標準函式庫、記憶體臨時憑證，僅綁定 loopback；只在該測試 context 接受自簽憑證。`check_fixtures.py` 驗證缺參數、非 HTTP、非 loopback、無埠的上游均遭拒絕；移除驗證的刻意變更可讓檢查失敗，復原後通過。
+- 等待輸入框可用的檢查改為等待實際 enabled 狀態，避免只等 visible 後立即斷言的競態。
+- CI 曾遇到 BrowserStack Local 的 Windows named-pipe 啟動逾時，該次 Edge 四案是 setup errors，並非通過。第三方 traceback 將 key 帶入 JUnit；已刪除該份 `ui-edge` artifact（ID `14389225444`）、清理本機副本，新增 pytest 報告遮罩。以合成 key 觸發真實 pytest 失敗確認 console／JUnit 無明文 key，刻意移除遮罩也會讓檢查失敗。建議輪替曾出現在報告的 Access Key。
+- 第一輪修復 CI `44216214951` 的 Chrome／Firefox／WebKit 各四案均通過；因上述補強啟動新版 CI，舊輪剩餘真機作業已取消。未加入自動重試來隱藏失敗。
+
+已完成定向檢查：本機 UI 4／4、iPhone 1／1、WebKit 1280px 1／1；前端 Node 109／109，`go vet ./internal/... ./cmd/...` 與 TLS helper 的 vet 通過。
+`go test -tags production ./internal/... ./cmd/...` 最初僅既有 Cursor 孤兒 stdout 測試觸及 7 秒逾時；主分支定向檢查在約 6.54 秒通過，修復分支整套重跑也通過（Cursor 約 6.44 秒）。Cursor 程式與測試均未變更，保留此時間敏感性紀錄。
+
+### 修復後結果與畫面
+
+| 環境（session API 回報） | UI 案例 |
+|---|---|
+| Windows 11 Chrome 157 | 4／4 通過 |
+| Windows 11 Edge 157 | 4／4 通過 |
+| Windows 11 Firefox 153 | 4／4 通過 |
+| macOS Sequoia WebKit 26.5，HTTPS/WSS fixture | 4／4 通過 |
+| Samsung Galaxy S25 Ultra／Android 15 | 1／1 通過 |
+| iPhone 17 Pro／iOS 26.6 | 1／1 通過 |
+
+[BrowserStack UI build](https://automate.browserstack.com/dashboard/v2/builds/2743ae4c49d5c2aad785136e5298027751876ddb)。
+已保存 254 張 PNG，逐一複核各環境／寬度的全流程索引與問題原圖；本次兩項 UI 缺陷未再出現。iPhone 分享內容與建立按鈕均完整呈現。
+
+- [768px 返回入口修復後](../../.spectra/design-cache/browserstack-ui/44217281764/ui-chrome/ui/chrome/768/08-chat-empty-dark.png)
+- [iPhone 分享修復後原圖](../../.spectra/design-cache/browserstack-ui/44217281764/ui-ios/ui/ios/native/14-share-dark.png)／[內容區高度 398px](../../.spectra/design-cache/browserstack-ui/44217281764/ui-ios/ui/ios/native/14-share-layout.json)
+- [WebKit 390px 全流程](../../.spectra/design-cache/browserstack-ui/44217281764/contacts/webkit-390.png)／[iPhone 全流程](../../.spectra/design-cache/browserstack-ui/44217281764/contacts/ios-native.png)
+- [session 平台與結果](../../.spectra/design-cache/browserstack-ui/44217281764/sessions.json)
+
+本輪 iPhone API 回報 iOS 26.6，依然不能宣稱覆蓋精確 iOS 26.0。原報告列出的 iOS 軟鍵盤、旋轉、Telegram／Wails 容器與對比度驗收限制仍適用。
+
+以下保留修復前的失敗證據，供對照；不代表目前修復後狀態。
+
 日期：2026-11-17～18（Asia/Taipei）。結論：尚未全部符合預期，確認兩項 UI 缺陷；桌面 WebKit 的聊天流程另受連線阻塞。
 
 測試分支：`codex/browserstack-4229eb6a`，最新提交 `caf3b5c`，尚未合併 main。
