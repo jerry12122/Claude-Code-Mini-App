@@ -29,6 +29,7 @@
 - [ ] git worktree 隔離 — M
 - [ ] commit / discard（寫入，需二次確認）— S
 - [ ] 額度將盡建議換手 — S
+- [ ] Supervisor 工作室：虛擬群組檢視 + @ 路由 + 共享脈絡（見 `todo/supervisor-room.md`；第一期為零程式碼）— M
 
 ## Phase 4 — 自動化
 - [ ] TG 通知 inline 授權（callback_query + 白名單驗證）— M

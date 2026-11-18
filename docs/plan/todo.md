@@ -8,7 +8,8 @@
 - [ ] Windows x64 安裝包發版驗收：實作與本機 smoke／46 項發布檢查完成，尚待 Win10／乾淨帳戶、真實 Runtime 缺少、安裝版跨版更新及手動遷移驗收；普通全套 Cursor 測試仍有逾時（見 [紀錄](../reviews/2026-11-18-windows-installer.md)、[規劃](todo/windows-installer.md)）
 - [ ] 桌面自我更新實機驗收：從 v0.13.0 在真實 GitHub 自動更新到下一版（目前只在 fixture 驗證）、點系統匣圖示「檢查更新」、真實 helper 啟動失敗；已知限制：外部／分享連結無法交外部瀏覽器（Wails beta.26 Windows 無導航攔截 API）、替換與還原都被鎖時不自動重啟（見封存的 design.md）
 - [ ] 版本化桌面 EXE 自更新後檔名不變（檔名仍帶舊版號）：評估改以 ZIP 內固定名稱的 `claude-miniapp-desktop.exe` 當預設入口
-- [ ] `go mod tidy` 既有差異（`fasthttp`、`jsonschema-go`）與本輪無關，需另外處理
+- [x] `go mod tidy` 既有差異已處理（2026-11-18）：實際差異是 `x/crypto`、`x/sys` 由 indirect 改為直接依賴，並補／移除 `go.sum` 過期行；原本記載的 `fasthttp`、`jsonschema-go` 與當時現況不符
+- [ ] `internal/cursor` 的 `runner_test.go:251`（「Run 卡在孤兒進程占住的 stdout」）在全專案並行測試時偶發失敗一次，單獨重跑皆通過；尚未找出根因，先觀察是否再現
 - [ ] Antigravity 後續驗收：真實 CLI 多輪對話、權限模式、帳戶配額與 TG WebView；回合 Token 統計串接待補（見 [整合計劃](agy-integration.md)）
 - [x] 附件輸入與聊天呈現：輸入框內佔位／重試、訊息附件卡片、驗證預覽與歷史持久化；實機驗證待補（見 [計劃](todo/attachment-experience.md)）
 - [ ] Claude ask 規則走 miniapp 授權：`bypassPermissions` 下命中 `permissions.ask` 時跳出允許／拒絕，按允許同輪執行（見 [計劃](todo/claude-permission-prompt.md)）
@@ -60,6 +61,7 @@
 - [ ] 共享聊天室實機驗證：snapshot 橫幅、到期前 5 分鐘提示、editor 實際送訊息、非內網 IP 帶 guest token 的存取測試
 - [ ] 共享聊天室對外開放：Cloudflare Tunnel 部署與實機驗證；`RealIP` 可信代理檢查已完成，其他代理須設定 `web.trusted_proxies`
 - [ ] Telegram 改為可選模組：`bot_token` 可留空、關閉空 key 的 `initData` 驗證、`RealIP` 只信任已知代理（見 [計劃](todo/telegram-optional.md)）
+- [ ] Supervisor 工作室：使用者 + PM + 執行者同一虛擬群組，只有被 @ 的成員觸發；共享脈絡與額度守門；第一期（改 supervisor 流程）已於 2026-11-18 試跑完成，第二期（唯讀合併時間軸）待多跑幾個真任務後再決定（見 [計劃](todo/supervisor-room.md)）
 - [ ] 支援更多 AI 工具 (例如 OpenAI o1, deepseek 等，若有 CLI)
 - [ ] 檔案總管功能 (瀏覽 work_dir 檔案)
 - [ ] 系統資源監控 (CPU/Memory 狀態)
