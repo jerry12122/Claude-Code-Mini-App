@@ -19,6 +19,8 @@ import (
 func TestDesktopUpdateHelperStartup(t *testing.T) {
 	exe := buildDesktop(t)
 	work := t.TempDir()
+	writeFile(t, filepath.Join(filepath.Dir(exe), "installed.flag"), "")
+	localData := filepath.Join(work, "installed-user-data")
 
 	// 原服務正佔用此 port；helper 不得嘗試綁定。
 	occupied, err := net.Listen("tcp", "127.0.0.1:0")
@@ -42,6 +44,7 @@ func TestDesktopUpdateHelperStartup(t *testing.T) {
 	cmd := exec.Command(exe)
 	cmd.Dir = work
 	cmd.Env = append(os.Environ(),
+		"LOCALAPPDATA="+localData,
 		"WAILS_UPDATER_HELPER=1",
 		"WAILS_UPDATER_HELPER_TARGET="+target,
 		"WAILS_UPDATER_HELPER_NEW="+staged,
@@ -77,6 +80,9 @@ func TestDesktopUpdateHelperStartup(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(work, "logs")); err == nil {
 		t.Error("helper 不應初始化應用程式 log 目錄")
+	}
+	if _, err := os.Stat(localData); !os.IsNotExist(err) {
+		t.Error("helper 不應建立安裝版資料或 WebView2 profile")
 	}
 	if got := readFile(t, target); !strings.Contains(got, "ORIGINAL-EXE") {
 		t.Errorf("替換失敗後應保留原執行檔，得到 %q", got)

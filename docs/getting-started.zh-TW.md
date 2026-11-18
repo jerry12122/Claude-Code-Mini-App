@@ -10,13 +10,16 @@
 
 | 電腦 | 檔案 | 啟動方式 |
 |---|---|---|
-| Windows x64 | `claude-miniapp-v版本-windows-amd64.zip` | 桌面版：`claude-miniapp-desktop.exe`；純伺服器：`claude-miniapp.exe`，二選一 |
+| Windows x64 桌面版（推薦） | `claude-miniapp-v版本-windows-amd64-setup.exe` | 安裝目前使用者後，從開始功能表啟動 |
+| Windows x64 便攜／server | `claude-miniapp-v版本-windows-amd64.zip` | 完整解壓；桌面版：`claude-miniapp-desktop.exe`；純伺服器：`claude-miniapp.exe`，二選一 |
 | Linux x64 | `claude-miniapp-v版本-linux-amd64.tar.gz` | 在解壓目錄執行 `./claude-miniapp` |
 | 其他平台／架構 | 沒有對應的預編譯包 | 見下方[從原始碼建置](#從原始碼建置)，CLI 本身也須支援該環境 |
 
-不要選 GitHub 自動產生的「Source code」壓縮檔，除非要自行建置。解壓**整個資料夾**到可寫入的位置，保留 `internal/static/`、`config.example.yaml` 與執行檔的相對位置。使用下載版不需要安裝 Go 或 Node.js；你選的代理 CLI 可能另有需求。
+Setup 不需管理員權限，固定安裝到 `%LOCALAPPDATA%\Programs\ClaudeMiniApp`，建立開始功能表項目，並提供選用的桌面捷徑。設定、資料庫、日誌與附件使用 `%LOCALAPPDATA%\ClaudeMiniApp\data`，WebView2 profile 位於其中的 `webview2` 子目錄；解除安裝會保留資料。既有便攜版使用者請在[首次啟動前手動遷移](#便攜版遷移至安裝版)。
 
-Windows 桌面版需要 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)。執行檔未簽章，若 SmartScreen 攔截，先確認檔案來自本專案 Release，再點「其他資訊 → 仍要執行」。
+不要選 GitHub 自動產生的「Source code」壓縮檔，除非要自行建置。server 需解壓**整個資料夾**到可寫入的位置，保留 `internal/static/` 與 server 執行檔的相對位置。桌面 EXE 已內嵌前端，可單獨執行；既有便攜版設定與資料請保留原位。獨立的 `claude-miniapp-desktop-v版本-windows-amd64.exe` 供程式內更新使用。使用下載版不需要安裝 Go 或 Node.js；你選的代理 CLI 可能另有需求。
+
+Windows 桌面版需要 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)。Setup 會檢查，缺少時執行隨包附帶、具有 Microsoft 簽章的 bootstrapper，需連網下載 Runtime。若失敗（包含離線且缺 Runtime），請從該微軟頁面安裝 Runtime，再重試 Setup；便攜版需自行安裝。應用程式與 Setup 未簽章，若 SmartScreen 攔截，先確認檔案來自本專案 Release，再點「其他資訊 → 仍要執行」。
 
 ## 2. 安裝並登入一個代理
 
@@ -61,7 +64,7 @@ Windows 控制台不能直接使用只安裝在 WSL 裡的 CLI。若 CLI 裝在 
 1. **本機 CLI 檢查：** 顯示已安裝的代理與版本；找不到時提供官方安裝連結，仍可完成設定。
 2. **登入與儲存：** 輸入至少 8 個字元的密碼，或產生隨機密碼並妥善保存；空白與 `change-me` 不可使用。沒有特殊需求就保留連接埠 `8080`、資料庫路徑 `./claude-miniapp.db`；資料庫目錄必須已存在且可寫入。「允許區網裝置登入」預設關閉。
 3. **Telegram Mini App：** 預設關閉。只用桌面版或瀏覽器不需要 Bot Token、網域或 Tunnel；有需要才開啟，填入 BotFather Token 與數字 Telegram User ID。Telegram 需要外部可連入的 HTTPS 網址，精靈不會建立 Tunnel。
-4. **確認並儲存：** 在程式工作目錄寫入最小必要的 `config.yaml`（發布包的桌面版會寫在 exe 旁）。連接埠未變時直接切到密碼登入；有變更則完整結束、重啟程式，再開啟畫面顯示的新網址。
+4. **確認並儲存：** 在程式工作目錄寫入最小必要的 `config.yaml`（安裝版為 `%LOCALAPPDATA%\ClaudeMiniApp\data`；便攜桌面版為 exe 旁）。連接埠未變時直接切到密碼登入；有變更則完整結束、重啟程式，再開啟畫面顯示的新網址。
 
 設定 API 只接受帶有一次性設定憑證的本機連線。頁面讀到憑證後會從網址列移除；若儲存前重整，請重新開啟日誌中的完整網址。每次啟動憑證都會變更。完成後精靈與儲存 API 不提供編輯功能；之後需手動修改 `config.yaml` 再重啟。
 
@@ -77,7 +80,7 @@ ssh -N -L 8080:127.0.0.1:8080 user@your-server
 
 ### 手動設定（選用）
 
-也可略過精靈，在程式目錄建立以下 `config.yaml`，替換範例密碼。這份設定允許本機密碼登入，不需要 Telegram：
+也可略過精靈，在安裝版資料目錄或便攜／server 程式目錄建立以下 `config.yaml`，替換範例密碼。這份設定允許本機密碼登入，不需要 Telegram：
 
 ```yaml
 no_auth: false
@@ -96,7 +99,7 @@ db:
 
 ## 4. 啟動與登入
 
-**Windows 桌面版：** 雙擊 `claude-miniapp-desktop.exe`，視窗會自動開啟。首次啟動先完成精靈；已有設定時輸入 `web.password`。
+**Windows 桌面版：** 安裝版從開始功能表啟動；便攜版雙擊 `claude-miniapp-desktop.exe`，視窗會自動開啟。首次啟動先完成精靈；已有設定時輸入 `web.password`。
 
 **Windows 純 server：** 在解壓資料夾開啟 PowerShell，執行：
 
@@ -177,7 +180,7 @@ cloudflared tunnel --url http://127.0.0.1:8080
 
 | 現象 | 先做什麼 |
 |---|---|
-| 沒有出現設定精靈／靜態頁 404 | 已有 `config.yaml` 時不會出現精靈；首次使用請從完整解壓資料夾啟動並開啟日誌的設定網址，確認檔名不是 `.yaml.txt` |
+| 沒有出現設定精靈／靜態頁 404 | 已有 `config.yaml` 時不會出現精靈；安裝版從開始功能表啟動，便攜版從完整解壓資料夾啟動，開啟日誌的設定網址並確認檔名不是 `.yaml.txt` |
 | 缺少 `bot_token` 或 `web.password` | 本機使用只需有效的網頁密碼（至少 8 字元、不可為 `change-me`）；開啟 Telegram 才需要真實 Bot Token |
 | 密碼錯誤／仍要求登入 | 輸入 `web.password`，修改設定後完整退出並重啟；桌面版也需要登入 |
 | `僅允許內網存取`／403 | 先在主機用 `127.0.0.1`；區網使用者需把自己的可信網段加入 `web.allowed_cidrs`，不要直接允許全網；Telegram 則確認從 Bot 選單開啟且 ID 在白名單 |
@@ -191,7 +194,7 @@ cloudflared tunnel --url http://127.0.0.1:8080
 | Telegram 驗證失敗 | 確認 Token 屬於選單所在的 Bot、白名單是你自己的 User ID，關掉 Mini App 再從 Bot 選單重開 |
 | 沒有 Telegram 推播 | 先對自己的 Bot 按開始；確認通知 ID／白名單及 `notify` 設定。正常成功回覆預設不會推播 |
 
-查看「設定 → 日誌」；若畫面打不開，在程式資料夾找 `logs/server.log`，或在終端機啟動純 server 查看錯誤。回報問題時附平台、代理、重現步驟與錯誤片段，遮掉 Token、密碼及私人內容。
+查看「設定 → 日誌」；若畫面打不開，在安裝版資料目錄（或便攜／server 程式資料夾）找 `logs/server.log`，或在終端機啟動純 server 查看錯誤。回報問題時附平台、代理、重現步驟與錯誤片段，遮掉 Token、密碼及私人內容。
 
 ## 從原始碼建置
 
@@ -229,4 +232,15 @@ go build -o claude-miniapp ./cmd/server
 
 ## 下次啟動與更新
 
-從同一個程式資料夾啟動即可保留 Session。更新前完整停止程式，備份 `config.yaml`、資料庫（預設 `claude-miniapp.db`）與 `workspace/`，再更換執行檔及整份 `internal/static/`。不要以範例設定覆蓋自己的設定；若要還原／搬遷代理本身的會話，還需要保留該代理的本機資料。更多功能見[功能詳述](features.zh-TW.md)。
+安裝版與便攜桌面版沿用相同的程式內 EXE 更新，保留安裝模式與資料。重新執行 Setup 或解除安裝前，先完成工作並從系統匣選「結束」（關閉視窗只會隱藏）。桌面仍執行或檔案被鎖定時，維護會拒絕，不會強制停止程式。Setup 也會拒絕降版或覆蓋無法判定版本的既有 EXE。解除安裝保留獨立資料目錄與 WebView2 profile。
+
+任何升級前都應完整停止程式，備份設定、資料庫與附件。便攜／server 手動更新時，沿用同一程式資料夾並更換執行檔；server 另需更新 `internal/static/` 前端檔案。保留上傳附件，不要以範例設定覆蓋自己的設定。已由新版升級的資料庫不可交給舊 EXE 使用；回退需還原對應的升級前資料庫備份。若要還原／搬遷代理本身的會話，還需要保留該代理的本機資料。更多功能見[功能詳述](features.zh-TW.md)。
+
+### 便攜版遷移至安裝版
+
+遷移須手動進行，Setup 不會匯入便攜版資料。不要同時執行便攜版與安裝版。
+
+1. 完成工作，從便攜桌面版系統匣選「結束」（server 用 Ctrl+C），確認程式已停止。備份整個便攜資料夾，包含 `config.yaml`、設定中的 SQLite 資料庫（預設 `claude-miniapp.db`）、`workspace/`、`internal/static/uploads/` 與存在時的 `telegram.session`。SQLite 備份必須連同任何殘留的 `-wal` 檔保存，不可複製執行中的資料庫或丟棄 WAL；若有 `-shm` 檔也一併保留。
+2. 執行 Setup，保持程式關閉。**首次啟動安裝版前**，視需要建立 `%LOCALAPPDATA%\ClaudeMiniApp\data`，將上述檔案與目錄複製進去，維持相對結構。保留原始備份；若已有安裝版資料，先另行備份，勿直接覆蓋。
+3. 檢查 `config.yaml` 自訂路徑：相對路徑將以安裝版資料目錄為基準；絕對路徑仍指向原位置。依實際設定搬移資料並調整路徑。歷史附件中記錄的絕對路徑不會重寫；仍有引用時，需保留原檔與原位置。
+4. 從開始功能表啟動，確認會話與附件可用後再停用便攜版。不可用舊便攜 EXE 開啟已升級的資料庫；需要回退時還原升級前備份。

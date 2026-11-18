@@ -22,11 +22,13 @@
 
 ## 🚀 快速開始
 
-1. 到 [Releases](https://github.com/jerry12122/Claude-Code-Mini-App/releases/latest) 下載對應作業系統的壓縮檔並解壓縮。
-2. 啟動 `claude-miniapp-desktop.exe`（Windows 桌面版）或 `claude-miniapp`（伺服器版，開瀏覽器連 <http://127.0.0.1:8080>）。
+1. 到 [Releases](https://github.com/jerry12122/Claude-Code-Mini-App/releases/latest) 下載。Windows x64 桌面推薦 `claude-miniapp-<tag>-windows-amd64-setup.exe`，僅安裝目前使用者、不需管理員權限；ZIP 保留給便攜桌面／Windows server，Linux 使用 tar.gz。
+2. 安裝版從開始功能表啟動；便攜／server 版解壓整個資料夾後，啟動 `claude-miniapp-desktop.exe`（Windows 桌面版）或 `claude-miniapp`（Linux server，開瀏覽器連 <http://127.0.0.1:8080>）。
 3. 依首次設定精靈設定密碼，並自動檢查本機可用的代理 CLI。
 
 完整教學與進階設定：[從零開始教學](docs/getting-started.zh-TW.md) · [Telegram 遠端設定](docs/getting-started.zh-TW.md#6-選用從-telegram-開啟) · [問題排解](docs/getting-started.zh-TW.md#問題排解)
+
+安裝版資料位於 `%LOCALAPPDATA%\ClaudeMiniApp\data`，解除安裝後保留。既有便攜版使用者請在首次啟動前依[手動遷移與升級注意事項](docs/getting-started.zh-TW.md#便攜版遷移至安裝版)操作。獨立的桌面更新 EXE 供應用程式內更新使用。
 
 ## ✨ 功能
 

@@ -2,8 +2,8 @@
 
 package main
 
-// Windows 釘選圖示必須嵌入 EXE；favicon.ico 變更後執行 go generate ./cmd/desktop。
-//go:generate windres --input desktop.rc --output desktop_windows_amd64.syso --output-format coff --target pe-x86-64
+// 圖示或 VERSION 變更後執行 go generate ./cmd/desktop。
+//go:generate python ../../scripts/release/version-resource.py
 
 import (
 	"context"
@@ -34,7 +34,17 @@ func main() {
 	// 非 helper 行程下為 no-op，一般啟動行為不變。
 	updater.HandleHelperMode()
 
-	chdirToExeIfConfigured()
+	releaseDesktop, err := holdDesktopMutex(desktopMutex, maintenanceMutex)
+	if err != nil {
+		messageBox("MiniApp", err.Error())
+		os.Exit(1)
+	}
+	defer releaseDesktop()
+	profile, err := chdirToExeIfConfigured()
+	if err != nil {
+		messageBox("MiniApp", err.Error())
+		os.Exit(1)
+	}
 
 	syncLogs := logging.Init()
 	defer syncLogs()
@@ -127,8 +137,18 @@ func main() {
 			},
 		},
 	}
+	if profile != "" {
+		appOpts.Windows.WebviewUserDataPath = profile
+	}
 	e2eApplyOptions(&appOpts)
 	app := application.New(appOpts)
+	if profile != "" {
+		app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+			if err := syncInstalledVersion(uninstallKey, version.Version); err != nil {
+				slog.Warn("更新已安裝應用程式版本失敗", "error", err)
+			}
+		})
+	}
 
 	quitApp = app.Quit
 
@@ -229,22 +249,17 @@ func desktopWorkGate() (func(), error) {
 	return release, nil
 }
 
-// chdirToExeIfConfigured 依 firstRunWorkDir 決定要不要切到 exe 旁邊。
-// 旁邊已有 config.yaml，或發布包只有 config.example.yaml 且目前目錄還沒有設定檔時才切。
-func chdirToExeIfConfigured() {
+// Installed desktops use separate user data; unmarked executables keep portable behavior.
+func chdirToExeIfConfigured() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
-		return
+		return "", err
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
-		return
+		return "", err
 	}
-	dir := firstRunWorkDir(filepath.Dir(exe), cwd, fileExists)
-	if dir == "" {
-		return
-	}
-	_ = os.Chdir(dir)
+	return setDesktopWorkDir(filepath.Dir(exe), cwd, os.Getenv("LOCALAPPDATA"))
 }
 
 // originOf 回傳 scheme://host（不含路徑），解析失敗時回傳空字串（BridgeScript 會因此不安裝 bridge）。

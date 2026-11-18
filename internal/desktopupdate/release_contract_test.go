@@ -49,7 +49,8 @@ func TestReleaseDistContract(t *testing.T) {
 
 	zipName := "claude-miniapp-" + tag + "-windows-amd64.zip"
 	tgzName := "claude-miniapp-" + tag + "-linux-amd64.tar.gz"
-	for _, n := range []string{zipName, tgzName} {
+	setupName := "claude-miniapp-" + tag + "-windows-amd64-setup.exe"
+	for _, n := range []string{zipName, tgzName, setupName} {
 		if desktopAssetPattern.MatchString(n) {
 			t.Errorf("desktopAssetPattern 不應接受程式資產 %q", n)
 		}
@@ -68,9 +69,10 @@ func TestReleaseDistContract(t *testing.T) {
 
 	// checksums.txt：三個程式資產都要有一行，且雜湊與實際檔案相符（sha256sum 格式）
 	want := map[string]string{
-		zipName: sha256Hex(read(zipName)),
-		tgzName: sha256Hex(read(tgzName)),
-		exeName: sha256Hex(exeBytes),
+		zipName:   sha256Hex(read(zipName)),
+		tgzName:   sha256Hex(read(tgzName)),
+		exeName:   sha256Hex(exeBytes),
+		setupName: sha256Hex(read(setupName)),
 	}
 	got := map[string]string{}
 	for _, line := range strings.Split(strings.TrimRight(string(sums), "\n"), "\n") {
@@ -121,6 +123,7 @@ func TestReleaseDistContract(t *testing.T) {
 	// provider 端：用真實 checksums.txt 走 Check → Download
 	f := newFixture(t)
 	f.setLatest(stableRelease(ver,
+		fakeAsset{Name: setupName, Body: read(setupName)},
 		fakeAsset{Name: zipName, Body: read(zipName)},
 		fakeAsset{Name: tgzName, Body: read(tgzName)},
 		fakeAsset{Name: exeName, Body: exeBytes},

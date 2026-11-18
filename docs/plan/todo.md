@@ -5,6 +5,7 @@
 ---
 
 ## 🚀 待執行項目
+- [ ] Windows x64 安裝包發版驗收：實作與本機 smoke／46 項發布檢查完成，尚待 Win10／乾淨帳戶、真實 Runtime 缺少、安裝版跨版更新及手動遷移驗收；普通全套 Cursor 測試仍有逾時（見 [紀錄](../reviews/2026-11-18-windows-installer.md)、[規劃](todo/windows-installer.md)）
 - [ ] 桌面自我更新實機驗收：從 v0.13.0 在真實 GitHub 自動更新到下一版（目前只在 fixture 驗證）、點系統匣圖示「檢查更新」、真實 helper 啟動失敗；已知限制：外部／分享連結無法交外部瀏覽器（Wails beta.26 Windows 無導航攔截 API）、替換與還原都被鎖時不自動重啟（見封存的 design.md）
 - [ ] 版本化桌面 EXE 自更新後檔名不變（檔名仍帶舊版號）：評估改以 ZIP 內固定名稱的 `claude-miniapp-desktop.exe` 當預設入口
 - [ ] `go mod tidy` 既有差異（`fasthttp`、`jsonschema-go`）與本輪無關，需另外處理

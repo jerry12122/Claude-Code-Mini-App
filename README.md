@@ -22,11 +22,13 @@ All three talk to the same server and see the same sessions in real time.
 
 ## 🚀 Quick Start
 
-1. Download the release archive for your OS from [Releases](https://github.com/jerry12122/Claude-Code-Mini-App/releases/latest) and extract it.
-2. Run `claude-miniapp-desktop.exe` (Windows desktop) or `claude-miniapp` (server). For server builds, open <http://127.0.0.1:8080>.
+1. Download from [Releases](https://github.com/jerry12122/Claude-Code-Mini-App/releases/latest). For Windows x64 desktop, use `claude-miniapp-<tag>-windows-amd64-setup.exe` (recommended, current-user installation without administrator rights). ZIP remains available for portable desktop or Windows server; Linux uses the tar.gz archive.
+2. Launch the installed desktop from the Start menu, or extract the whole portable/server archive and run `claude-miniapp-desktop.exe` (Windows desktop) or `claude-miniapp` (Linux server). For server builds, open <http://127.0.0.1:8080>.
 3. Follow the first-run wizard in your browser or desktop window to set a password and detect available CLI agents.
 
 Detailed walkthrough: [Getting started from scratch](docs/getting-started.md) · [Telegram remote setup](docs/getting-started.md#6-optional-open-from-telegram) · [Troubleshooting](docs/getting-started.md#troubleshooting)
+
+Installed data lives in `%LOCALAPPDATA%\ClaudeMiniApp\data` and survives uninstall. Existing portable users: follow [manual migration and upgrade precautions](docs/getting-started.md#portable-to-installed-migration) before first launch. The separate desktop update EXE is for the in-app updater.
 
 ## ✨ Features
 

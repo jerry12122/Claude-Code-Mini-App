@@ -26,6 +26,23 @@ jobs:
       - name: tag、VERSION、version.go 與 commit 必須一致
         run: bash scripts/release/check-version.sh
 
+      - name: 固定版本 Inno Setup 與 Windows 版本資源
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.1.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_1/innosetup-6.7.1.exe' -OutFile $installer
+          if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash -ne '4d11e8050b6185e0d49bd9e8cc661a7a59f44959a621d31d11033124c4e8a7b0') { throw 'Inno Setup SHA256 mismatch' }
+          $tools = Join-Path $env:RUNNER_TEMP 'InnoSetup'
+          $process = Start-Process -FilePath $installer -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DIR=`"$tools`"" -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Inno Setup installation failed: $($process.ExitCode)" }
+          "ISCC=$tools\ISCC.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          'C:\mingw64\bin' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: 桌面版本資源與啟動測試
+        run: |
+          go generate ./cmd/desktop
+          go test ./cmd/desktop
+
       - name: 依賴漏洞掃描（Windows server、桌面與 Linux server）
         timeout-minutes: 15
         run: |
@@ -42,6 +59,17 @@ jobs:
 
       - name: 打包（產物與 checksums 到 dist/）
         run: bash scripts/release/package.sh dist
+
+      - name: 發布產物契約
+        env:
+          RELEASE_DIST: ${{ github.workspace }}\dist
+        run: go test -count=1 -run TestReleaseDistContract ./internal/desktopupdate
+
+      - name: 安裝與移除隔離測試
+        shell: powershell
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          & scripts/release/test/installer-smoke.ps1 -IsccPath $env:ISCC -DesktopExe "$env:GITHUB_WORKSPACE\dist\claude-miniapp-desktop-v$version-windows-amd64.exe" -AppVersion $version
 
       - name: 發佈 Release（草稿優先：比對通過才公開為 latest）
         env:

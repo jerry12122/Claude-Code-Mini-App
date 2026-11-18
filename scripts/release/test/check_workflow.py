@@ -62,6 +62,13 @@ def main(path):
     i_pack = index_of(lambda s: "package.sh dist" in str(s.get("run", "")), "package.sh dist")
     i_scan = index_of(lambda s: "govulncheck ./cmd/server" in str(s.get("run", "")), "govulncheck")
     i_pub = index_of(lambda s: "publish.sh dist" in str(s.get("run", "")), "publish.sh dist")
+    i_tools = index_of(lambda s: "innosetup-6.7.1.exe" in str(s.get("run", "")), "固定版本 Inno Setup")
+    i_smoke = index_of(lambda s: "installer-smoke.ps1" in str(s.get("run", "")), "安裝 smoke")
+    i_contract = index_of(lambda s: "TestReleaseDistContract" in str(s.get("run", "")), "發布產物契約")
+    expect(0 <= i_tools < i_pack < i_smoke < i_pub, "Inno Setup 準備與安裝 smoke 必須在公開前通過")
+    expect(i_pack < i_contract < i_pub, "發布產物契約必須在公開前通過")
+    if i_tools >= 0:
+        expect("4d11e8050b6185e0d49bd9e8cc661a7a59f44959a621d31d11033124c4e8a7b0" in str(steps[i_tools].get("run", "")), "Inno Setup 安裝器下載必須固定 SHA256")
 
     expect(i_checkout < i_go < i_py, "順序應為 checkout → setup-go → setup-python")
     expect(i_py < i_ver < i_test < i_test_p < i_pack < i_pub,
