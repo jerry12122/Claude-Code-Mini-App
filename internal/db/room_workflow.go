@@ -116,14 +116,18 @@ func (db *DB) RenameRoomSession(roomID, pmID, sessionID, name string) error {
 // CreateRoomWorker atomically adds a normal session inheriting its PM's working directory.
 func (db *DB) CreateRoomWorker(roomID, pmID, name, agentType string) (string, error) {
 	id := uuid.NewString()
+	global, err := db.GetGlobalInstruction()
+	if err != nil {
+		return "", err
+	}
 	tx, err := db.Begin()
 	if err != nil {
 		return "", err
 	}
 	defer tx.Rollback()
-	res, err := tx.Exec(`INSERT INTO sessions(id, name, agent_type, work_dir, last_read_at)
- SELECT ?, ?, ?, s.work_dir, datetime('now') FROM sessions s
- JOIN (`+roomPMQuery+`) pm ON pm.session_id = s.id WHERE s.id = ? AND pm.room_id = ?`, id, name, agentType, pmID, roomID)
+	res, err := tx.Exec(`INSERT INTO sessions(id, name, agent_type, work_dir, global_instruction_text, global_instruction_mode, last_read_at)
+ SELECT ?, ?, ?, s.work_dir, ?, ?, datetime('now') FROM sessions s
+ JOIN (`+roomPMQuery+`) pm ON pm.session_id = s.id WHERE s.id = ? AND pm.room_id = ?`, id, name, agentType, global.Text, global.Mode, pmID, roomID)
 	if err := roomChange(res, err, ErrRoomPM); err != nil {
 		return "", err
 	}

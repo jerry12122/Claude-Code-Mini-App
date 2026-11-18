@@ -23,10 +23,13 @@ type instructionRunner struct {
 func (r instructionRunner) Name() string { return "instruction-test" }
 func (r instructionRunner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventCallback) error {
 	r.runs <- opts
-	if opts.Prompt == "block" {
+	if opts.Prompt == "block" || strings.HasSuffix(opts.Prompt, "\n\n使用者訊息\nblock") {
 		select {
 		case err := <-r.gate:
 			if err != nil {
+				cb(agent.Event{Type: agent.EventError, Err: err})
+				cb(agent.Event{Type: agent.EventDelta, Text: err.Error()})
+				cb(agent.Event{Type: agent.EventDone})
 				return err
 			}
 		case <-ctx.Done():
@@ -106,6 +109,77 @@ func TestSessionInstructionRunLifecycle(t *testing.T) {
 	}
 	if got := userMessages(database, s.ID); !reflect.DeepEqual(got, []string{"fresh"}) {
 		t.Errorf("instruction entered history: %q", got)
+	}
+}
+
+func TestGlobalInstructionDelivery(t *testing.T) {
+	database, url := startTestServer(t)
+	r := installInstructionRunner()
+	agent.Register(agent.TypeClaude, func() agent.Runner { return r })
+	t.Cleanup(func() { agent.Register(agent.TypeClaude, func() agent.Runner { return fakeClaude{} }) })
+
+	const global = "全域規則\n保留換行"
+	const personal = "專屬規則"
+	chat := func(prompt string) string { return "全域指令\n" + global + "\n\n使用者訊息\n" + prompt }
+	for _, tc := range []struct {
+		name, provider, mode, local, native, first, next string
+	}{
+		{"native with personal", agent.TypeClaude, db.GlobalInstructionNative, personal, global + "\n\n" + personal, "hello", "next"},
+		{"chat with personal", agent.TypeClaude, db.GlobalInstructionEvery, personal, personal, chat("hello"), chat("next")},
+		{"chat alone", "instruction-test", db.GlobalInstructionFirst, "", "", chat("hello"), "next"},
+		{"native unsupported", "instruction-test", db.GlobalInstructionNative, "", "", "hello", "next"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := database.PutGlobalInstruction(db.GlobalInstruction{Text: global, Mode: tc.mode}); err != nil {
+				t.Fatal(err)
+			}
+			s, err := CreateSession(database, db.Session{
+				Name: "role", WorkDir: t.TempDir(), AgentType: tc.provider, SystemInstruction: tc.local,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := database.PutGlobalInstruction(db.GlobalInstruction{Mode: db.GlobalInstructionNative}); err != nil {
+				t.Fatal(err)
+			}
+			c := dialClient(t, url(s.ID))
+			if tc.mode == db.GlobalInstructionFirst {
+				c.send(t, map[string]any{"type": "input", "data": "block"})
+				instructionRun(t, r, chat("block"), "")
+				c.send(t, map[string]any{"type": "input", "data": "hello", "request_id": "hello"})
+				waitFor(t, "queued input", func() bool { return queueLen(database, s.ID) == 1 })
+				r.gate <- errors.New("failed before receiving a model event")
+				waitFor(t, "paused queue", func() bool {
+					paused, _ := database.QueuePaused(s.ID)
+					return paused && !taskIsActive(s.ID)
+				})
+				c.conn.Close()
+				c = dialClient(t, url(s.ID))
+				c.send(t, map[string]any{"type": "queue_resume"})
+			} else {
+				c.send(t, map[string]any{"type": "input", "data": "hello"})
+			}
+			instructionRun(t, r, tc.first, tc.native)
+			waitFor(t, "first reply", func() bool { return !taskIsActive(s.ID) })
+			c.send(t, map[string]any{"type": "input", "data": "next"})
+			instructionRun(t, r, tc.next, tc.native)
+			waitFor(t, "second reply", func() bool { return !taskIsActive(s.ID) })
+
+			wantHistory := []string{"hello", "next"}
+			if tc.mode == db.GlobalInstructionFirst {
+				wantHistory = []string{"block", "hello", "next"}
+			}
+			if got := userMessages(database, s.ID); !reflect.DeepEqual(got, wantHistory) {
+				t.Errorf("user history = %q, want %q", got, wantHistory)
+			}
+			if tc.mode == db.GlobalInstructionFirst {
+				c.send(t, map[string]any{"type": "reset_context"})
+				c.await(t, "reset context", isType("reset"))
+				c.send(t, map[string]any{"type": "input", "data": "fresh"})
+				instructionRun(t, r, chat("fresh"), "")
+				waitFor(t, "fresh reply", func() bool { return !taskIsActive(s.ID) })
+			}
+		})
 	}
 }
 

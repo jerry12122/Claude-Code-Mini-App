@@ -489,6 +489,8 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 	app.Put("/settings/appearance", authMiddleware, sth.PutAppearance)
 	app.Get("/settings/general", authMiddleware, sth.GetGeneral)
 	app.Put("/settings/general", authMiddleware, sth.PutGeneral)
+	app.Get("/settings/global-instruction", authMiddleware, sth.GetGlobalInstruction)
+	app.Put("/settings/global-instruction", authMiddleware, sth.PutGlobalInstruction)
 
 	app.Get("/config", authMiddleware, func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"shell_enabled": cfg.Shell.Enabled, "max_message_bytes": cfg.Server.MaxMessageBytes, "version": version.Version, "sha": version.Revision()})

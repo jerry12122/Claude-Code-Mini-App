@@ -123,7 +123,9 @@ func (d *deps) createSession(_ context.Context, _ *gomcp.CallToolRequest, in cre
 		}
 		return nil, nil, errors.New(reason)
 	}
-	s, err := d.db.CreateSession(in.Name, "", in.WorkDir, in.PermissionMode, agentType, nil, "")
+	s, err := ws.CreateSession(d.db, db.Session{
+		Name: in.Name, WorkDir: in.WorkDir, PermissionMode: in.PermissionMode, AgentType: agentType,
+	})
 	if err != nil {
 		return nil, nil, err
 	}

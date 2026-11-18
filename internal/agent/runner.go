@@ -10,6 +10,15 @@ import (
 // 以 errors.Is 判斷，由呼叫端告知使用者並處理接手。
 var ErrHandoff = errors.New("agent: session 無法繼續，需換新會話接手")
 
+func SupportsSystemInstruction(agentType string) bool {
+	switch agentType {
+	case TypeClaude, TypeCodex, TypeAntigravity:
+		return true
+	default:
+		return false
+	}
+}
+
 // RunOptions 是啟動 AI 工具子進程的共用參數。
 //
 // ExtraArgs 用來傳遞工具專屬的參數（例如 Claude 的 permission_mode、allowed_tools），

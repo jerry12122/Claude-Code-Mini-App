@@ -86,7 +86,11 @@ func startHandoff(database *db.DB, old *db.Session, lastPrompt string, cause err
 	if name == "" {
 		name = old.ID[:8]
 	}
-	ns, err := database.CreateSessionWithInstruction(name+"（接手）", "由 "+old.ID+" 自動交接", old.WorkDir, old.PermissionMode, old.AgentType, old.CliExtraArgs, "agent", "", old.SystemInstruction)
+	ns, err := CreateSession(database, db.Session{
+		Name: name + "（接手）", Description: "由 " + old.ID + " 自動交接",
+		WorkDir: old.WorkDir, PermissionMode: old.PermissionMode, AgentType: old.AgentType,
+		CliExtraArgs: old.CliExtraArgs, InputMode: "agent", SystemInstruction: old.SystemInstruction,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("建立接手會話: %w", err)
 	}
