@@ -20,6 +20,7 @@ import (
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/api"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/media"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/quota"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/sysmon"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/tg"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/ws"
@@ -82,6 +83,13 @@ func newGuestEnv(t *testing.T) *guestEnv {
 	fileH := api.NewFilesHandler(database)
 	app.Get("/sessions/:id/files", auth, fileH.List)
 	app.Get("/sessions/:id/files/content", auth, fileH.Content)
+	roomsH := api.NewRoomsHandler(database, quota.NewService())
+	app.Get("/rooms", auth, roomsH.List)
+	app.Post("/rooms", auth, roomsH.Create)
+	app.Get("/rooms/:id", auth, roomsH.Get)
+	app.Put("/rooms/:id", auth, roomsH.Update)
+	app.Delete("/rooms/:id", auth, roomsH.Delete)
+	app.Get("/rooms/:id/timeline", auth, roomsH.Timeline)
 	app.Post("/share/:token/join", api.JoinLimiter(), shareH.Join)
 	app.Use("/sessions/:id/ws", func(c *fiber.Ctx) error {
 		if fiberws.IsWebSocketUpgrade(c) {
@@ -222,6 +230,12 @@ func TestGuest_InvalidTokenAndOwnerRoutesForbidden(t *testing.T) {
 		{"GET", "/system/stats"},
 		{"GET", "/sessions/" + a.ID + "/files"},
 		{"GET", "/sessions/" + a.ID + "/files/content?path=x"},
+		{"GET", "/rooms"},
+		{"POST", "/rooms"},
+		{"GET", "/rooms/x"},
+		{"PUT", "/rooms/x"},
+		{"DELETE", "/rooms/x"},
+		{"GET", "/rooms/x/timeline"},
 	} {
 		if code := e.status(tc.method, tc.path, tok); code != 403 {
 			t.Errorf("%s %s 訪客應 403，got %d", tc.method, tc.path, code)
@@ -513,5 +527,51 @@ func TestGuest_RevokeKicksOpenWebSocket(t *testing.T) {
 	}
 	if !gotEnded {
 		t.Fatal("結束分享時應先收到 share_ended 再被關閉")
+	}
+}
+
+// 工作室（虛擬群聊）只給擁有者：訪客（任何角色、模式）連自己綁定 session 所屬的工作室也是 403，
+// 且 403 回應不得帶出工作室內容；擁有者同一組請求則是 200。
+func TestGuestCannotAccessRooms(t *testing.T) {
+	e := newGuestEnv(t)
+	a := e.session("A")
+	room, err := e.database.CreateRoom("機密工作室", []db.RoomMember{{SessionID: a.ID, Role: db.RoomRolePM}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.database.AddMessage(a.ID, "user", "ROOM-SECRET", ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"/rooms", "/rooms/" + room.ID, "/rooms/" + room.ID + "/timeline"} {
+		if code, body := e.do("GET", p, "", nil, nil); code != 200 || !strings.Contains(string(body), "機密工作室") && !strings.Contains(string(body), "ROOM-SECRET") {
+			t.Fatalf("擁有者 GET %s 應 200 並含內容，got %d %.80s", p, code, body)
+		}
+	}
+	for _, c := range []struct{ role, mode string }{
+		{db.ShareRoleViewer, db.ShareModeLive}, {db.ShareRoleEditor, db.ShareModeLive},
+		{db.ShareRoleViewer, db.ShareModeSnapshot}, // editor 只能搭配 live
+	} {
+		tok, _ := e.guest(a.ID, c.role, c.mode, "小明")
+		for _, r := range []struct{ method, path string }{
+			{"GET", "/rooms"},
+			{"POST", "/rooms"},
+			{"GET", "/rooms/" + room.ID},
+			{"PUT", "/rooms/" + room.ID},
+			{"DELETE", "/rooms/" + room.ID},
+			{"GET", "/rooms/" + room.ID + "/timeline"},
+			{"GET", "/rooms/" + room.ID + "/timeline?before=x&limit=5"},
+		} {
+			code, body := e.do(r.method, r.path, tok, strings.NewReader(`{"name":"x"}`), jsonHdr)
+			if code != 403 {
+				t.Errorf("%s/%s 訪客 %s %s 得到 %d，預期 403", c.role, c.mode, r.method, r.path, code)
+			}
+			if strings.Contains(string(body), "ROOM-SECRET") || strings.Contains(string(body), "機密工作室") {
+				t.Errorf("訪客 403 回應不該帶出工作室內容: %.100s", body)
+			}
+		}
+	}
+	// 訪客的嘗試不得動到工作室
+	if got, err := e.database.GetRoom(room.ID); err != nil || got.Name != "機密工作室" {
+		t.Errorf("訪客請求後工作室應原封不動: %+v err=%v", got, err)
 	}
 }

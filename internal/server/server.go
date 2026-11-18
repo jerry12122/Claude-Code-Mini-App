@@ -515,6 +515,13 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 	filesH := api.NewFilesHandler(database)
 	app.Get("/sessions/:id/files", authMiddleware, filesH.List)
 	app.Get("/sessions/:id/files/content", authMiddleware, filesH.Content)
+	roomsH := api.NewRoomsHandler(database, quotaSvc)
+	app.Get("/rooms", authMiddleware, roomsH.List)
+	app.Post("/rooms", authMiddleware, roomsH.Create)
+	app.Get("/rooms/:id", authMiddleware, roomsH.Get)
+	app.Put("/rooms/:id", authMiddleware, roomsH.Update)
+	app.Delete("/rooms/:id", authMiddleware, roomsH.Delete)
+	app.Get("/rooms/:id/timeline", authMiddleware, roomsH.Timeline)
 
 	tgMgr := tgclient.NewManager(cfg.TelegramClient, database)
 	_ = tgMgr.Start(ctx)

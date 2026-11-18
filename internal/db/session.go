@@ -148,6 +148,10 @@ func (db *DB) DeleteSession(id string) error {
 	if _, err := db.Exec(`DELETE FROM attachments WHERE session_id = ?`, id); err != nil {
 		return err
 	}
+	// 工作室只是檢視：session 沒了就退出所屬工作室，工作室本身保留。
+	if _, err := db.Exec(`DELETE FROM room_members WHERE session_id = ?`, id); err != nil {
+		return err
+	}
 	// 分享綁定的聊天室已不存在，一併結束（記錄保留供列表顯示「已結束」）。
 	if _, err := db.RevokeSharesBySession(id); err != nil {
 		return err

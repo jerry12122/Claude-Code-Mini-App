@@ -191,6 +191,9 @@ func (db *DB) migrate() error {
 		return err
 	}
 
+	if err := db.migrateRooms(); err != nil {
+		return err
+	}
 	if err := db.migrateMessageReadState(); err != nil {
 		return err
 	}
