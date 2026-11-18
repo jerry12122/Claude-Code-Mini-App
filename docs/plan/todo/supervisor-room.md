@@ -17,13 +17,13 @@
 ## 2. 分期
 
 ### 2.1 第一期：零程式碼（只改 supervisor 流程文件）
-- **額度守門**：派工前呼叫 `get_quota`，低於門檻就問使用者或換執行者。門檻值待使用者定（各 provider 額度單位不同）。
+- **額度守門**：派工前呼叫 `get_quota`，低於門檻就問使用者或換執行者。門檻由 PM 判斷、不設硬數字（約 70% 提醒、約 90% 以上不派；各 provider 額度單位不同，細節在 supervisor skill）。
   - 這只是軟性提醒：`get_quota` 回傳快取、不會刷新（`internal/quota/service.go`），`stale: true` 或無資料時必須視為「未知」而非充足；也擋不到已在佇列中、稍後才啟動的訊息。三期要做硬守門，必須在「訊息實際啟動」處檢查，不能只擋群組入口。
 - **待決策 session**：固定一個 session，supervisor 要問人時用 `post_message`（`notify: true`）寫進去，未讀徽章當**提醒**。不觸發 agent、不耗 token。
   - 限制：徽章只計「非 pending、非 user、未讀」訊息（`internal/db/session.go`），聚焦並捲到底或全部已讀就清除，**不代表決策已完成**。`notify` 需要 `bot_token`，且忽略通知錯誤。要真的追蹤決策狀態，得另外做（例如帶完成狀態的待辦資料），不列入第一期。
 - **共享脈絡檔 `context.md`**：目標、已決定事項、踩過的坑。派工模板加兩句：開工先讀、收工由 supervisor 追加新決策。
   - **位置（2026-11-18 使用者決定）**：脈絡含敏感資料，放 runtime 目錄、該群組專屬的 workspace，不放專案 repo。第一期還沒有群組實體，先由 supervisor 手動建一個固定資料夾，路徑記在任務輸入；第三期群組出現後改由群組擁有該資料夾。
-  - 不綁 provider 的前提是各 provider 讀得到該路徑，這點尚未驗證（見第 3 節）。
+  - 各 provider 讀取（唯讀）已於 2026-11-18 驗證通過，見第 6 節；寫入未測。
 
 完成標準：用 2～3 個實際任務試跑，執行者確實讀寫 `context.md`，且待決策 session 的徽章能正常提示。
 
@@ -52,11 +52,11 @@
 
 | # | 問題 | 傾向 |
 |---|---|---|
-| 1 | `context.md` 放哪 | **已決定：runtime 目錄、該群組的 workspace**（脈絡含敏感資料，不進專案 repo）。**各 provider 能否讀取尚未驗證**：Codex 有 bypass 參數，agy 僅見加入 `work_dir`，Kiro 真機測試只驗過 cwd 內寫檔，附件測試用 fake runner 不能當證據。需逐 provider 實測（同 todo.md 的圖片驗證項）。某 provider 讀不到時，不要退回放 repo，改由 supervisor 把必要片段貼進派工訊息 |
+| 1 | `context.md` 放哪 | **已決定：runtime 目錄、該群組的 workspace**（脈絡含敏感資料，不進專案 repo）。**各 provider 讀取已實測通過**（2026-11-18，claude／codex／kiroacp／antigravity／cursor，文字檔與圖片；寫入與真實附件流程未測）。某 provider 讀不到時，不要退回放 repo，改由 supervisor 把必要片段貼進派工訊息 |
 | 5 | `context.md` 並行寫入 | 單一寫入者：只有 supervisor 追加，執行者在回報裡提出內容 |
 | 2 | 一個群組能否跨多個 `work_dir`／repo | 允許，成員各自保留自己的 work_dir |
 | 3 | 命名：`session-tabs` 已用「群組」指分頁群組、`share-chat` 已用「聊天室」指訪客共享 | 本功能用「工作室（room）」避免混淆 |
-| 4 | 額度門檻值 | 待使用者決定，不預設數字 |
+| 4 | 額度門檻值 | 已決定（2026-11-18）：由 PM 判斷，不設硬門檻 |
 
 ## 4. 明確不做
 - 廣播式群聊（所有成員自動收到所有訊息）。
