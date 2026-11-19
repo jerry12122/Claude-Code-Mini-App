@@ -21,7 +21,7 @@
 ## 4. 前端
 
 - [x] 4.1 設定頁「一般」新增兩組控制，落實 Global auto-resume switch 與 Guard controls in the settings page：「額度用盡後自動繼續」開關（文案說明重置後會在無人看管時繼續執行），以及「額度守門」開關加百分比輸入（守門關閉時輸入停用；儲存後伺服器回錯誤則顯示錯誤並還原為上次接受的值）；`GENERAL_DEFAULTS` 補新欄位，沿用 `vscodeNoAdmin` 的即時 PUT 寫法。驗證：以臨時實例切換並重新整理後仍保持；輸入 150 顯示伺服器錯誤並還原；`node scripts/frontend-layering.test.cjs` 通過。[after: 2.2, 2.3]
-- [x] 4.2 Waiting banner：聊天畫面依 `quota_resume_state` 顯示：`waiting` 為「額度用盡，預計 HH:MM 自動繼續」與取消鈕（送 `quota_resume_cancel`），`exhausted` 為「已達自動繼續上限，請手動繼續」（無取消鈕），重連／重新整理後仍顯示，回 `none` 後消失。驗證：臨時實例以假額度來源（見 5.1）把重置時間縮短，目視確認 `waiting` 出現、重新整理後仍在、按取消後消失且佇列仍暫停；`exhausted` 情境另以測試資料確認文案；`node scripts/frontend-layering.test.cjs` 通過。[after: 3.7]
+- [x] 4.2 Waiting banner（橫幅畫面已於 2026-11-19 在臨時實例複驗，見 plan §8；`scripts/quota-banner-fixture` 已移除，改以 e2e 測試與該紀錄為證）：聊天畫面依 `quota_resume_state` 顯示：`waiting` 為「額度用盡，預計 HH:MM 自動繼續」與取消鈕（送 `quota_resume_cancel`），`exhausted` 為「已達自動繼續上限，請手動繼續」（無取消鈕），重連／重新整理後仍顯示，回 `none` 後消失。驗證：臨時實例以假額度來源（見 5.1）把重置時間縮短，目視確認 `waiting` 出現、重新整理後仍在、按取消後消失且佇列仍暫停；`exhausted` 情境另以測試資料確認文案；`node scripts/frontend-layering.test.cjs` 通過。[after: 3.7]
 
 ## 5. 整合驗證與文件
 

@@ -101,6 +101,8 @@
 ## 8. 5.1 端到端觀察（2026-11-19）
 
 > 下文的臨時程序 `scripts/quota-banner-fixture` 已於清理時移除；可重跑的驗證以 `internal/server/quota_e2e_test.go` 的 `TestQuotaE2E*` 為準。
+>
+> **清理後的畫面複驗（2026-11-19，HEAD 7a1e95b，臨時實例＋獨立資料庫）**：設定頁「一般」四個核取區塊（`GeneralCheckbox`）正確渲染；勾選「額度重置後自動繼續」後伺服器存為 `autoResumeOnQuota: true`，其餘欄位不變；守門門檻輸入 150 失敗時顯示伺服器訊息「quotaGuardPercent 必須大於 0 且小於等於 100」、輸入框還原為 90、伺服器值不變；把 session 設為 `waiting` 後橫幅顯示「額度用盡，預計 12:50 自動繼續」（對應 04:50Z，本地時區正確），按「取消自動繼續」後狀態回 `none`、`quota_resume_at` 清空、佇列仍暫停、橫幅消失。
 
 臨時程序是 `go run ./scripts/quota-banner-fixture`。它不呼叫 `server.Start`，因此不同步模型、不暖機、不打真供應商；runner 與額度都在行程內，而且只聽 127.0.0.1。輪詢是正式的 `watchQuota`；e2e 只把間隔從 30 秒縮短為 1 秒（正式值由 `TestQuotaResumeDefaultInterval` 固定），60 秒緩衝是 `db.QuotaResumeAt`、不縮短，也沒有把手動 `resumeDue` 當成這次已驗過。輪詢啟動或延後只對上刷新前列出的世代與預定時間。
 
