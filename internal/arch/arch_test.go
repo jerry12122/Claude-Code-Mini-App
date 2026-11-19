@@ -91,7 +91,6 @@ var knownViolations = map[string][]string{
 		"internal/server/server.go:runNormal",       // 450 行，內嵌路由 handler 應移往 api
 		"internal/kiroacp/runner.go:Runner.runOnce", // 313 行
 		"cmd/desktop/main_windows.go:main",          // 185 行，視窗與托盤組裝
-		"internal/db/db.go:DB.migrate",              // 164 行，schema 清單，會隨欄位增長
 	},
 }
 

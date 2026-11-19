@@ -19,6 +19,10 @@ func TestSessionInstructionMigration(t *testing.T) {
 	if _, err := db.Exec(`ALTER TABLE sessions DROP COLUMN system_instruction`); err != nil {
 		t.Fatal(err)
 	}
+	// 沒有版本號的舊資料庫：user_version 為 0，下次開啟才會重跑基線遷移。
+	if _, err := db.Exec(`PRAGMA user_version = 0`); err != nil {
+		t.Fatal(err)
+	}
 	db.Close()
 	db, err = Open(path)
 	if err != nil {

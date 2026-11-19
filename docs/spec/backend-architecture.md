@@ -74,6 +74,11 @@ L0 套件不得 import 任何其他內部套件。
 **`db` 是唯一能寫 SQL 的地方。** 其他套件只能呼叫 `db` 的方法；
 唯一允許外洩的 `database/sql` 符號是 `sql.ErrNoRows`（用於 `errors.Is` 判斷找不到資料）。
 
+**schema 變更只走 `internal/db/migrate.go` 的 `migrations`**：已完成的版本記在 `PRAGMA user_version`。
+新增欄位或資料表就在清單**尾端**追加一個 `upTx`（在交易內執行，版本號同一交易更新，失敗整個回滾並中止啟動）；
+不得修改或重排已發佈的項目，也不要再改凍結的 `migrate_baseline.go`（那是版本機制出現之前的整個 schema）。
+資料庫版本比程式新時會拒絕開啟。
+
 ### L1 領域工具
 
 無狀態的解析與計算：`model`（model 名稱解析與顯示）、`usage` 之上的 `quota`（抓取與快取額度）、
@@ -228,7 +233,6 @@ go test ./...                 # 全部測試（含上述分層檢查）
 | R8 | `server/server.go:runNormal`（450 行） | 內嵌的約 10 個路由 handler（登入、Telegram 驗證、`/config`、`/model-options/refresh`）移往 `api`，比照既有的 `sh`／`shareH`／`sth` 寫法 |
 | R7 | `ws/conn_agent.go`、`mcp/tools.go`、`server/server.go` | 隨上面兩項一起縮小 |
 | R8 | `kiroacp/runner.go:Runner.runOnce`（313 行） | 拆出 ACP 握手與回合串流 |
-| R8 | `db/db.go:DB.migrate`（164 行） | schema 清單，會持續增長。現為字串比對忽略 `duplicate column`，改成 `PRAGMA user_version` 順序遷移後此例外可一併處理 |
 | R8 | `cmd/desktop/main_windows.go:main`（185 行） | 視窗與托盤組裝，低優先 |
 | R2 | `tgclient` 註冊 runner 卻 import `ws` | 把 `ws` 的廣播抽成 `tgclient` 自己定義的 callback 介面，由 `server` 注入 |
 | R3 | `quota` 直接開 SQLite | 讀的是 Cursor 自己的 `state.vscdb` 取 token，不是本專案的 DB，長期保留。已在 `readCursorAccessToken` 註明唯讀 |
