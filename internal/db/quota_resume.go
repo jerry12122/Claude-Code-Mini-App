@@ -49,6 +49,11 @@ func QuotaResumeAt(reset time.Time) string {
 	return quotaResumeTime(reset.Add(time.Minute))
 }
 
+// quotaSQL 讓同一段 SQL 能在 *DB 與交易（*sql.Tx）上執行。
+type quotaSQL interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
 // TransitionQuotaResume 以單一條件式 UPDATE 轉移狀態。
 // from 必須等於目前 quota_resume_state 才會成功。表外轉移回傳 false, nil，不寫入。
 // attempts 只在 waiting→resuming 加 1；轉入 none 時歸零且 quota_resume_at 清空。
@@ -56,10 +61,6 @@ func QuotaResumeAt(reset time.Time) string {
 // resuming→waiting 且 restoreAttempts 為真時減 1（不低於 0），為假時保留。
 // at 非空且目標不是 none 時寫入 quota_resume_at。
 // generation 大於 0 時，WHERE 同時要求 quota_resume_generation 等於它。
-type quotaSQL interface {
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
-}
-
 func (db *DB) TransitionQuotaResume(sessionID, from, to, at string, restoreAttempts bool) (bool, error) {
 	return execQuotaResumeTransition(context.Background(), db, sessionID, from, to, at, restoreAttempts, 0, false)
 }
@@ -154,22 +155,13 @@ func (db *DB) ArmQuotaResume(sessionID string, userMsgID int64, from, to, at str
 		return false, err
 	}
 	ctx := context.Background()
-	conn, err := db.Conn(ctx)
+	tx, err := db.Begin()
 	if err != nil {
 		return false, err
 	}
-	defer conn.Close()
-	if _, err := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
-		return false, err
-	}
-	done := false
-	defer func() {
-		if !done {
-			_, _ = conn.ExecContext(context.Background(), `ROLLBACK`)
-		}
-	}()
+	defer tx.Rollback()
 	var rawSettings string
-	err = conn.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, SettingKeyGeneral).Scan(&rawSettings)
+	err = tx.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, SettingKeyGeneral).Scan(&rawSettings)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -180,30 +172,29 @@ func (db *DB) ArmQuotaResume(sessionID string, userMsgID int64, from, to, at str
 	if json.Unmarshal([]byte(rawSettings), &settings) != nil || !settings.AutoResumeOnQuota {
 		return false, nil
 	}
-	ok, err := execQuotaResumeTransition(ctx, conn, sessionID, from, to, at, false, generation, true)
+	ok, err := execQuotaResumeTransition(ctx, tx, sessionID, from, to, at, false, generation, true)
 	if err != nil || !ok {
 		return false, err
 	}
 	var minID sql.NullInt64
-	if err := conn.QueryRowContext(ctx, `SELECT MIN(id) FROM queued_messages`).Scan(&minID); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT MIN(id) FROM queued_messages`).Scan(&minID); err != nil {
 		return false, err
 	}
 	base := int64(0)
 	if minID.Valid && minID.Int64 < 0 {
 		base = minID.Int64
 	}
-	if _, err := conn.ExecContext(ctx,
+	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO queued_messages (id, session_id, content, attachment_ids, author) VALUES (?, ?, ?, ?, ?)`,
 		base-1, sessionID, content, attachmentIDsJSON(ids), author); err != nil {
 		return false, err
 	}
-	if _, err := conn.ExecContext(ctx, `UPDATE sessions SET queue_paused = 1 WHERE id = ?`, sessionID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE sessions SET queue_paused = 1 WHERE id = ?`, sessionID); err != nil {
 		return false, err
 	}
-	if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
+	if err := tx.Commit(); err != nil {
 		return false, err
 	}
-	done = true
 	return true, nil
 }
 
@@ -348,14 +339,10 @@ func (db *DB) RestoreQuotaResumeWaiting(sessionID string, generation int64) (boo
 	return execQuotaResumeTransition(context.Background(), db, sessionID, QuotaResumeResuming, QuotaResumeWaiting, "", true, generation, true)
 }
 
-type sqlExec interface {
-	Exec(query string, args ...any) (sql.Result, error)
-}
-
 // execCancelQuotaResume 清成 none、次數歸零、時間清空，並把世代加 1。
 // 已經是 none 也推進世代，讓執行開始時記下的舊世代不能在取消之後再武裝。世代不歸零、不重用。
-func execCancelQuotaResume(ex sqlExec, sessionID string) error {
-	_, err := ex.Exec(
+func execCancelQuotaResume(ex quotaSQL, sessionID string) error {
+	_, err := ex.ExecContext(context.Background(),
 		`UPDATE sessions SET
 			quota_resume_state = ?,
 			quota_resume_attempts = 0,

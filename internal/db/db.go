@@ -20,7 +20,7 @@ func Open(path string) (*DB, error) {
 	// modernc.org/sqlite 只認 _pragma=...；舊的 _journal_mode/_busy_timeout（mattn 語法）會被靜默忽略，
 	// 導致實際是 delete journal、busy_timeout=0，並行讀寫時直接 SQLITE_BUSY。
 	// busy_timeout 放前面：切 WAL 需要鎖，先設好等待時間。
-	sqldb, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
+	sqldb, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_txlock=immediate")
 	if err != nil {
 		return nil, err
 	}

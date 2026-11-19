@@ -62,26 +62,17 @@ func (db *DB) PutGeneralSettings(raw []byte) (GeneralSettings, error) {
 		return GeneralSettings{}, err
 	}
 	ctx := context.Background()
-	conn, err := db.Conn(ctx)
+	tx, err := db.Begin()
 	if err != nil {
 		return GeneralSettings{}, err
 	}
-	defer conn.Close()
-	if _, err := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
-		return GeneralSettings{}, err
-	}
-	done := false
-	defer func() {
-		if !done {
-			_, _ = conn.ExecContext(context.Background(), `ROLLBACK`)
-		}
-	}()
-	current, err := readGeneralSettings(ctx, conn)
+	defer tx.Rollback()
+	current, err := readGeneralSettings(ctx, tx)
 	if err != nil {
 		return GeneralSettings{}, err
 	}
 	if current.AutoResumeOnQuota && !s.AutoResumeOnQuota {
-		if _, err := conn.ExecContext(ctx,
+		if _, err := tx.ExecContext(ctx,
 			`UPDATE sessions SET
 				quota_resume_state = ?,
 				quota_resume_attempts = 0,
@@ -91,22 +82,23 @@ func (db *DB) PutGeneralSettings(raw []byte) (GeneralSettings, error) {
 			return GeneralSettings{}, err
 		}
 	}
-	if _, err := conn.ExecContext(ctx,
+	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO settings (key, value) VALUES (?, ?)
 		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
 		SettingKeyGeneral, string(encoded)); err != nil {
 		return GeneralSettings{}, err
 	}
-	if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
+	if err := tx.Commit(); err != nil {
 		return GeneralSettings{}, err
 	}
-	done = true
 	return s, nil
 }
 
-func readGeneralSettings(ctx context.Context, conn *sql.Conn) (GeneralSettings, error) {
+func readGeneralSettings(ctx context.Context, q interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}) (GeneralSettings, error) {
 	var value string
-	err := conn.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, SettingKeyGeneral).Scan(&value)
+	err := q.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, SettingKeyGeneral).Scan(&value)
 	if errors.Is(err, sql.ErrNoRows) {
 		return GeneralSettings{}, nil
 	}

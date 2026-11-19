@@ -28,17 +28,11 @@ function quotaResumeLocalHM(at, timeZone) {
   if (Number.isNaN(date.getTime())) return '';
   const opts = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
   if (timeZone) opts.timeZone = timeZone;
-  let parts;
   try {
-    parts = new Intl.DateTimeFormat('en-GB', opts).formatToParts(date);
+    return new Intl.DateTimeFormat('en-GB', opts).format(date);
   } catch (err) {
     return '';
   }
-  const hour = parts.find((p) => p.type === 'hour');
-  const minute = parts.find((p) => p.type === 'minute');
-  if (!hour || !minute) return '';
-  const hh = hour.value === '24' ? '00' : hour.value;
-  return `${hh}:${minute.value}`;
 }
 
 function quotaResumeBannerDescriptor(input) {
