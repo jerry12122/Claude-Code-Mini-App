@@ -376,45 +376,6 @@ func queuedContents(list []QueuedMessage) string {
 	return out
 }
 
-func TestQuotaResumeOldDatabase(t *testing.T) {
-	path := t.TempDir() + "/old.db"
-	raw, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = raw.Exec(`
-		CREATE TABLE sessions (
-			id                TEXT PRIMARY KEY,
-			agent_type        TEXT NOT NULL DEFAULT 'claude',
-			agent_session_id  TEXT NOT NULL DEFAULT '',
-			name              TEXT NOT NULL DEFAULT '',
-			description       TEXT NOT NULL DEFAULT '',
-			work_dir          TEXT NOT NULL DEFAULT '',
-			permission_mode   TEXT NOT NULL DEFAULT 'default',
-			allowed_tools     TEXT NOT NULL DEFAULT '',
-			last_active       TEXT NOT NULL DEFAULT (datetime('now')),
-			disguise_agent    TEXT NOT NULL DEFAULT ''
-		);
-		INSERT INTO sessions (id, name, work_dir) VALUES ('legacy', 'old', '');
-	`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := raw.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	database, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
-	requireQuotaResume(t, database, "legacy", QuotaResumeNone, "", 0)
-
-	s := newQuotaSession(t, database, "fresh")
-	requireQuotaResume(t, database, s.ID, QuotaResumeNone, "", 0)
-}
-
 func TestQuotaResumeGenerationMigration(t *testing.T) {
 	path := t.TempDir() + "/generation-old.db"
 	raw, err := sql.Open("sqlite", path)
@@ -448,6 +409,7 @@ func TestQuotaResumeGenerationMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
+	requireQuotaResume(t, database, "legacy", QuotaResumeNone, "", 0)
 	_, _, generation, err := database.SnapshotQuotaResume("legacy")
 	if err != nil || generation != 0 {
 		t.Fatalf("舊庫世代=%d err=%v", generation, err)

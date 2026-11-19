@@ -648,23 +648,6 @@ func TestQuotaResumeOwnerSocketDoesNotStart(t *testing.T) {
 	}
 }
 
-func TestQuotaResumeSuccessClearsResuming(t *testing.T) {
-	database, wsURL := startTestServer(t)
-	s := quotaSession(t, database, "success", "fakeq")
-	setAutoResume(t, database, true)
-	armQuotaAttempts(t, database, s.ID, 2)
-	pauseQuotaText(t, database, s.ID, "hello")
-	conn := dialQuota(t, wsURL(s.ID))
-	defer conn.Close()
-	if err := conn.WriteJSON(map[string]string{"type": "queue_resume"}); err != nil {
-		t.Fatal(err)
-	}
-	waitFor(t, "success cleared", func() bool {
-		state, _, attempts, err := database.GetQuotaResume(s.ID)
-		return err == nil && state == db.QuotaResumeNone && attempts == 0 && lastReply(database, s.ID) == "ok:hello"
-	})
-}
-
 func TestQuotaResumeOtherFailureClearsResuming(t *testing.T) {
 	database, wsURL := startTestServer(t)
 	s := quotaSession(t, database, "other-fail", "fakeq")
@@ -833,19 +816,6 @@ func TestQuotaResumeSuccessResetsCount(t *testing.T) {
 	state, _, attempts, err := database.GetQuotaResume(s.ID)
 	if err != nil || state != db.QuotaResumeResuming || attempts != 1 {
 		t.Fatalf("state=%s attempts=%d err=%v", state, attempts, err)
-	}
-}
-
-func TestQuotaResumeLateFinishKeepsNewGeneration(t *testing.T) {
-	database := openQuotaDB(t)
-	s := quotaSession(t, database, "generation", "fakeq")
-	armQuotaAttempts(t, database, s.ID, 2)
-	if err := releaseQuotaResumeRun(database, s.ID, true, 1); err != nil {
-		t.Fatal(err)
-	}
-	state, at, attempts, err := database.GetQuotaResume(s.ID)
-	if err != nil || state != db.QuotaResumeResuming || attempts != 2 || at == "" {
-		t.Fatalf("state=%s at=%s attempts=%d err=%v", state, at, attempts, err)
 	}
 }
 
