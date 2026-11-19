@@ -120,8 +120,20 @@ func watchSocket(t *testing.T, base, id string) *wsSeen {
 	return seen
 }
 
+// e2eTick 是 e2e 測試把輪詢間隔縮短後的值；正式間隔仍是 30 秒，見 TestQuotaResumeDefaultInterval。
+const e2eTick = time.Second
+
+func TestQuotaResumeDefaultInterval(t *testing.T) {
+	if quotaResumeEvery != 30*time.Second {
+		t.Fatalf("quotaResumeEvery = %v，預設應為 30 秒", quotaResumeEvery)
+	}
+}
+
 func startQuotaE2E(t *testing.T, refresh func(context.Context, string) (quota.Snapshot, error), seed quota.Snapshot, prepare func(*db.DB)) (*db.DB, string) {
 	t.Helper()
+	prevEvery := quotaResumeEvery
+	quotaResumeEvery = e2eTick
+	t.Cleanup(func() { quotaResumeEvery = prevEvery })
 	t.Setenv("PATH", "")
 	t.Setenv("CC_AGY_BIN", "agy")
 	viper.Reset()
@@ -266,7 +278,7 @@ func TestQuotaE2ERealWatchContinues(t *testing.T) {
 		t.Fatalf("queue=%s", quotaQueueText(t, database, liveID))
 	}
 	recovered.Store(true)
-	waitState(t, database, liveID, db.QuotaResumeNone, 45*time.Second)
+	waitState(t, database, liveID, db.QuotaResumeNone, 15*time.Second)
 	waitState(t, database, waitingID, db.QuotaResumeNone, 5*time.Second)
 	waitState(t, database, resumingID, db.QuotaResumeNone, 5*time.Second)
 	if quotaReply(database, liveID) != "ok:quota-fail continue" || !strings.Contains(quotaUserText(database, liveID), "quota-fail continue") || quotaQueueText(t, database, liveID) != "" {
@@ -301,7 +313,7 @@ func TestQuotaE2ERealWatchDelays(t *testing.T) {
 		setQuotaWaiting(t, d, s.ID, past)
 	})
 	seen := watchSocket(t, base, id)
-	deadline := time.Now().Add(45 * time.Second)
+	deadline := time.Now().Add(15 * time.Second)
 	var at string
 	var attempts int
 	for {
@@ -379,7 +391,7 @@ func TestQuotaE2ESwitchOffStays(t *testing.T) {
 	if !seen.seen("none") {
 		t.Fatal("關開關後連線沒有收到 none")
 	}
-	time.Sleep(35 * time.Second)
+	time.Sleep(4 * e2eTick) // 讓輪詢跑過數輪，確認關著的開關不會讓它啟動
 	state, at, attempts, err := database.GetQuotaResume(id)
 	if err != nil {
 		t.Fatal(err)

@@ -16,7 +16,7 @@ import (
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/ws"
 )
 
-const quotaResumeEvery = 30 * time.Second
+var quotaResumeEvery = 30 * time.Second // var：只有 e2e 測試會縮短，預設值由 TestQuotaResumeDefaultInterval 固定
 
 // recoverSessionsAfterStartup 是正式啟動在開啟資料庫之後的復原步驟。
 // 先把中斷的執行收回 idle，再處理自動復原狀態。任一失敗都要往上傳，不能當成啟動成功。
