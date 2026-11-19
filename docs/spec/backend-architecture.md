@@ -101,7 +101,7 @@ L0 套件不得 import 任何其他內部套件。
 這是系統的核心協調層，也是目前最需要拆解的地方。
 
 新增回合行為時：**先問能不能放在 `applyRunEvent` 既有的事件套用路徑裡**，
-而不是在 `NewHandler` 的巨型 closure 再加一個 `case`。
+而不是在 `wsConn.handleMsg` 再加一個 `case` 分支，更不要把新邏輯塞進 `runAgent`；新訊息型別加一個 `onXxx` 方法（`conn_loop.go`）。
 
 ### L5 `mcp`、`tgclient`
 
@@ -224,9 +224,9 @@ go test ./...                 # 全部測試（含上述分層檢查）
 
 | 編號 | 項目 | 處理方向 |
 |---|---|---|
-| R8 | `ws/handler.go:NewHandler`（1524 行） | **最優先。** 43 個 `case` 分支、80 處 `database.*` 呼叫擠在一個 closure。按訊息類型拆成具名 handler，狀態收進一個回合物件 |
+| R8 | `ws/conn_agent.go:wsConn.runAgent`（617 行） | 原 `NewHandler`（1524 行）已依職責拆成 `wsConn` 的欄位與方法：`handler.go`（連線建立）、`conn_setup.go`、`conn_loop.go`（`handleMsg` 與各 `onXxx`）、`conn_shell.go`、`conn_queue.go`。剩 `runAgent`：先把只用到 `wsConn` 欄位的 `askUser`／`askQuestion`／ACP 授權閉包抽成方法，再把背景 goroutine 的事件迴圈獨立成方法 |
 | R8 | `server/server.go:runNormal`（450 行） | 內嵌的約 10 個路由 handler（登入、Telegram 驗證、`/config`、`/model-options/refresh`）移往 `api`，比照既有的 `sh`／`shareH`／`sth` 寫法 |
-| R7 | `ws/handler.go`、`mcp/tools.go`、`server/server.go` | 隨上面兩項一起縮小 |
+| R7 | `ws/conn_agent.go`、`mcp/tools.go`、`server/server.go` | 隨上面兩項一起縮小 |
 | R8 | `kiroacp/runner.go:Runner.runOnce`（313 行） | 拆出 ACP 握手與回合串流 |
 | R8 | `db/db.go:DB.migrate`（164 行） | schema 清單，會持續增長。現為字串比對忽略 `duplicate column`，改成 `PRAGMA user_version` 順序遷移後此例外可一併處理 |
 | R8 | `cmd/desktop/main_windows.go:main`（185 行） | 視窗與托盤組裝，低優先 |

@@ -84,10 +84,10 @@ var knownViolations = map[string][]string{
 	// 非測試碼 panic（logging 初始化失敗）
 	"R6_panic": {"internal/logging"},
 	// 超過單檔上限
-	"R7_file": {"internal/ws/handler.go", "internal/mcp/tools.go", "internal/server/server.go"},
+	"R7_file": {"internal/ws/conn_agent.go", "internal/mcp/tools.go", "internal/server/server.go"},
 	// 超過單一函式上限
 	"R8_func": {
-		"internal/ws/handler.go:NewHandler",         // 1524 行，拆解為首要目標
+		"internal/ws/conn_agent.go:wsConn.runAgent", // 617 行；原 NewHandler 巨型 closure（1524 行）拆解後的剩餘部分
 		"internal/server/server.go:runNormal",       // 450 行，內嵌路由 handler 應移往 api
 		"internal/kiroacp/runner.go:Runner.runOnce", // 313 行
 		"cmd/desktop/main_windows.go:main",          // 185 行，視窗與托盤組裝
