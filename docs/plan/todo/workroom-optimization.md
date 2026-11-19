@@ -1,6 +1,6 @@
 # 工作室首次運行後優化計畫
 
-日期：2026-11-18。狀態：設計草案，尚未開始本計畫的產品實作。
+日期：2026-11-18。狀態：**首版已實作並整合（2026-11-18）**，隔離瀏覽器驗證通過（2026-11-19 於 HEAD 重跑：`test_rooms`＋`test_workroom_layout` 3 項、`test_regression` 7 項皆通過）；§6 的實機驗收（Wails、Telegram、真實額度停止交接）尚未做。下文 §1 起寫的是當初的規劃，其中「本輪不改產品程式」指規劃那一輪，不代表現況。
 
 依據：[首次運行觀察](../../reviews/2026-11-18-workroom-first-run-observations.md)。
 畫面稿：[工作室版面預覽](workroom-optimization-preview.html)（獨立 HTML、示意資料、不連正式服務）。

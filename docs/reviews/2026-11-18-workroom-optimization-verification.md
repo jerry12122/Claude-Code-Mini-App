@@ -52,3 +52,7 @@ Modern Web Guidance：我查閱 `css-layout`，依「Do NOT use `overflow: hidde
 - 動作 WS 只在待回應成員上開啟，不帶歷史、不標已讀、不 drain；仍有 presence、額度快照／過期刷新與有效請求還原的既有副作用。
 
 本工作依核准的普通計畫執行，沒有對應的活動 Spectra change；未標記或封存其他工作室的 change。
+
+## 2026-11-19 重跑
+
+在 HEAD `9734cb2`（已含 quota-auto-resume 與其後的清理）以臨時虛擬環境（`pytest-playwright` 0.7.2、Edge）重跑：`test_rooms.py`＋`test_workroom_layout.py` 3 passed（35.7 秒）、`test_regression.py` 7 passed（18.1 秒），與上表一致。整合後的 `handler.go`、`SettingsModal.js`、`ChatView.js` 重構沒有造成工作室或授權面板的回歸。仍未驗：Wails、Telegram Android／iOS、真實額度停止的交接。
