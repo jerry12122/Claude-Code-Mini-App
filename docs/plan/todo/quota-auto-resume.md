@@ -1,6 +1,6 @@
 # 計劃：額度用盡後自動復原（含開關）
 
-> 狀態：**已實作（2026-11-19）**；提案與任務見 `docs/spectra/changes/quota-auto-resume/`。第 6 節的決定已依提案採用，本頁其餘內容保留為當初的計劃紀錄。
+> 狀態：**已實作（2026-11-19）**；提案與任務見 `docs/spectra/changes/archive/2026-11-19-quota-auto-resume/`（規格已併入 `docs/spectra/specs/quota-auto-resume/`、`quota-guard-settings/`）。第 6 節的決定已依提案採用，本頁其餘內容保留為當初的計劃紀錄。
 > 建立日期：2026-11-18
 > 需求原話：「因為達到 5 limit 上限停下來，loop check 自動復原，開關」
 
