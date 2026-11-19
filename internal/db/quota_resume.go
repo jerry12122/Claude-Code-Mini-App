@@ -121,29 +121,12 @@ func quotaArmEdge(from, to string) bool {
 }
 
 // ArmQuotaResume 在同一筆交易裡確認開關仍開、使用者訊息、武裝轉移、把該訊息插到佇列最前並暫停。
-// 只接受 none／resuming → waiting／exhausted。轉移沒搶到或開關已關時回 false, nil，不入列。
+// 只接受 none／resuming → waiting／exhausted，且轉移的 WHERE 要求世代等於 generation（世代 0 也要比對）。
+// 取消或接受新訊息會把世代加 1，晚到的失敗收尾就對不上，不會再用舊訊息重新武裝。
+// 轉移沒搶到、世代已換或開關已關時回 false, nil，不入列。
 // 訊息不存在、附件不合法或寫入失敗會回滾，不會留下可自動啟動但沒有原訊息的狀態。
-// 這條路徑不增加也不歸零 attempts，也不比對世代。
-func (db *DB) ArmQuotaResume(sessionID string, userMsgID int64, from, to, at string) (bool, error) {
-	return db.armQuotaResume(sessionID, userMsgID, from, to, at, 0, false)
-}
-
-// ArmQuotaResumeGeneration 與 ArmQuotaResume 相同，但轉移的 WHERE 同時要求世代。
-// 世代已經換成新的一輪時回 false, nil，不入列、不改新的狀態。
-func (db *DB) ArmQuotaResumeGeneration(sessionID string, userMsgID int64, from, to, at string, generation int64) (bool, error) {
-	if generation <= 0 {
-		return false, nil
-	}
-	return db.armQuotaResume(sessionID, userMsgID, from, to, at, generation, true)
-}
-
-// ArmQuotaResumeExact 從呼叫端記下的世代武裝。世代 0 也要比對。
-// 取消或接受新訊息會把世代加 1，晚到的一般失敗收尾就對不上，不會再用舊訊息重新武裝。
-func (db *DB) ArmQuotaResumeExact(sessionID string, userMsgID int64, from, to, at string, generation int64) (bool, error) {
-	return db.armQuotaResume(sessionID, userMsgID, from, to, at, generation, true)
-}
-
-func (db *DB) armQuotaResume(sessionID string, userMsgID int64, from, to, at string, generation int64, matchGeneration bool) (bool, error) {
+// 這條路徑不增加也不歸零 attempts。
+func (db *DB) ArmQuotaResume(sessionID string, userMsgID int64, from, to, at string, generation int64) (bool, error) {
 	if !quotaArmEdge(from, to) {
 		return false, nil
 	}
@@ -192,7 +175,7 @@ func (db *DB) armQuotaResume(sessionID string, userMsgID int64, from, to, at str
 	if json.Unmarshal([]byte(rawSettings), &settings) != nil || !settings.AutoResumeOnQuota {
 		return false, nil
 	}
-	ok, err := execQuotaResumeTransition(ctx, conn, sessionID, from, to, at, false, generation, matchGeneration)
+	ok, err := execQuotaResumeTransition(ctx, conn, sessionID, from, to, at, false, generation, true)
 	if err != nil || !ok {
 		return false, err
 	}
@@ -265,13 +248,6 @@ func (db *DB) ReleaseQuotaResumeGeneration(sessionID string, generation int64) (
 		return false, err
 	}
 	return n == 1, nil
-}
-
-// GetQuotaResumeGeneration 讀取單一 session 的世代。回到 none 後這個數字仍保留。
-func (db *DB) GetQuotaResumeGeneration(sessionID string) (int64, error) {
-	var generation int64
-	err := db.QueryRow(`SELECT quota_resume_generation FROM sessions WHERE id = ?`, sessionID).Scan(&generation)
-	return generation, err
 }
 
 // GetQuotaResume 讀取單一 session 的自動復原狀態、預定時間與次數。
@@ -384,19 +360,6 @@ func execCancelQuotaResume(ex sqlExec, sessionID string) error {
 		QuotaResumeNone, sessionID,
 	)
 	return err
-}
-
-// ClearAllQuotaResume 把所有非 none 的 session 轉成 none、次數歸零、時間清空。回傳受影響列數。
-func (db *DB) ClearAllQuotaResume() (int64, error) {
-	res, err := db.Exec(
-		`UPDATE sessions SET quota_resume_state = ?, quota_resume_attempts = 0, quota_resume_at = ''
-		 WHERE quota_resume_state != ?`,
-		QuotaResumeNone, QuotaResumeNone,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return res.RowsAffected()
 }
 
 // RecoverQuotaResume 只把 resuming 轉回 waiting，時間改為 now，次數保留。

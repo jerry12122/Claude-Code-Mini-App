@@ -155,7 +155,7 @@ func TestPutGeneralOffInvalidatesNoneAndKeepsQueue(t *testing.T) {
 	if err := database.SetQueuePaused(s.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	before, err := database.GetQuotaResumeGeneration(s.ID)
+	_, _, before, err := database.SnapshotQuotaResume(s.ID)
 	if err != nil || before != 0 {
 		t.Fatalf("generation=%d err=%v", before, err)
 	}
@@ -163,7 +163,7 @@ func TestPutGeneralOffInvalidatesNoneAndKeepsQueue(t *testing.T) {
 		t.Fatal(err)
 	}
 	state, at, attempts, err := database.GetQuotaResume(s.ID)
-	gen, gerr := database.GetQuotaResumeGeneration(s.ID)
+	_, _, gen, gerr := database.SnapshotQuotaResume(s.ID)
 	paused, perr := database.QueuePaused(s.ID)
 	list, lerr := database.ListQueuedMessages(s.ID)
 	if err != nil || gerr != nil || perr != nil || lerr != nil || state != QuotaResumeNone || at != "" || attempts != 0 || gen != before+1 || !paused || len(list) != 1 || list[0].Content != "A" {
@@ -172,7 +172,7 @@ func TestPutGeneralOffInvalidatesNoneAndKeepsQueue(t *testing.T) {
 	if _, err := database.PutGeneralSettings([]byte(`{"autoResumeOnQuota":false,"quotaGuardEnabled":true,"quotaGuardPercent":80}`)); err != nil {
 		t.Fatal(err)
 	}
-	gen2, err := database.GetQuotaResumeGeneration(s.ID)
+	_, _, gen2, err := database.SnapshotQuotaResume(s.ID)
 	got, gerr := database.GetGeneralSettings()
 	if err != nil || gerr != nil || gen2 != gen || got.AutoResumeOnQuota || got.QuotaGuardPercent != 80 {
 		t.Fatalf("false→false gen=%d want %d settings=%+v err=%v %v", gen2, gen, got, err, gerr)
@@ -188,7 +188,7 @@ func TestPutGeneralOffFailureRollsBackGeneration(t *testing.T) {
 	if _, err := database.TransitionQuotaResume(s.ID, QuotaResumeNone, QuotaResumeWaiting, "2026-11-18T10:01:00Z", false); err != nil {
 		t.Fatal(err)
 	}
-	before, err := database.GetQuotaResumeGeneration(s.ID)
+	_, _, before, err := database.SnapshotQuotaResume(s.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestPutGeneralOffFailureRollsBackGeneration(t *testing.T) {
 	}
 	got, err := database.GetGeneralSettings()
 	state, at, attempts, serr := database.GetQuotaResume(s.ID)
-	gen, gerr := database.GetQuotaResumeGeneration(s.ID)
+	_, _, gen, gerr := database.SnapshotQuotaResume(s.ID)
 	if err != nil || serr != nil || gerr != nil || !got.AutoResumeOnQuota || got.QuotaGuardPercent != 90 || state != QuotaResumeWaiting || at != "2026-11-18T10:01:00Z" || attempts != 0 || gen != before {
 		t.Fatalf("settings=%+v state=%s at=%s attempts=%d gen=%d before=%d err=%v %v %v", got, state, at, attempts, gen, before, err, serr, gerr)
 	}

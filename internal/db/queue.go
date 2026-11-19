@@ -1,7 +1,6 @@
 package db
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -22,17 +21,6 @@ type QueuedMessage struct {
 // 暫停只針對「失敗當下還留著的那批」，新的一批重新開始。
 func (db *DB) EnqueueMessage(sessionID, content, author string, ids ...string) (*QueuedMessage, error) {
 	return db.enqueueMessage(sessionID, content, author, "", ids)
-}
-
-// EnqueueMessageFrom 與 EnqueueMessage 相同，但只在 source 是既存 session 時寫下可信來源。
-func (db *DB) EnqueueMessageFrom(sessionID, content, author, source string, ids ...string) (*QueuedMessage, error) {
-	if source != "" {
-		var one int
-		if err := db.QueryRow(`SELECT 1 FROM sessions WHERE id = ?`, source).Scan(&one); err != nil {
-			return nil, fmt.Errorf("來源 session 不存在")
-		}
-	}
-	return db.enqueueMessage(sessionID, content, author, source, ids)
 }
 
 // EnqueueMessageFromCancelQuota 把新佇列訊息與取消舊自動復原放在同一筆交易。
@@ -111,56 +99,6 @@ func (db *DB) enqueueMessage(sessionID, content, author, source string, ids []st
 	q := &QueuedMessage{ID: id, Content: content, Author: author, SourceSessionID: source, AttachmentIDs: ids, Attachments: attachments}
 	err = db.QueryRow(`SELECT created_at FROM queued_messages WHERE id = ?`, id).Scan(&q.CreatedAt)
 	return q, err
-}
-
-// EnqueueFront 把訊息插到佇列最前面。id 取整張 queued_messages 的 MIN(最小 id, 0) - 1，
-// 所以不同 session 也不會撞到同一個負數主鍵。不改變暫停狀態。
-func (db *DB) EnqueueFront(sessionID, content, author string, ids ...string) (*QueuedMessage, error) {
-	attachments, err := db.ResolveAttachments(sessionID, ids)
-	if err != nil {
-		return nil, err
-	}
-	ctx := context.Background()
-	conn, err := db.Conn(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
-	if _, err := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
-		return nil, err
-	}
-	done := false
-	defer func() {
-		if !done {
-			_, _ = conn.ExecContext(context.Background(), `ROLLBACK`)
-		}
-	}()
-	var minID sql.NullInt64
-	if err := conn.QueryRowContext(ctx, `SELECT MIN(id) FROM queued_messages`).Scan(&minID); err != nil {
-		return nil, err
-	}
-	base := int64(0)
-	if minID.Valid && minID.Int64 < 0 {
-		base = minID.Int64
-	}
-	id := base - 1
-	if _, err := conn.ExecContext(ctx,
-		`INSERT INTO queued_messages (id, session_id, content, attachment_ids, author) VALUES (?, ?, ?, ?, ?)`,
-		id, sessionID, content, attachmentIDsJSON(ids), author); err != nil {
-		return nil, err
-	}
-	var createdAt string
-	if err := conn.QueryRowContext(ctx, `SELECT created_at FROM queued_messages WHERE id = ?`, id).Scan(&createdAt); err != nil {
-		return nil, err
-	}
-	if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
-		return nil, err
-	}
-	done = true
-	return &QueuedMessage{
-		ID: id, Content: content, Author: author, CreatedAt: createdAt,
-		AttachmentIDs: ids, Attachments: attachments,
-	}, nil
 }
 
 // ListQueuedMessages 依送出順序（FIFO）回傳佇列。

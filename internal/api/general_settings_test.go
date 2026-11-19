@@ -128,7 +128,7 @@ func TestPutGeneralQuotaGuardPercentBoundaries(t *testing.T) {
 				t.Fatalf("被拒後既有設定被改掉：%+v", stored)
 			}
 			requireResume(t, database, s.ID, db.QuotaResumeWaiting, "2026-11-18T12:00:00Z", 0)
-			if gen, gerr := database.GetQuotaResumeGeneration(s.ID); gerr != nil || gen != 0 {
+			if _, _, gen, gerr := database.SnapshotQuotaResume(s.ID); gerr != nil || gen != 0 {
 				t.Fatalf("400 不該提交世代 gen=%d err=%v", gen, gerr)
 			}
 		})
@@ -154,7 +154,7 @@ func TestPutGeneralMissingQuotaGuardPercentRejected(t *testing.T) {
 		t.Fatalf("被拒後設定應不變：%+v", stored)
 	}
 	requireResume(t, database, s.ID, db.QuotaResumeResuming, "2026-11-18T12:00:00Z", 1)
-	if gen, gerr := database.GetQuotaResumeGeneration(s.ID); gerr != nil || gen != 1 {
+	if _, _, gen, gerr := database.SnapshotQuotaResume(s.ID); gerr != nil || gen != 1 {
 		t.Fatalf("400 不該提交世代 gen=%d err=%v", gen, gerr)
 	}
 }
@@ -227,7 +227,7 @@ func TestPutGeneralAutoResumeSwitchClearsOnlyWhenTurningOff(t *testing.T) {
 	requireResume(t, database, resuming.ID, db.QuotaResumeResuming, "2026-11-18T12:00:00Z", 1)
 	requireResume(t, database, exhausted.ID, db.QuotaResumeExhausted, "", 0)
 	requireResume(t, database, none.ID, db.QuotaResumeNone, "keep", 4)
-	if gen, err := database.GetQuotaResumeGeneration(none.ID); err != nil || gen != 0 {
+	if _, _, gen, err := database.SnapshotQuotaResume(none.ID); err != nil || gen != 0 {
 		t.Fatalf("true→true 不該推進世代 gen=%d err=%v", gen, err)
 	}
 
@@ -239,10 +239,10 @@ func TestPutGeneralAutoResumeSwitchClearsOnlyWhenTurningOff(t *testing.T) {
 	requireResume(t, database, resuming.ID, db.QuotaResumeNone, "", 0)
 	requireResume(t, database, exhausted.ID, db.QuotaResumeNone, "", 0)
 	requireResume(t, database, none.ID, db.QuotaResumeNone, "", 0)
-	if gen, err := database.GetQuotaResumeGeneration(none.ID); err != nil || gen != 1 {
+	if _, _, gen, err := database.SnapshotQuotaResume(none.ID); err != nil || gen != 1 {
 		t.Fatalf("none 世代=%d err=%v", gen, err)
 	}
-	if gen, err := database.GetQuotaResumeGeneration(resuming.ID); err != nil || gen != 2 {
+	if _, _, gen, err := database.SnapshotQuotaResume(resuming.ID); err != nil || gen != 2 {
 		t.Fatalf("resuming 世代=%d err=%v", gen, err)
 	}
 
@@ -352,7 +352,7 @@ func TestPutGeneralOffBroadcastsQueueUpdate(t *testing.T) {
 			t.Fatal("已連線 client 沒有收到取消後的 queue_update")
 		}
 	}
-	generation, err := database.GetQuotaResumeGeneration(s.ID)
+	_, _, generation, err := database.SnapshotQuotaResume(s.ID)
 	if err != nil || generation != 2 {
 		t.Fatalf("關閉後世代=%d err=%v", generation, err)
 	}

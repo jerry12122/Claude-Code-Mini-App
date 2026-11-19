@@ -500,9 +500,6 @@ func TestQuotaResumePMCloseDuringRefresh(t *testing.T) {
 	}
 	refresh := func(context.Context, string) (quota.Snapshot, error) {
 		setAutoResume(t, database, false)
-		if _, err := database.ClearAllQuotaResume(); err != nil {
-			t.Fatal(err)
-		}
 		return fullSessionSnap(), nil
 	}
 	if err := finishQuotaResume(database, s.ID, "fakeq", msg.ID, true, false, false, refresh, time.Now()); err != nil {
@@ -526,7 +523,7 @@ func TestQuotaResumeArmOnlyExhaustionEdges(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("waiting ok=%v err=%v", ok, err)
 	}
-	ok, err = database.ArmQuotaResume(s.ID, msg.ID, db.QuotaResumeWaiting, db.QuotaResumeWaiting, "2026-11-18T10:02:00Z")
+	ok, err = database.ArmQuotaResume(s.ID, msg.ID, db.QuotaResumeWaiting, db.QuotaResumeWaiting, "2026-11-18T10:02:00Z", 0)
 	if err != nil || ok || queueText(t, database, s.ID) != "" {
 		t.Fatalf("waiting→waiting 不該入列 ok=%v err=%v queue=%s", ok, err, queueText(t, database, s.ID))
 	}
@@ -548,7 +545,7 @@ func TestQuotaResumeInsertFailureRollsBack(t *testing.T) {
 		BEGIN SELECT RAISE(ABORT, 'injected insert failure'); END`); err != nil {
 		t.Fatal(err)
 	}
-	ok, err := database.ArmQuotaResume(s.ID, msg.ID, db.QuotaResumeNone, db.QuotaResumeWaiting, "2026-11-18T10:01:00Z")
+	ok, err := database.ArmQuotaResume(s.ID, msg.ID, db.QuotaResumeNone, db.QuotaResumeWaiting, "2026-11-18T10:01:00Z", 0)
 	if err == nil || ok {
 		t.Fatalf("入列失敗應回錯誤 ok=%v err=%v", ok, err)
 	}
@@ -1062,7 +1059,7 @@ func TestQuotaResumeDecisionGapMissesNewGeneration(t *testing.T) {
 	if err := <-swapped; err != nil {
 		t.Fatal(err)
 	}
-	ok, err := database.ArmQuotaResumeGeneration(s.ID, msg.ID, db.QuotaResumeResuming, to, "2026-11-18T10:02:00Z", generation)
+	ok, err := database.ArmQuotaResume(s.ID, msg.ID, db.QuotaResumeResuming, to, "2026-11-18T10:02:00Z", generation)
 	if err != nil || ok {
 		t.Fatalf("判定之後的舊世代不該武裝 ok=%v err=%v", ok, err)
 	}
@@ -1073,7 +1070,7 @@ func TestQuotaResumeDecisionGapMissesNewGeneration(t *testing.T) {
 	if err != nil || state != db.QuotaResumeResuming || attempts != 1 {
 		t.Fatalf("state=%s attempts=%d err=%v", state, attempts, err)
 	}
-	next, err := database.GetQuotaResumeGeneration(s.ID)
+	_, _, next, err := database.SnapshotQuotaResume(s.ID)
 	if err != nil || next == generation {
 		t.Fatalf("新世代=%d 舊世代=%d err=%v", next, generation, err)
 	}
@@ -1094,7 +1091,7 @@ func TestQuotaResumePMOffOnDuringRefresh(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	observed, err := database.GetQuotaResumeGeneration(s.ID)
+	_, _, observed, err := database.SnapshotQuotaResume(s.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1152,4 +1149,20 @@ func TestQuotaResumeHeldOffOnDuringRefresh(t *testing.T) {
 	if err != nil || perr != nil || state != db.QuotaResumeNone || queueText(t, database, s.ID) != "keep" || !paused || len(userMessages(database, s.ID)) != 1 {
 		t.Fatalf("state=%s queue=%s paused=%v users=%v err=%v %v", state, queueText(t, database, s.ID), paused, userMessages(database, s.ID), err, perr)
 	}
+}
+
+// finishQuotaResume（測試用） 在失敗收尾判斷是否為 5 小時額度用盡。符合時把原使用者訊息放回佇列最前面並暫停。
+// 這條沒有持有世代，只允許從 none 武裝。
+func finishQuotaResume(database *db.DB, sessionID, agentType string, userMsgID int64, runFailed, cancelled, permDenied bool, refresh func(context.Context, string) (quota.Snapshot, error), now time.Time) error {
+	return finishHeldQuotaResume(database, sessionID, agentType, userMsgID, runFailed, cancelled, permDenied, refresh, now, 0, 0)
+}
+
+// claimQuotaResume 在執行開始時一次讀出這是不是自動重跑，以及當時的世代。
+// 世代在 waiting→resuming、取消與關閉開關時增加，不歸零、不重用。
+func claimQuotaResume(database *db.DB, sessionID string) (owned bool, generation int64) {
+	owned, generation, err := database.ClaimQuotaResume(sessionID)
+	if err != nil {
+		return false, 0
+	}
+	return owned, generation
 }

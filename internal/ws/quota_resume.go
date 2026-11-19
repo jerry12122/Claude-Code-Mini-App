@@ -16,12 +16,6 @@ func WithQuotaResumeRefresh(refresh func(context.Context, string) (quota.Snapsho
 	return func(o *handlerOptions) { o.quotaResumeRefresh = refresh }
 }
 
-// finishQuotaResume 在失敗收尾判斷是否為 5 小時額度用盡。符合時把原使用者訊息放回佇列最前面並暫停。
-// 這條沒有持有世代，只允許從 none 武裝。
-func finishQuotaResume(database *db.DB, sessionID, agentType string, userMsgID int64, runFailed, cancelled, permDenied bool, refresh func(context.Context, string) (quota.Snapshot, error), now time.Time) error {
-	return finishHeldQuotaResume(database, sessionID, agentType, userMsgID, runFailed, cancelled, permDenied, refresh, now, 0, 0)
-}
-
 // finishHeldQuotaResume 與 finishQuotaResume 相同。
 // held 大於 0 時是這次持有的 resuming，武裝必須對上該世代。
 // held 為 0 時是一般執行，observed 是執行開始時的世代；取消或新訊息會推進世代，對不上就不武裝。
@@ -55,21 +49,11 @@ func finishHeldQuotaResume(database *db.DB, sessionID, agentType string, userMsg
 		if attempts >= 3 {
 			to = db.QuotaResumeExhausted
 		}
-		_, err = database.ArmQuotaResumeGeneration(sessionID, userMsgID, db.QuotaResumeResuming, to, at, held)
+		_, err = database.ArmQuotaResume(sessionID, userMsgID, db.QuotaResumeResuming, to, at, held)
 		return err
 	}
-	_, err = database.ArmQuotaResumeExact(sessionID, userMsgID, db.QuotaResumeNone, db.QuotaResumeWaiting, at, observed)
+	_, err = database.ArmQuotaResume(sessionID, userMsgID, db.QuotaResumeNone, db.QuotaResumeWaiting, at, observed)
 	return err
-}
-
-// claimQuotaResume 在執行開始時一次讀出這是不是自動重跑，以及當時的世代。
-// 世代在 waiting→resuming、取消與關閉開關時增加，不歸零、不重用。
-func claimQuotaResume(database *db.DB, sessionID string) (owned bool, generation int64) {
-	owned, generation, err := database.ClaimQuotaResume(sessionID)
-	if err != nil {
-		return false, 0
-	}
-	return owned, generation
 }
 
 // releaseQuotaResumeRun 只把這一次仍持有的 resuming 轉回 none，次數歸零、時間清空。

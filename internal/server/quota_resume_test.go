@@ -238,7 +238,7 @@ func TestQuotaResumeReleaseBeforeDial(t *testing.T) {
 	}
 	var wakes int
 	rt := newRoomRuntime(database, 0)
-	generation, err := database.GetQuotaResumeGeneration(s.ID)
+	_, _, generation, err := database.SnapshotQuotaResume(s.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -671,7 +671,7 @@ func TestQuotaResumeOldWakeDoesNotStartNewGeneration(t *testing.T) {
 		t.Fatalf("reply=%q queue=%q", quotaReply(database, s.ID), quotaQueueText(t, database, s.ID))
 	}
 	mustQuotaState(t, database, s.ID, db.QuotaResumeResuming, "2026-11-18T09:00:00Z", 1)
-	generation, err := database.GetQuotaResumeGeneration(s.ID)
+	_, _, generation, err := database.SnapshotQuotaResume(s.ID)
 	if err != nil || generation != 3 {
 		t.Fatalf("generation=%d err=%v", generation, err)
 	}
@@ -698,7 +698,7 @@ func TestQuotaResumeStaleDeliveryDoesNotRestoreNewGeneration(t *testing.T) {
 		return false, errors.New("dial failed")
 	})
 	mustQuotaState(t, database, s.ID, db.QuotaResumeResuming, "2026-11-18T09:00:00Z", 1)
-	generation, err := database.GetQuotaResumeGeneration(s.ID)
+	_, _, generation, err := database.SnapshotQuotaResume(s.ID)
 	if err != nil || generation != 2 {
 		t.Fatalf("generation=%d err=%v", generation, err)
 	}

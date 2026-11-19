@@ -237,30 +237,6 @@ func TestListDueQuotaResume(t *testing.T) {
 	}
 }
 
-func TestClearAllQuotaResume(t *testing.T) {
-	database := openQuotaDB(t)
-	waiting := newQuotaSession(t, database, "waiting")
-	resuming := newQuotaSession(t, database, "resuming")
-	exhausted := newQuotaSession(t, database, "exhausted")
-	none := newQuotaSession(t, database, "none")
-	setQuotaResume(t, database, waiting.ID, QuotaResumeWaiting, "2026-11-18T10:00:00Z", 1)
-	setQuotaResume(t, database, resuming.ID, QuotaResumeResuming, "2026-11-18T10:00:00Z", 2)
-	setQuotaResume(t, database, exhausted.ID, QuotaResumeExhausted, "2026-11-18T10:00:00Z", 3)
-	setQuotaResume(t, database, none.ID, QuotaResumeNone, "keep", 7)
-
-	n, err := database.ClearAllQuotaResume()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != 3 {
-		t.Fatalf("受影響列數 = %d，want 3", n)
-	}
-	requireQuotaResume(t, database, waiting.ID, QuotaResumeNone, "", 0)
-	requireQuotaResume(t, database, resuming.ID, QuotaResumeNone, "", 0)
-	requireQuotaResume(t, database, exhausted.ID, QuotaResumeNone, "", 0)
-	requireQuotaResume(t, database, none.ID, QuotaResumeNone, "keep", 7)
-}
-
 func TestRecoverQuotaResume(t *testing.T) {
 	database := openQuotaDB(t)
 	now := time.Date(2026, 11, 18, 15, 4, 5, 900000000, time.UTC)
@@ -316,55 +292,9 @@ func TestQuotaResumePersistsReopen(t *testing.T) {
 	requireQuotaResume(t, database, s.ID, QuotaResumeWaiting, "2026-11-18T11:00:00Z", 1)
 }
 
-func TestEnqueueFront(t *testing.T) {
+// 武裝時寫入佇列的負數 id 列：List 依 id 排序、Pop 取最前、Promote 以負數 id 刪列。
+func TestQueueFrontRowOrdering(t *testing.T) {
 	database := openQuotaDB(t)
-
-	t.Run("不同 session 不衝突", func(t *testing.T) {
-		s1 := newQuotaSession(t, database, "s1")
-		s2 := newQuotaSession(t, database, "s2")
-		if _, err := database.EnqueueMessage(s1.ID, "a", ""); err != nil {
-			t.Fatal(err)
-		}
-		front2, err := database.EnqueueFront(s2.ID, "from-s2", "甲")
-		if err != nil {
-			t.Fatal(err)
-		}
-		front1, err := database.EnqueueFront(s1.ID, "from-s1", "乙")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if front1.ID >= 0 || front2.ID >= 0 || front1.ID == front2.ID {
-			t.Fatalf("兩個 EnqueueFront 應得到不同負數 id，got %d 與 %d", front1.ID, front2.ID)
-		}
-		if front1.ID >= front2.ID {
-			t.Fatalf("後呼叫的應更小，got s2=%d s1=%d", front2.ID, front1.ID)
-		}
-	})
-
-	t.Run("空佇列不改暫停", func(t *testing.T) {
-		paused := newQuotaSession(t, database, "paused")
-		if err := database.SetQueuePaused(paused.ID, true); err != nil {
-			t.Fatal(err)
-		}
-		q, err := database.EnqueueFront(paused.ID, "hold", "")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if q.ID >= 0 || q.Content != "hold" || q.CreatedAt == "" {
-			t.Fatalf("入列結果 %+v", q)
-		}
-		if p, err := database.QueuePaused(paused.ID); err != nil || !p {
-			t.Fatalf("暫停應保持，paused=%v err=%v", p, err)
-		}
-
-		running := newQuotaSession(t, database, "running")
-		if _, err := database.EnqueueFront(running.ID, "go", ""); err != nil {
-			t.Fatal(err)
-		}
-		if p, err := database.QueuePaused(running.ID); err != nil || p {
-			t.Fatalf("未暫停應保持，paused=%v err=%v", p, err)
-		}
-	})
 
 	t.Run("插到最前面並保留附件與署名", func(t *testing.T) {
 		s := newQuotaSession(t, database, "order")
@@ -378,7 +308,7 @@ func TestEnqueueFront(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		x, err := database.EnqueueFront(s.ID, "X", "訪客", "att1")
+		x, err := enqueueFront(database, s.ID, "X", "訪客", "att1")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -392,7 +322,7 @@ func TestEnqueueFront(t *testing.T) {
 		if queuedContents(list) != "X,A,B,C" {
 			t.Fatalf("list=%s", queuedContents(list))
 		}
-		y, err := database.EnqueueFront(s.ID, "Y", "另一人")
+		y, err := enqueueFront(database, s.ID, "Y", "另一人")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -518,7 +448,7 @@ func TestQuotaResumeGenerationMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	generation, err := database.GetQuotaResumeGeneration("legacy")
+	_, _, generation, err := database.SnapshotQuotaResume("legacy")
 	if err != nil || generation != 0 {
 		t.Fatalf("舊庫世代=%d err=%v", generation, err)
 	}
@@ -532,19 +462,19 @@ func TestQuotaResumeGenerationMigration(t *testing.T) {
 	}
 	step(QuotaResumeNone, QuotaResumeWaiting)
 	step(QuotaResumeWaiting, QuotaResumeResuming)
-	generation, err = database.GetQuotaResumeGeneration(s.ID)
+	_, _, generation, err = database.SnapshotQuotaResume(s.ID)
 	if err != nil || generation != 1 {
 		t.Fatalf("第一次 resuming 世代=%d err=%v", generation, err)
 	}
 	step(QuotaResumeResuming, QuotaResumeNone)
 	requireQuotaResume(t, database, s.ID, QuotaResumeNone, "", 0)
-	generation, err = database.GetQuotaResumeGeneration(s.ID)
+	_, _, generation, err = database.SnapshotQuotaResume(s.ID)
 	if err != nil || generation != 1 {
 		t.Fatalf("回到 none 後世代=%d err=%v", generation, err)
 	}
 	step(QuotaResumeNone, QuotaResumeWaiting)
 	step(QuotaResumeWaiting, QuotaResumeResuming)
-	generation, err = database.GetQuotaResumeGeneration(s.ID)
+	_, _, generation, err = database.SnapshotQuotaResume(s.ID)
 	if err != nil || generation != 2 {
 		t.Fatalf("第二次 resuming 世代=%d err=%v", generation, err)
 	}
@@ -553,7 +483,7 @@ func TestQuotaResumeGenerationMigration(t *testing.T) {
 		t.Fatalf("舊世代不該清掉 ok=%v err=%v", ok, err)
 	}
 	requireQuotaResume(t, database, s.ID, QuotaResumeResuming, "2026-11-18T10:01:00Z", 1)
-	if got, err := database.GetQuotaResumeGeneration(s.ID); err != nil || got != 2 {
+	if _, _, got, err := database.SnapshotQuotaResume(s.ID); err != nil || got != 2 {
 		t.Fatalf("世代=%d err=%v", got, err)
 	}
 	ok, err = database.ReleaseQuotaResumeGeneration(s.ID, 2)
@@ -561,7 +491,7 @@ func TestQuotaResumeGenerationMigration(t *testing.T) {
 		t.Fatalf("這一世代應清掉 ok=%v err=%v", ok, err)
 	}
 	requireQuotaResume(t, database, s.ID, QuotaResumeNone, "", 0)
-	if got, err := database.GetQuotaResumeGeneration(s.ID); err != nil || got != 2 {
+	if _, _, got, err := database.SnapshotQuotaResume(s.ID); err != nil || got != 2 {
 		t.Fatalf("清掉後世代=%d err=%v", got, err)
 	}
 }
@@ -579,7 +509,7 @@ func TestQuotaResumeCancelKeepsGenerationAndDropsSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	requireQuotaResume(t, database, s.ID, QuotaResumeNone, "", 0)
-	generation, err := database.GetQuotaResumeGeneration(s.ID)
+	_, _, generation, err := database.SnapshotQuotaResume(s.ID)
 	if err != nil || generation != 2 {
 		t.Fatalf("取消後世代=%d err=%v", generation, err)
 	}
@@ -617,4 +547,26 @@ func TestQuotaResumeCancelKeepsGenerationAndDropsSession(t *testing.T) {
 			t.Fatal("刪掉的 session 仍會被輪詢")
 		}
 	}
+}
+
+// enqueueFront 照 ArmQuotaResume 的方式把訊息插到佇列最前面：id 取全表 MIN(最小 id, 0) - 1。
+func enqueueFront(database *DB, sessionID, content, author string, ids ...string) (*QueuedMessage, error) {
+	attachments, err := database.ResolveAttachments(sessionID, ids)
+	if err != nil {
+		return nil, err
+	}
+	var minID sql.NullInt64
+	if err := database.QueryRow(`SELECT MIN(id) FROM queued_messages`).Scan(&minID); err != nil {
+		return nil, err
+	}
+	id := int64(-1)
+	if minID.Valid && minID.Int64 < 0 {
+		id = minID.Int64 - 1
+	}
+	if _, err := database.Exec(
+		`INSERT INTO queued_messages (id, session_id, content, attachment_ids, author) VALUES (?, ?, ?, ?, ?)`,
+		id, sessionID, content, attachmentIDsJSON(ids), author); err != nil {
+		return nil, err
+	}
+	return &QueuedMessage{ID: id, Content: content, Author: author, AttachmentIDs: ids, Attachments: attachments, CreatedAt: "x"}, nil
 }

@@ -30,7 +30,7 @@ func TestQuotaResumeCancelKeepsQueuePaused(t *testing.T) {
 	if _, err := database.TransitionQuotaResume(s.ID, db.QuotaResumeResuming, db.QuotaResumeWaiting, "2026-11-18T10:01:00Z", false); err != nil {
 		t.Fatal(err)
 	}
-	before, err := database.GetQuotaResumeGeneration(s.ID)
+	_, _, before, err := database.SnapshotQuotaResume(s.ID)
 	if err != nil || before == 0 {
 		t.Fatalf("generation=%d err=%v", before, err)
 	}
@@ -50,7 +50,7 @@ func TestQuotaResumeCancelKeepsQueuePaused(t *testing.T) {
 	}
 	state, at, attempts, err := database.GetQuotaResume(s.ID)
 	paused, perr := database.QueuePaused(s.ID)
-	generation, gerr := database.GetQuotaResumeGeneration(s.ID)
+	_, _, generation, gerr := database.SnapshotQuotaResume(s.ID)
 	if err != nil || perr != nil || gerr != nil || state != db.QuotaResumeNone || at != "" || attempts != 0 || !paused || queueText(t, database, s.ID) != "A,B" || generation != before+1 || taskIsActive(s.ID) {
 		t.Fatalf("state=%s at=%s attempts=%d paused=%v queue=%s generation=%d active=%v err=%v %v %v", state, at, attempts, paused, queueText(t, database, s.ID), generation, taskIsActive(s.ID), err, perr, gerr)
 	}
@@ -384,7 +384,7 @@ func TestQuotaResumeManualFinishMissesCancelAndNewInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	observed, err := database.GetQuotaResumeGeneration(s.ID)
+	_, _, observed, err := database.SnapshotQuotaResume(s.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +421,7 @@ func TestQuotaResumeManualFinishMissesCancelAndNewInput(t *testing.T) {
 	if state != db.QuotaResumeNone || queue != "" {
 		t.Fatalf("cancel then finish state=%s queue=%s", state, queue)
 	}
-	observed, err = database.GetQuotaResumeGeneration(s.ID)
+	_, _, observed, err = database.SnapshotQuotaResume(s.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
