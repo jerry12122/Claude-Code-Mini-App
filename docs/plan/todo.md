@@ -5,7 +5,7 @@
 ---
 
 ## 🚀 待執行項目
-- [ ] 工作室首次運行後優化：來源身分與暫停狀態、派工優先的桌面／手機版面、長文閱讀、工作室內授權與交接驗收；首版已實作並整合，隔離瀏覽器驗證通過（2026-11-18，2026-11-19 於 HEAD 重跑 10 項皆過，見[優化計畫](todo/workroom-optimization.md)、[驗收紀錄](../reviews/2026-11-18-workroom-optimization-verification.md)）；待做：Wails／Telegram 實機與真實額度停止的交接驗收
+- [ ] 工作室首次運行後優化：來源身分與暫停狀態、派工優先的桌面／手機版面、長文閱讀、工作室內授權與交接驗收；首版已實作並整合，隔離瀏覽器驗證通過（2026-11-18，2026-11-19 於 HEAD 重跑 10 項皆過，見[優化計畫](todo/workroom-optimization.md)、[驗收紀錄](../reviews/2026-11-18-workroom-optimization-verification.md)）；Wails 桌面版隔離實測已過（2026-11-19）；待做：Telegram Android／iOS 與真實額度停止的交接驗收
 - [ ] Windows x64 安裝包發版驗收：實作與本機 smoke／46 項發布檢查完成，尚待 Win10／乾淨帳戶、真實 Runtime 缺少、安裝版跨版更新及手動遷移驗收。2026-11-18 再單跑 `TestRunReturnsWhenOrphanHoldsStdoutAfterResult` 約 2 秒通過；普通全套仍未重跑（見 [紀錄](../reviews/2026-11-18-windows-installer.md)、[規劃](todo/windows-installer.md)）
 - [ ] 桌面自我更新實機驗收：從 v0.13.0 在真實 GitHub 自動更新到下一版（目前只在 fixture 驗證）、點系統匣圖示「檢查更新」、真實 helper 啟動失敗。2026-11-18 未對本機已安裝的桌面程式做這些動作（見封存的 design.md）
 - [x] 版本化桌面 EXE 自更新後檔名不變：評估完成（2026-11-18），不需改程式。便攜 ZIP 內本來就是固定名稱 `claude-miniapp-desktop.exe`（`scripts/release/package.sh`），安裝器入口也是固定名稱，README 推薦的預設入口已是 Setup 安裝包；帶版號的 EXE 只是自我更新用的獨立資產，只有手動直接下載該檔執行的人會遇到檔名仍帶舊版號
@@ -19,7 +19,7 @@
 - [ ] （未來優化，2026-10-06 決定暫緩）agent 圖片的 session／分享驗證與歷史 URL 遷移；目前 `internal/static/uploads` 仍由公開靜態路由讀取，需先確認相容性與授權載入方式
 - [ ] 主要情境即時回饋與可靠性：同一登入下的斷線橫幅、Shell 確認斷線提示、單次允許、中斷回饋、用量刷新成功、建立 session 失敗不重複、Slow 3G 載入文字已在臨時實例通過。未通過：Shell「允許一次」同步連點會送出兩次並把指令中止。未做：用量的錯誤／逾時提示、手機實機（見 [計劃](todo/ux-feedback.md) 第 7、8 節）
 - [ ] Kiro 故障復原：真實 EmptyResponse 這次沒有重現。自動接手的設定沿用與連鎖防護已對過程式與既有測試（權限／模型／effort 複製、交接標記擋連鎖、自動接手失敗不留半成品會話）；300／60 秒完整門檻與 Unix pipe 仍未實機驗證（見 [驗收紀錄](done/kiro-fault-recovery.md)）
-- [ ] 額度用盡後自動復原（開關，預設關）：5 小時視窗用盡停下後，伺服器輪詢到重置再自動重跑。**已實作（2026-11-19）**：開關預設關，狀態機存 DB，30 秒輪詢，連續最多 3 次，額度守門開關與門檻可在設定頁調整；真實撞限取樣（1.1）與 e2e 皆已完成。待做：真實環境長時間觀察（見 [計劃](todo/quota-auto-resume.md)、[提案](../spectra/changes/archive/2026-11-19-quota-auto-resume/proposal.md)）
+- [ ] 額度用盡後自動復原（開關，預設關）：5 小時視窗用盡停下後，伺服器輪詢到重置再自動重跑。**已實作（2026-11-19）**：開關預設關，狀態機存 DB，30 秒輪詢，連續最多 3 次，額度守門開關與門檻可在設定頁調整；真實撞限取樣（1.1）與 e2e 皆已完成。Wails 桌面版隔離實測已過（2026-11-19）；待做：真實環境長時間觀察（見 [計劃](todo/quota-auto-resume.md)、[提案](../spectra/changes/archive/2026-11-19-quota-auto-resume/proposal.md)）
 - [ ] 接手提示的整頁重載／離線恢復，及 TG WebView／真實供應商接手實機驗收（提示仍只在這次連線的畫面狀態，重新整理不會恢復，見 [紀錄](done/manual-session-handoff.md)）
 
 ## ✅ 本輪完成（2026-10-16，v0.12.0／v0.13.0）

@@ -55,4 +55,4 @@ Modern Web Guidance：我查閱 `css-layout`，依「Do NOT use `overflow: hidde
 
 ## 2026-11-19 重跑
 
-在 HEAD `9734cb2`（已含 quota-auto-resume 與其後的清理）以臨時虛擬環境（`pytest-playwright` 0.7.2、Edge）重跑：`test_rooms.py`＋`test_workroom_layout.py` 3 passed（35.7 秒）、`test_regression.py` 7 passed（18.1 秒），與上表一致。整合後的 `handler.go`、`SettingsModal.js`、`ChatView.js` 重構沒有造成工作室或授權面板的回歸。仍未驗：Wails、Telegram Android／iOS、真實額度停止的交接。
+在 HEAD `9734cb2`（已含 quota-auto-resume 與其後的清理）以臨時虛擬環境（`pytest-playwright` 0.7.2、Edge）重跑：`test_rooms.py`＋`test_workroom_layout.py` 3 passed（35.7 秒）、`test_regression.py` 7 passed（18.1 秒），與上表一致。整合後的 `handler.go`、`SettingsModal.js`、`ChatView.js` 重構沒有造成工作室或授權面板的回歸。另於 Wails 桌面版隔離實測（`-tags "production e2e"`、臨時目錄、WebView2 Edge 157、CDP 驅動）：工作室畫面渲染出 PM 狀態、成員與派工側欄。仍未驗：Telegram Android／iOS、真實額度停止的交接。
