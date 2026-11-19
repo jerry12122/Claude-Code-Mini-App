@@ -54,7 +54,7 @@ none ──偵測且次數<3──▶ waiting ──到期且額度回復，搶�
 失敗收尾（開關開 ∧ 失敗 ∧ 非取消 ∧ 非等授權 ∧ 該次執行由使用者訊息觸發）時呼叫 `RefreshAfterRun`，只在 `session` 視窗 `Percent >= 100` 且 `ResetsAt` 能解析成時間時武裝。替代方案是比對錯誤文字（各 CLI 字串不同且會隨版本改變），否決；代價是少數情況（快照拿不到、剛好 99%）不會自動復原，這是刻意的「寧可不動」。
 
 ### 失敗訊息排回佇列最前面
-武裝時由失敗那則 `messages` user 列（以該次執行的 `userMsgID` 取得）重建內容、署名與附件 ID，新增 `EnqueueFront`：id 取 `MIN(既有最小 id, 0) - 1`，保證是非零且排在最前（`saveUserMessage` 以 `queueID != 0` 判斷是否為佇列項目，所以不能用 0）；它**不可**像 `EnqueueMessage` 那樣在空佇列時解除暫停，武裝流程在入列後無條件 `SetQueuePaused(true)`。自動重跑的那一輪失敗時，訊息已在啟動時離開佇列，所以同樣再前插一次。
+武裝時由失敗那則 `messages` user 列（以該次執行的 `userMsgID` 取得）重建內容、署名與附件 ID，在 `ArmQuotaResume` 的同一筆交易內前插（不另設 `EnqueueFront`）：id 取 `MIN(既有最小 id, 0) - 1`，保證是非零且排在最前（`saveUserMessage` 以 `queueID != 0` 判斷是否為佇列項目，所以不能用 0）；它**不可**像 `EnqueueMessage` 那樣在空佇列時解除暫停，武裝流程在入列後無條件 `SetQueuePaused(true)`。自動重跑的那一輪失敗時，訊息已在啟動時離開佇列，所以同樣再前插一次。
 取捨：重跑時該訊息會再晉升成一列新的 user 訊息，歷史裡會看到同一句出現兩次（第一次失敗、第二次重跑）。接受這個重複，換取不改動歷史／晉升流程。
 
 ### 輪詢經內部 WebSocket 通道恢復
@@ -85,7 +85,7 @@ none ──偵測且次數<3──▶ waiting ──到期且額度回復，搶�
 **Interface / data shape**
 
 - `GeneralSettings`：`autoResumeOnQuota`（預設 false）、`quotaGuardEnabled`、`quotaGuardPercent`（有效值規則見上）。`/settings/general` 沿用整包讀寫；不合法的百分比回 400。
-- DB：`sessions.quota_resume_state`、`quota_resume_at`、`quota_resume_attempts`；新函式：條件式轉移（回傳是否成功）、列出到期的 `waiting`、啟動復原、關開關時批次轉 `none`、`EnqueueFront`。
+- DB：`sessions.quota_resume_state`、`quota_resume_at`、`quota_resume_attempts`；新函式：條件式轉移（回傳是否成功）、列出到期的 `waiting`、啟動復原、關開關時在 `PutGeneralSettings` 的交易內批次轉 `none`、`ArmQuotaResume`（轉移加前插加暫停為一筆交易）。
 - WS 伺服器→客戶端：session sync 與 `queue_update` 帶 `quota_resume_state`／`quota_resume_at`；`quota_resumed`（`started`）僅回給內部喚醒連線。客戶端→伺服器：`quota_resume`（僅 `room_wake`）、`quota_resume_cancel`（一般連線，訪客無權）。
 
 **Failure modes**
@@ -97,7 +97,7 @@ none ──偵測且次數<3──▶ waiting ──到期且額度回復，搶�
 
 **Acceptance criteria**
 
-- 單元測試：spec 轉移表的每一列（含表外轉移被拒）、兩個並行 tick 只有一個成功、`EnqueueFront` 排序與不解除暫停、判定邊界表、各取消入口、關開關清全部、重啟後 `waiting` 保留與 `resuming` 退回 `waiting`、`started` 為假的兩種處理、次數規則（3 次上限、回 `none` 歸零、投遞失敗還原）。
+- 單元測試：spec 轉移表的每一列（含表外轉移被拒）、兩個並行 tick 只有一個成功、武裝時的前插排序與不解除暫停（`TestQueueFrontRowOrdering` 與 ws 武裝測試）、判定邊界表、各取消入口、關開關清全部、重啟後 `waiting` 保留與 `resuming` 退回 `waiting`、`started` 為假的兩種處理、次數規則（3 次上限、回 `none` 歸零、投遞失敗還原）。
 - 守門：有效值解析的三種情境、百分比驗證邊界表、執行期改門檻與關閉守門不需重連即生效、既有守門測試維持通過。
 - `go build`、`go vet`、`go test`（排除 `poc/`）、`go test ./internal/arch/`、`node scripts/frontend-layering.test.cjs` 全過。
 - 臨時實例以可注入的假額度來源把 `ResetsAt` 縮到數十秒，目視確認「用盡→橫幅→到期→自動重跑→成功」「中途重啟→仍會繼續」「關開關→橫幅消失且不動」；設定頁調整守門門檻後下一則排隊訊息的暫停行為隨之改變。

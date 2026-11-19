@@ -1,6 +1,6 @@
 # 計劃：額度用盡後自動復原（含開關）
 
-> 狀態：**計劃，尚未實作**；待使用者確認第 6 節的決定
+> 狀態：**已實作（2026-11-19）**；提案與任務見 `docs/spectra/changes/quota-auto-resume/`。第 6 節的決定已依提案採用，本頁其餘內容保留為當初的計劃紀錄。
 > 建立日期：2026-11-18
 > 需求原話：「因為達到 5 limit 上限停下來，loop check 自動復原，開關」
 
@@ -102,14 +102,14 @@
 
 > 下文的臨時程序 `scripts/quota-banner-fixture` 已於清理時移除；可重跑的驗證以 `internal/server/quota_e2e_test.go` 的 `TestQuotaE2E*` 為準。
 
-臨時程序是 `go run ./scripts/quota-banner-fixture`。它不呼叫 `server.Start`，因此不同步模型、不暖機、不打真供應商；runner 與額度都在行程內，而且只聽 127.0.0.1。30 秒輪詢是正式的 `watchQuota`，測試沒有改 30／60 秒常數，也沒有把手動 `resumeDue` 當成這次已驗過。輪詢啟動或延後只對上刷新前列出的世代與預定時間。
+臨時程序是 `go run ./scripts/quota-banner-fixture`。它不呼叫 `server.Start`，因此不同步模型、不暖機、不打真供應商；runner 與額度都在行程內，而且只聽 127.0.0.1。輪詢是正式的 `watchQuota`；e2e 只把間隔從 30 秒縮短為 1 秒（正式值由 `TestQuotaResumeDefaultInterval` 固定），60 秒緩衝是 `db.QuotaResumeAt`、不縮短，也沒有把手動 `resumeDue` 當成這次已驗過。輪詢啟動或延後只對上刷新前列出的世代與預定時間。
 
 已用假額度與真內部 WS 走完：
 
 - 用盡 → 橫幅 → 到期 → 自動重跑 → 成功：`TestQuotaE2ERealWatchContinues`，以及 18771 的 flow。瀏覽器先出現「額度用盡，預計 00:46 自動繼續」與取消鈕，佇列暫停；約一個輪詢後橫幅消失，回覆為 `ok:請回一個字`。使用者訊息列出現兩次，這是既有的重跑限制。
-- waiting 重啟與 resuming 重啟：同一支測試在啟動前種下兩種狀態。啟動後 sync 都是 waiting，同一個 30 秒輪詢把兩則都跑完並回到 none。
+- waiting 重啟與 resuming 重啟：同一支測試在啟動前種下兩種狀態。啟動後 sync 都是 waiting，同一個輪詢把兩則都跑完並回到 none。
 - 仍滿 → 延後：`TestQuotaE2ERealWatchDelays`。時間改成新的 resets_at+60 秒，佇列 `keep` 仍暫停、沒有啟動。重新連線的 sync 帶新時間。延後寫入成功後，會把該 session 最新的 queue_update（含新時間）推給當時已連線的客戶端。寫入沒對上或失敗時不推。
-- 關開關：`TestQuotaE2ESwitchOffStays`。連線先看到 waiting，PUT 關閉後看到 none；再等過一個 30 秒輪詢，狀態仍是 none，佇列 `stay` 沒有被啟動。
+- 關開關：`TestQuotaE2ESwitchOffStays`。連線先看到 waiting，PUT 關閉後看到 none；再等過數個輪詢，狀態仍是 none，佇列 `stay` 沒有被啟動。
 - 守門門檻：`TestQuotaE2EGuardThreshold`。快取 session 50%，執行中把設定改成 40，下一則自動啟動被暫停。這是設定頁所用的 PUT，不是這輪親手點設定頁。
 
 留給 PM：delay、restart、off、guard 的畫面還沒在這輪瀏覽器逐一點過。flow 的成功路徑已在 Chrome 看過。設定頁把 90 改成 40 的點擊尚未重做。

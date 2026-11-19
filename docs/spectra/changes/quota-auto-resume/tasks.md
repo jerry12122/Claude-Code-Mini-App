@@ -4,7 +4,7 @@
 
 ## 2. 資料層與設定
 
-- [x] 2.1 「自動復原狀態機存進 DB」落實 Persisted auto-resume state machine 的資料層：`sessions` 新增 `quota_resume_state`（預設 `none`）、`quota_resume_at`、`quota_resume_attempts` 三欄；單一條件式轉移函式（`UPDATE … WHERE quota_resume_state IN (…)`，回傳是否成功，Go 端白名單拒絕表外轉移，`attempts` 只在 `waiting → resuming` +1、回 `none` 歸零）；列出到期 `waiting`、批次轉 `none`、啟動復原（`resuming` → `waiting` 且時間為啟動當下）；以及 `EnqueueFront`（遵循「失敗訊息排回佇列最前面」：id 取 `MIN(既有最小 id, 0) - 1` 使其非零且排在最前，且不會像 `EnqueueMessage` 在空佇列時解除暫停）。驗證：`internal/db` 單元測試逐列涵蓋 spec 轉移表（含表外轉移回傳 false、兩個並行轉移只有一個成功、投遞失敗還原次數）、`EnqueueFront` 排序與保持暫停、`PromoteQueuedMessage` 能以負數 id 正確刪除佇列列、重開 DB 後狀態與時間仍在、啟動復原只動 `resuming`。
+- [x] 2.1 「自動復原狀態機存進 DB」落實 Persisted auto-resume state machine 的資料層：`sessions` 新增 `quota_resume_state`（預設 `none`）、`quota_resume_at`、`quota_resume_attempts` 三欄；單一條件式轉移函式（`UPDATE … WHERE quota_resume_state IN (…)`，回傳是否成功，Go 端白名單拒絕表外轉移，`attempts` 只在 `waiting → resuming` +1、回 `none` 歸零）；列出到期 `waiting`、批次轉 `none`、啟動復原（`resuming` → `waiting` 且時間為啟動當下）；以及武裝時的前插（實作於 `ArmQuotaResume` 的交易內，沒有獨立的 `EnqueueFront`；遵循「失敗訊息排回佇列最前面」：id 取 `MIN(既有最小 id, 0) - 1` 使其非零且排在最前，且不會像 `EnqueueMessage` 在空佇列時解除暫停）。驗證：`internal/db` 單元測試逐列涵蓋 spec 轉移表（含表外轉移回傳 false、兩個並行轉移只有一個成功、投遞失敗還原次數）、前插排序與保持暫停（`TestQueueFrontRowOrdering` 與 ws 武裝測試）、`PromoteQueuedMessage` 能以負數 id 正確刪除佇列列、重開 DB 後狀態與時間仍在、啟動復原只動 `resuming`。
 - [x] 2.2 「開關存在 GeneralSettings」：`GeneralSettings` 新增 `AutoResumeOnQuota`（JSON `autoResumeOnQuota`，預設 false），Global auto-resume switch 在 `PUT /settings/general` 由 true 改為 false 時同一動作把所有非 `none` 的 session 轉 `none`（Cancelling a pending auto-resume 的「取消與關閉開關」之一）。驗證：`internal/db/general_settings_test.go` 補「無列時為 false」「舊 JSON 缺欄位為 false」；`internal/api` 測試補「true→false 後所有狀態被清、false→true 不動」。
 - [x] 2.3 「額度守門設定改存 DB 並於執行期讀取」的資料與 API 層，落實 Quota guard settings stored on the server 與 Guard settings validation：`GeneralSettings` 新增 `QuotaGuardEnabled`、`QuotaGuardPercent`；有效值解析（未儲存過時由 `config.yaml` 的 `quota_guard_percent` 決定：>0 啟用該值、0 停用且百分比 90）；`GET` 回傳有效值，`PUT` 驗證百分比在 (0, 100] 否則 400 且不寫入。驗證：測試涵蓋 spec 的三個有效值情境、驗證邊界表（0、-5、100.5、100、0.5、90）、缺欄位 PUT 因百分比 0 被拒、被拒時既有設定不變。
 
@@ -25,6 +25,6 @@
 
 ## 5. 整合驗證與文件
 
-- [ ] 5.1 端到端驗證：以臨時實例與可注入的假額度來源，把 `resets_at` 縮到數十秒，走完「用盡 → 橫幅 → 到期 → 自動重跑 → 成功」「仍滿 → 延後」「`waiting` 時重啟伺服器 → 仍會繼續」「`resuming` 時重啟 → 退回 `waiting` 後繼續」「關開關 → 橫幅消失且不動」，並在設定頁調整守門門檻確認下一則排隊訊息的暫停行為改變。驗證：`go build ./...`、`go vet ./...`、`go test`（排除 `poc/`）、`go test ./internal/arch/` 全過，並把觀察結果寫進 `docs/plan/todo/quota-auto-resume.md`。[after: 3.4, 3.6, 4.1, 4.2]
-- [ ] 5.2 文件：更新 `CHANGELOG.md`、`config.example.yaml`（`quota_guard_percent` 改註明為初始值）、`docs/plan/todo/quota-auto-resume.md` 的狀態機與守門設定，以及已知限制（歷史會出現重複的 user 訊息、只涵蓋 `session` 視窗），並同步 `docs/plan/todo.md`。驗證：內容審閱，確認與實作行為一致、沒有殘留「尚未實作」字樣。[after: 5.1]
+- [x] 5.1 端到端驗證：以臨時實例與可注入的假額度來源，把 `resets_at` 縮到數十秒，走完「用盡 → 橫幅 → 到期 → 自動重跑 → 成功」「仍滿 → 延後」「`waiting` 時重啟伺服器 → 仍會繼續」「`resuming` 時重啟 → 退回 `waiting` 後繼續」「關開關 → 橫幅消失且不動」，並在設定頁調整守門門檻確認下一則排隊訊息的暫停行為改變。驗證：`go build ./...`、`go vet ./...`、`go test`（排除 `poc/`）、`go test ./internal/arch/` 全過，並把觀察結果寫進 `docs/plan/todo/quota-auto-resume.md`。[after: 3.4, 3.6, 4.1, 4.2]
+- [x] 5.2 文件：更新 `CHANGELOG.md`、`config.example.yaml`（`quota_guard_percent` 改註明為初始值）、`docs/plan/todo/quota-auto-resume.md` 的狀態機與守門設定，以及已知限制（歷史會出現重複的 user 訊息、只涵蓋 `session` 視窗），並同步 `docs/plan/todo.md`。驗證：內容審閱，確認與實作行為一致、沒有殘留「尚未實作」字樣。[after: 5.1]
 
