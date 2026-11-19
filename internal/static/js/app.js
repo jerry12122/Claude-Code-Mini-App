@@ -280,6 +280,7 @@ function App() {
   // 鍵盤快捷鍵：Ctrl+\ 切換分割；Ctrl+Alt+O 切換方向；Ctrl+Alt+Left/Right 切換焦點
   useEffect(() => {
     const onKey = (e) => {
+      if (document.querySelector('dialog:modal')) return;
       if (e.isComposing || e.keyCode === 229) return;
       const act = resolveTabShortcut(e);
       if (act && act.type === 'toggleSplit') {

@@ -98,38 +98,42 @@ function SharesSection({ onJumpToSession = null }) {
   const visible = shares.filter((s) => filter === 'all' || (filter === 'active' ? isActive(s) : !isActive(s)));
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="text-sm font-semibold text-ra-t1">分享</div>
-        <div className="flex gap-1 ml-2">
+    <div className="flex min-w-0 flex-col gap-6">
+      <div className="flex flex-col gap-2">
+        <h3 className="text-[15px] font-medium leading-6 text-ra-t1">分享</h3>
+        <p className="text-[13px] leading-5 text-ra-t3">管理連結與 PIN。結束分享會立刻請訪客離開；清除紀錄不會刪聊天室。</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="inline-flex max-w-full flex-wrap gap-1 rounded-lg border border-ra-line bg-ra-sunken p-1" role="group" aria-label="分享狀態">
           {SHARE_FILTERS.map((f) => (
             <button key={f.id} type="button" onClick={() => setFilter(f.id)}
-              className={`px-2.5 py-1 rounded-md text-xs ${filter === f.id ? 'bg-violet-500/20 text-violet-200' : 'text-ra-t4 hover:text-ra-t2'}`}>
+              aria-pressed={filter === f.id}
+              className={`min-h-12 rounded-md px-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-ra-accent-text sm:min-h-10 ${filter === f.id ? 'bg-ra-card font-medium text-ra-t1' : 'text-ra-t3 hover:text-ra-t1'}`}>
               {f.label}
             </button>
           ))}
         </div>
         <button type="button" onClick={revokeAll} disabled={activeCount === 0}
-          className="ml-auto px-2.5 py-1 rounded-md text-xs bg-red-900/60 hover:bg-red-800 text-red-200 disabled:opacity-30">
+          className="min-h-12 rounded-lg bg-red-900/60 px-3 text-sm text-red-200 hover:bg-red-800 disabled:opacity-30 sm:min-h-10">
           結束全部（{activeCount}）
         </button>
         <button type="button" onClick={() => clearEnded()} disabled={!endedCount || clearing}
-          className={`${shareBtnCls} disabled:cursor-default`}>
+          className="min-h-12 rounded-lg border border-ra-line bg-ra-card px-3 text-sm font-medium text-ra-t1 hover:bg-ra-raised disabled:cursor-default disabled:opacity-40 sm:min-h-10">
           {clearing ? '清除中…' : `清除已結束（${endedCount}）`}
         </button>
       </div>
 
-      {error && <div className="text-xs text-red-400">{error}</div>}
+      {error && <p role="alert" className="text-[13px] leading-5 text-red-400">{error}</p>}
       {!loaded ? (
-        <div className="text-xs text-ra-t5">載入中…</div>
+        <p className="text-[13px] leading-5 text-ra-t3">載入中…</p>
       ) : visible.length === 0 ? (
-        <div className="text-xs text-ra-t5">
+        <p className="py-6 text-[13px] leading-5 text-ra-t3">
           {filter === 'active' ? '沒有進行中的分享。在聊天室頂欄按「分享」建立。' : '沒有符合的分享。'}
-        </div>
+        </p>
       ) : (
-        <div className="space-y-2.5">
+        <div className="flex min-w-0 flex-col gap-3">
           {visible.map((s) => (
-            <ShareRow key={s.id} share={s} onRevoke={revoke} onClear={clearEnded} clearing={clearing} showSession onJump={onJumpToSession} pinRevealed={false} />
+            <ShareRow key={s.id} share={s} onRevoke={revoke} onClear={clearEnded} clearing={clearing} showSession onJump={onJumpToSession} pinRevealed={false} variant="settings" />
           ))}
         </div>
       )}

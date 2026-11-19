@@ -12,6 +12,16 @@ const SETTINGS_SECTIONS = [
   { id: 'logs', label: '日誌' },
 ];
 
+// 設定頁控制項比例。只組既有 ra token；窄螢幕 48px／16px，sm 以上 40px。
+const settingsLabelCls = 'text-[15px] font-medium leading-6 text-ra-t1';
+const settingsHintCls = 'text-[13px] leading-5 text-ra-t3';
+const settingsControlCls = 'min-h-12 rounded-lg border border-ra-line bg-ra-bg px-3 text-base text-ra-t1 placeholder:text-ra-t5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ra-accent-text disabled:opacity-40 sm:min-h-10';
+const settingsBtnCls = 'inline-flex min-h-12 items-center justify-center rounded-lg border border-ra-line bg-ra-card px-3 text-sm font-medium text-ra-t1 hover:bg-ra-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-ra-accent-text disabled:opacity-40 sm:min-h-10';
+const settingsPrimaryCls = 'inline-flex min-h-12 items-center justify-center rounded-lg bg-ra-t1 px-3 text-sm font-medium text-ra-bg hover:bg-ra-t2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ra-accent-text disabled:opacity-40 sm:min-h-10';
+const settingsGhostCls = 'inline-flex min-h-12 items-center justify-center rounded-lg px-3 text-sm text-ra-t3 hover:bg-ra-raised hover:text-ra-t1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ra-accent-text disabled:opacity-40 sm:min-h-10';
+// 分隔線在 margin 與 padding 之間：上組內容、線、下一標題各留 24px，legend 才不會貼線。
+const settingsStackCls = 'flex flex-col [&>*+*]:mt-6 [&>*+*]:border-t [&>*+*]:border-ra-line-soft [&>*+*]:pt-6';
+
 /** 把任意合法 CSS 顏色轉成 <input type="color"> 要的 #rrggbb；解不出就回 fallback。 */
 function cssColorToHex(css, fallback = '#808080') {
   const s = String(css || '').trim();
@@ -41,14 +51,15 @@ function cssColorToHex(css, fallback = '#808080') {
 
 /** 顏色輸入列：點色塊開系統調色盤，文字欄仍可貼 oklch / #hex。 */
 function ColorField({ label, value, onChange, placeholder }) {
+  const id = React.useId();
   const hex = cssColorToHex(value || placeholder);
   return (
-    <div className="flex items-center gap-3">
-      <div className="w-24 shrink-0 text-[11px] text-ra-t4">{label}</div>
-      <div className="flex-1 min-w-0 flex items-center gap-2">
-        <label className="relative shrink-0 w-7 h-7 cursor-pointer" title="開啟調色盤">
+    <div className="flex min-w-0 flex-col gap-2">
+      <label htmlFor={id} className="text-sm font-medium leading-5 text-ra-t1">{label}</label>
+      <div className="flex min-w-0 items-center gap-2">
+        <label className="relative h-12 w-12 shrink-0 cursor-pointer rounded-lg border border-ra-line sm:h-10 sm:w-10" title="開啟調色盤">
           <span
-            className="absolute inset-0 rounded-full border border-ra-line-strong"
+            className="absolute inset-0 rounded-[7px]"
             style={{ background: value || placeholder }}
             aria-hidden
           />
@@ -56,17 +67,20 @@ function ColorField({ label, value, onChange, placeholder }) {
             type="color"
             value={hex}
             onChange={(e) => onChange(e.target.value)}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
             aria-label={`${label} 調色盤`}
           />
         </label>
         <input
+          id={id}
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           spellCheck={false}
-          className="flex-1 min-w-0 bg-ra-card border border-ra-line rounded-lg px-2.5 py-1.5 text-xs font-mono text-ra-t1 placeholder-ra-t5 focus:outline-none focus:border-violet-600"
+          autoCorrect="off"
+          autoCapitalize="none"
+          className={`${settingsControlCls} min-w-0 flex-1 font-mono`}
         />
       </div>
     </div>
@@ -121,10 +135,10 @@ function GlobalInstructionSettings() {
   };
 
   return (
-    <form onSubmit={save} aria-labelledby={`${id}-title`} className="space-y-3">
-      <div>
-        <label id={`${id}-title`} htmlFor={`${id}-text`} className="block text-sm font-semibold text-ra-t1 mb-1">全域指令</label>
-        <p id={`${id}-help`} className="text-xs text-ra-t4 mb-2">套用到之後建立的 Agent 會話。最多 16,384 UTF-8 bytes。</p>
+    <form onSubmit={save} aria-labelledby={`${id}-title`} className="flex flex-col gap-6">
+      <div className="flex flex-col gap-2">
+        <label id={`${id}-title`} htmlFor={`${id}-text`} className={settingsLabelCls}>全域指令</label>
+        <p id={`${id}-help`} className={settingsHintCls}>套用到之後建立的 Agent 會話。最多 16,384 UTF-8 bytes。</p>
         <textarea
           id={`${id}-text`}
           name="text"
@@ -133,29 +147,28 @@ function GlobalInstructionSettings() {
           onChange={update}
           rows={4}
           disabled={!instruction || saving}
-          className="w-full bg-ra-card border border-ra-line rounded-lg px-3 py-2 text-base text-ra-t1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500 resize-y"
+          className={`${settingsControlCls} w-full resize-y`}
         />
       </div>
-      <fieldset disabled={!instruction || saving}>
-        <legend className="text-sm font-medium text-ra-t1">注入模式</legend>
+      <fieldset disabled={!instruction || saving} className="flex min-w-0 flex-col gap-1 border-0 p-0">
+        <legend className={settingsLabelCls}>注入模式</legend>
         {[
           ['first', '會話第一則訊息'],
           ['every', '每則訊息'],
           ['native', '僅原生支援（Claude、Codex、Antigravity）'],
         ].map(([value, label]) => (
-          <div key={value} className="flex items-center gap-2 text-sm text-ra-t1">
+          <div key={value} className="flex min-h-12 items-center gap-3 text-sm text-ra-t1 sm:min-h-10">
             <input type="radio" id={`${id}-${value}`} name="mode" value={value}
-              checked={(instruction?.mode ?? 'native') === value} onChange={update} className="accent-violet-600" />
-            <label htmlFor={`${id}-${value}`} className="py-2">{label}</label>
+              checked={(instruction?.mode ?? 'native') === value} onChange={update} className="h-4 w-4" />
+            <label htmlFor={`${id}-${value}`}>{label}</label>
           </div>
         ))}
       </fieldset>
       <div className="flex flex-wrap items-center gap-3">
-        <button type="submit" disabled={!instruction || saving}
-          className="px-3 py-1.5 rounded-lg text-sm font-medium bg-ra-raised text-ra-t1 border border-ra-line-strong disabled:opacity-40">
+        <button type="submit" disabled={!instruction || saving} className={settingsPrimaryCls}>
           {saving ? '儲存中…' : '儲存全域指令'}
         </button>
-        <span role="status" className="text-xs text-ra-t3">{status}</span>
+        <span role="status" className={settingsHintCls}>{status}</span>
       </div>
     </form>
   );
@@ -164,21 +177,21 @@ function GlobalInstructionSettings() {
 // 「一般」頁的核取列：標題＋勾選框＋說明。children 接在勾選列之後（例如守門的門檻輸入）。
 function GeneralCheckbox({ title, label, hint, hintId, id, checked, disabled, onChange, children }) {
   return (
-    <div>
-      <div className="text-sm font-semibold text-ra-t1 mb-1">{title}</div>
-      <label htmlFor={id} className="flex items-start gap-3 cursor-pointer">
+    <div className="flex flex-col gap-2">
+      <div className={settingsLabelCls}>{title}</div>
+      <label htmlFor={id} className="flex min-h-12 cursor-pointer items-start gap-3 sm:min-h-10">
         <input
           id={id}
           type="checkbox"
           checked={checked}
           disabled={disabled}
           onChange={onChange}
-          className="mt-0.5 w-4 h-4 accent-violet-600 shrink-0"
+          className="mt-0.5 h-5 w-5 shrink-0"
         />
-        <div className="min-w-0">
-          <div className="text-sm text-ra-t1">{label}</div>
-          {hint ? <div id={hintId} className="text-[11px] text-ra-t5 mt-0.5">{hint}</div> : null}
-        </div>
+        <span className="min-w-0">
+          <span className="block text-sm leading-5 text-ra-t1">{label}</span>
+          {hint ? <span id={hintId} className={`mt-1 block ${settingsHintCls}`}>{hint}</span> : null}
+        </span>
       </label>
       {children}
     </div>
@@ -312,10 +325,11 @@ function GeneralSection() {
   };
 
   return (
-    <div className="divide-y divide-ra-line-soft [&>*]:py-6 [&>:first-child]:pt-0 [&>:last-child]:pb-0">
+    <div className={settingsStackCls}>
       <GlobalInstructionSettings />
       <GeneralCheckbox
         title="開啟 VSCode"
+        id="vscode-no-admin"
         label="以一般使用者權限開啟 VSCode"
         hint={<>
           當伺服器程式本身以系統管理員身分執行時，直接開啟 VSCode 會因權限不一致出現
@@ -328,6 +342,7 @@ function GeneralSection() {
       />
       <GeneralCheckbox
         title="Claude 完全跳過授權"
+        id="claude-auto-allow-ask"
         label="自動允許 ask 規則詢問"
         hint={<>
           僅作用於權限模式為「跳過授權」的 Claude 會話。開啟後，命中 ask 規則的工具呼叫會由伺服器直接允許，
@@ -369,11 +384,11 @@ function GeneralSection() {
               if (decision.put) saveGeneral(decision.next);
             }}
       >
-        <p id="quota-guard-hint" className="text-[11px] text-ra-t5 mt-1">
+        <p id="quota-guard-hint" className={settingsHintCls}>
           任一有百分比的額度視窗已用達門檻時暫停佇列。直接送出與按「繼續」不受影響。守門關閉時不能改數字。
           離開欄位或按 Enter 才儲存。
         </p>
-        <label htmlFor="quota-guard-percent" className="block text-sm text-ra-t1 mt-3">門檻百分比</label>
+        <label htmlFor="quota-guard-percent" className="mt-1 block text-sm text-ra-t1">門檻百分比</label>
         <input
           id="quota-guard-percent"
           name="quotaGuardPercent"
@@ -393,34 +408,34 @@ function GeneralSection() {
             e.preventDefault();
             e.currentTarget.blur();
           }}
-          className="mt-1 w-28 px-2 py-1.5 rounded-lg text-sm bg-ra-raised text-ra-t1 border border-ra-line-strong disabled:opacity-40"
+          className={`${settingsControlCls} mt-2 w-28`}
         />
-        {error ? <div id="quota-guard-error" role="alert" className="text-xs text-red-400 mt-2">{error}</div> : null}
+        {error ? <div id="quota-guard-error" role="alert" className="text-[13px] leading-5 text-red-400">{error}</div> : null}
       </GeneralCheckbox>
-      <div>
-        <div className="text-sm font-semibold text-ra-t1 mb-1">模型清單</div>
-        <div className="text-[11px] text-ra-t5 mb-2">
+      <div className="flex flex-col gap-2">
+        <div className={settingsLabelCls}>模型清單</div>
+        <p className={settingsHintCls}>
           程式啟動時會向各 CLI（Claude、Cursor、Codex、Kiro）取得可用模型。有新模型時按這裡即可更新，不必重啟。
-        </div>
+        </p>
         <button
           type="button"
           onClick={refreshModels}
           disabled={refreshingModels}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-ra-raised hover:bg-ra-raised text-ra-t1 border border-ra-line-strong disabled:opacity-40"
+          className={`${settingsBtnCls} mt-1 w-fit`}
         >
           {refreshingModels ? '更新中…（需數秒）' : '重新抓取模型清單'}
         </button>
       </div>
-      <div>
-        <div className="text-sm font-semibold text-ra-t1 mb-1">前端更新</div>
-        <div className="text-[11px] text-ra-t5 mb-2">
+      <div className="flex flex-col gap-2">
+        <div className={settingsLabelCls}>前端更新</div>
+        <p className={settingsHintCls}>
           改了前端檔案卻沒生效時使用：強制重抓本站所有腳本與樣式（覆寫瀏覽器快取）後重新載入頁面。
-        </div>
+        </p>
         <button
           type="button"
           onClick={reloadFresh}
           disabled={refreshing}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-ra-raised hover:bg-ra-raised text-ra-t1 border border-ra-line-strong disabled:opacity-40"
+          className={`${settingsBtnCls} mt-1 w-fit`}
         >
           {refreshing ? '更新中…' : '清除快取並重新載入'}
         </button>
@@ -443,15 +458,15 @@ function ThemeField() {
     setThemePref(value);
   };
   return (
-    <div>
-      <div className="text-sm font-semibold text-ra-t1 mb-1">主題</div>
-      <div className="text-[11px] text-ra-t5 mb-3">
-        只影響這個裝置。跟隨系統會依作業系統的淺色或深色設定自動切換。
-      </div>
+    <div className="flex flex-col gap-2">
+      <div className={settingsLabelCls}>主題</div>
+      <p className={settingsHintCls}>
+        只影響這個裝置。跟隨系統會依作業系統的淺色或深色設定自動切換。點選立即套用，不經下方的儲存。
+      </p>
       <div
         role="radiogroup"
         aria-label="主題"
-        className="inline-flex h-9 max-w-full flex-wrap items-stretch gap-0.5 rounded-lg border border-ra-line bg-ra-raised p-[3px]"
+        className="inline-flex h-auto max-w-full flex-wrap items-stretch gap-1 rounded-lg border border-ra-line bg-ra-sunken p-1"
       >
         {THEME_FIELD_OPTIONS.map((opt) => {
           const active = pref === opt.value;
@@ -463,11 +478,11 @@ function ThemeField() {
               aria-checked={active}
               onClick={() => pick(opt.value)}
               className={[
-                'h-full flex items-center justify-center shrink-0 grow-0 px-3 text-xs font-semibold rounded-[7px] transition-[color,background-color] duration-150 whitespace-nowrap',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50',
+                'flex min-h-12 flex-1 items-center justify-center whitespace-nowrap rounded-md px-3 text-sm font-medium sm:min-h-10 sm:flex-none',
+                'focus-visible:outline focus-visible:outline-2 focus-visible:outline-ra-accent-text',
                 active
-                  ? 'bg-[oklch(0.62_0.19_275_/18%)] text-ra-accent-text'
-                  : 'text-ra-t5 hover:text-ra-t2',
+                  ? 'bg-ra-card text-ra-accent-text'
+                  : 'text-ra-t3 hover:text-ra-t1',
               ].join(' ')}
             >
               {opt.label}
@@ -484,35 +499,36 @@ function ChatFontSizeField() {
   const [fs, setFs] = useState(readChatFontSize);
   const change = (v) => setFs(setChatFontSize(Number(v)));
   return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <div className="text-sm font-semibold text-ra-t1">對話文字大小</div>
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <label htmlFor="settings-chat-font" className={settingsLabelCls}>對話文字大小</label>
         <button
           type="button"
           onClick={() => change(CHAT_FS_DEFAULT)}
           disabled={fs === CHAT_FS_DEFAULT}
-          className="text-[11px] text-violet-400 hover:text-violet-300 disabled:opacity-40 disabled:hover:text-violet-400"
+          className={settingsGhostCls}
         >
           重設
         </button>
       </div>
-      <div className="text-[11px] text-ra-t5 mb-3">
-        即時套用，只影響這個裝置。手機輸入框不會小於 16px。
-      </div>
+      <p id="settings-chat-font-help" className={settingsHintCls}>
+        拖動立即套用，只影響這個裝置，不經下方的儲存。手機輸入框不會小於 16px。
+      </p>
       <div className="flex items-center gap-3">
         <input
+          id="settings-chat-font"
           type="range"
           min={CHAT_FS_MIN}
           max={CHAT_FS_MAX}
           step={1}
           value={fs}
           onChange={(e) => change(e.target.value)}
-          aria-label="對話文字大小"
-          className="flex-1 min-w-0 accent-violet-500"
+          aria-describedby="settings-chat-font-help"
+          className="h-12 min-w-0 flex-1 sm:h-10"
         />
-        <span className="w-12 shrink-0 text-right text-xs ra-mono text-ra-t2">{fs}px</span>
+        <span className="w-12 shrink-0 text-right text-sm ra-mono text-ra-t2">{fs}px</span>
       </div>
-      <div className="mt-3 rounded-lg border border-ra-line bg-ra-card px-3 py-2 text-ra-t2" style={{ fontSize: fs + 'px', lineHeight: 1.8 }}>
+      <div className="rounded-lg border border-ra-line bg-ra-sunken px-3 py-3 text-ra-t2" style={{ fontSize: fs + 'px', lineHeight: 1.8 }}>
         預覽：這是一段對話文字 The quick brown fox 0123
       </div>
     </div>
@@ -522,36 +538,42 @@ function ChatFontSizeField() {
 function AppearanceSection({ draft, setDraft }) {
   const set = (key) => (val) => setDraft((prev) => ({ ...prev, [key]: val }));
   return (
-    <div className="divide-y divide-ra-line-soft [&>*]:py-6 [&>:first-child]:pt-0 [&>:last-child]:pb-0">
+    <div className={settingsStackCls}>
       <ThemeField />
       <ChatFontSizeField />
 
-      <div>
-        <div className="text-sm font-semibold text-ra-t1 mb-1">Markdown 顏色</div>
-        <div className="text-[11px] text-ra-t5 mb-3">
-          點色塊開調色盤，或直接貼 <code className="ra-mono">oklch(...)</code>、<code className="ra-mono">#hex</code>。
-        </div>
-        <div className="flex flex-col gap-3">
+      <div className="min-w-0">
+      <fieldset className="flex min-w-0 flex-col border-0 p-0">
+        <legend className={settingsLabelCls}>Markdown 顏色</legend>
+        <p className={`${settingsHintCls} mt-1 [&_code]:break-all`}>
+          點色塊開調色盤，或直接貼 <code className="ra-mono">oklch(...)</code>、<code className="ra-mono">#hex</code>。改完按下方儲存。
+        </p>
+        <div className="mt-4 flex flex-col gap-4">
           <ColorField label="標題（H1–H3）" value={draft.headingColor} onChange={set('headingColor')} placeholder={APPEARANCE_DEFAULTS.headingColor} />
           <ColorField label="粗體" value={draft.boldColor} onChange={set('boldColor')} placeholder={APPEARANCE_DEFAULTS.boldColor} />
           <ColorField label="行內程式碼" value={draft.codeColor} onChange={set('codeColor')} placeholder={APPEARANCE_DEFAULTS.codeColor} />
         </div>
+      </fieldset>
       </div>
 
-      <div>
-        <div className="text-sm font-semibold text-ra-t1 mb-1">自訂 CSS</div>
-        <div className="text-[11px] text-ra-t5 mb-2">
-          即時套用到整個頁面；留空即不生效。範例：<code className="ra-mono">.prose blockquote {'{'} color: hotpink; {'}'}</code>
+      <div className="flex min-w-0 flex-col gap-2">
+        <label htmlFor="settings-custom-css" className={settingsLabelCls}>自訂 CSS</label>
+        <p id="settings-custom-css-help" className={`${settingsHintCls} [&_code]:break-all`}>
+          按下儲存後套用到整個頁面；留空即不生效。範例：<code className="ra-mono">.prose blockquote {'{'} color: hotpink; {'}'}</code>
           {' '}僅在特定主題生效時可用 <code className="ra-mono">html[data-theme=&quot;light&quot;]</code> 或 <code className="ra-mono">html[data-theme=&quot;dark&quot;]</code> 限定，例如{' '}
           <code className="ra-mono">html[data-theme=&quot;light&quot;] .prose {'{'} color: #333; {'}'}</code>
-        </div>
+        </p>
         <textarea
+          id="settings-custom-css"
+          aria-describedby="settings-custom-css-help"
           value={draft.customCss}
           onChange={(e) => setDraft((prev) => ({ ...prev, customCss: e.target.value }))}
           placeholder=".prose h1 { text-decoration: underline; }"
           rows={8}
           spellCheck={false}
-          className="w-full bg-ra-card border border-ra-line rounded-lg px-3 py-2 text-xs font-mono leading-relaxed text-ra-t1 placeholder-ra-t5 focus:outline-none focus:border-violet-600 resize-y"
+          autoCorrect="off"
+          autoCapitalize="none"
+          className={`${settingsControlCls} w-full resize-y font-mono leading-relaxed`}
         />
       </div>
     </div>
@@ -639,11 +661,13 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
   };
   const sections = updateVisible ? [...SETTINGS_SECTIONS, { id: 'update', label: '更新' }] : SETTINGS_SECTIONS;
   const enterSection = (id) => { setSection(id); setMobileDetail(true); };
+  const showAppearanceActions = section === 'appearance';
+  const sectionLabel = sections.find((s) => s.id === section)?.label;
 
   return (
     <dialog
       ref={dialogRef}
-      className={`ra-dialog ra-dialog-settings overflow-hidden bg-ra-bg shadow-2xl shadow-black/50 ${mobile ? 'mobile flex-col' : 'rounded-2xl border border-ra-line'}`}
+      className={`ra-dialog ra-dialog-settings overflow-hidden bg-ra-bg text-ra-t1 accent-[var(--ra-accent)] shadow-2xl shadow-black/40 ${mobile ? 'mobile flex-col' : 'rounded-xl border border-ra-line'}`}
       style={mobile ? { paddingBottom: 'max(env(safe-area-inset-bottom, 0px), var(--tg-safe-area-inset-bottom, 0px))' } : undefined}
       aria-labelledby="settings-modal-title"
       onClose={onClose}
@@ -658,51 +682,51 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
         if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) e.currentTarget.close();
       }}
     >
-        {mobile && <header className="flex shrink-0 items-center gap-2 border-b border-ra-line-soft px-3 pb-2"
+        {mobile && <header className="flex shrink-0 items-center gap-2 border-b border-ra-line px-3 pb-2"
           style={{ paddingTop: 'calc(max(8px, env(safe-area-inset-top, 0px), var(--tg-safe-area-inset-top, 0px)) + var(--tg-content-safe-top, 0px))' }}>
           {mobileDetail && <button type="button" ref={backRef} aria-label="返回設定分類"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-ra-t2 hover:bg-ra-raised"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg text-ra-t2 hover:bg-ra-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-ra-accent-text"
             onClick={() => setMobileDetail(false)}>
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m14 6-6 6 6 6" /></svg>
           </button>}
-          <h2 id="settings-modal-title" className="flex-1 px-2 text-base font-semibold text-ra-t1">{mobileDetail ? sections.find(s => s.id === section)?.label : '設定'}</h2>
+          <h2 id="settings-modal-title" className="flex-1 px-2 text-lg font-medium text-ra-t1">{mobileDetail ? sectionLabel : '設定'}</h2>
           <button type="button" aria-label="關閉設定" onClick={() => dialogRef.current?.close()}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-ra-t2 hover:bg-ra-raised">
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg text-ra-t2 hover:bg-ra-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-ra-accent-text">
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6" /></svg>
           </button>
         </header>}
         {/* 桌面側欄／手機第一層分類 */}
-        {(!mobile || !mobileDetail) && <div className={`${mobile ? 'flex-1 min-h-0 overflow-y-auto' : 'w-40 shrink-0 border-r border-ra-line-soft'} bg-ra-sunken flex flex-col`}>
-          {!mobile && <div id="settings-modal-title" className="px-4 pt-4 pb-3 text-sm font-semibold text-ra-t1">
+        {(!mobile || !mobileDetail) && <div className={`${mobile ? 'min-h-0 flex-1 overflow-y-auto' : 'w-48 min-h-0 shrink-0 border-r border-ra-line'} flex flex-col bg-ra-sunken`}>
+          {!mobile && <div id="settings-modal-title" className="px-4 pb-3 pt-5 text-lg font-medium text-ra-t1">
             設定
           </div>}
-          <nav aria-label="設定分類" className={`flex-1 space-y-0.5 ${mobile ? 'p-3' : 'px-2'}`}>
+          <nav aria-label="設定分類" className={`flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain ${mobile ? 'p-3' : 'px-2'}`}>
             {sections.map((s) => (
               <button
                 key={s.id}
                 type="button"
                 data-settings-section={s.id}
                 onClick={() => enterSection(s.id)}
-                className={`w-full flex items-center text-left rounded-lg text-sm transition-colors ${mobile ? 'min-h-14 px-4 py-3' : 'px-2.5 py-2'} ${
+                className={`flex w-full items-center rounded-lg text-left text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-ra-accent-text ${mobile ? 'min-h-12 px-3' : 'min-h-10 px-3'} ${
                   !mobile && section === s.id
-                    ? 'bg-violet-500/15 text-violet-200'
-                    : 'text-ra-t4 hover:bg-ra-card hover:text-ra-t2'
+                    ? 'bg-ra-card font-medium text-ra-t1 shadow-[inset_2px_0_0_var(--ra-accent)]'
+                    : 'text-ra-t3 hover:bg-ra-card hover:text-ra-t1'
                 }`}
               >
                 {s.label}
-                {s.id === 'update' && desktopUpdate?.hasUpdate && <span className="inline-block ml-2 h-2 w-2 rounded-full bg-violet-500" role="img" aria-label="有可用更新" />}
+                {s.id === 'update' && desktopUpdate?.hasUpdate && <span className="ml-2 inline-block h-2 w-2 rounded-full bg-[var(--ra-accent)]" role="img" aria-label="有可用更新" />}
                 {mobile && <span className="ml-auto text-ra-t5" aria-hidden="true">›</span>}
               </button>
             ))}
           </nav>
-          <div className="shrink-0 px-4 py-3 text-xs leading-5 font-mono text-ra-t4 select-text">
+          <div className="shrink-0 border-t border-ra-line-soft px-4 py-3 text-[13px] leading-5 font-mono text-ra-t3 select-text">
             <div>v{buildInfo?.version || '—'}</div>
             <div title={buildInfo?.sha || 'unknown'}>SHA {buildInfo?.sha?.slice(0, 7) || '—'}</div>
             {updateVisible ? (
               <button
                 type="button"
                 onClick={() => enterSection('update')}
-                className={`${mobile ? 'min-h-11' : ''} mt-1 font-sans text-[11px] text-violet-400 hover:text-violet-300 transition-colors`}
+                className={`${settingsGhostCls} mt-1 px-0 font-sans`}
               >
                 前往更新
               </button>
@@ -711,9 +735,12 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
         </div>}
 
         {/* 右側內容 */}
-        {(!mobile || mobileDetail) && <div className="flex-1 min-w-0 min-h-0 flex flex-col">
+        {(!mobile || mobileDetail) && <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {!mobile && <div className="shrink-0 px-6 pt-6">
+            <h3 className="text-lg font-medium leading-7 text-ra-t1">{sectionLabel}</h3>
+          </div>}
           {/* 日誌頁自己管捲動（清單內捲、頂部工具列固定），所以外層不捲 */}
-          <div className={`flex-1 min-h-0 app-scroll px-5 ${section === 'logs' ? 'py-4 overflow-hidden' : 'py-5 overflow-y-auto'}`}>
+          <div className={`app-scroll min-h-0 min-w-0 flex-1 overscroll-contain px-6 ${section === 'logs' ? 'overflow-hidden py-4' : 'overflow-y-auto py-6'} ${mobile ? '[&_button]:min-h-12 [&_input[type=text]]:min-h-12 [&_input[type=number]]:min-h-12 [&_select]:min-h-12' : ''}`}>
             {section === 'general' && <GeneralSection />}
             {section === 'appearance' && <AppearanceSection draft={draft} setDraft={setDraft} />}
             {section === 'shares' && <SharesSection onJumpToSession={onJumpToSession} />}
@@ -730,35 +757,25 @@ function SettingsModal({ open, onClose, onJumpToSession = null, desktopUpdate = 
             )}
             {section === 'update' && updateVisible && !updateBridge && <WebUpdateSection status={desktopUpdate.webStatus} />}
           </div>
-          <div className={`shrink-0 flex items-center justify-between gap-2 px-5 py-3 border-t border-ra-line-soft ${mobile ? '[&_button]:min-h-11' : ''}`}>
-            {/* 還原預設／儲存只對外觀有效，日誌頁不顯示 */}
-            {section !== 'logs' && section !== 'shares' && section !== 'system' && section !== 'update' && (
-              <button
-                type="button"
-                onClick={handleReset}
-                className="text-xs text-ra-t5 hover:text-ra-t2 transition-colors"
-              >
+          <div className={`flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-ra-line px-6 py-3 ${mobile ? '[&_button]:min-h-12' : ''}`}>
+            {showAppearanceActions && (
+              <button type="button" onClick={handleReset} className={settingsGhostCls}>
                 還原預設
               </button>
             )}
-            <div className="flex items-center gap-2 ml-auto">
-              {saveError && <span className="text-xs text-red-400">{saveError}</span>}
-              {!saveError && savedFlash && <span className="text-xs text-emerald-400">已儲存</span>}
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-3">
+              {showAppearanceActions && saveError && <span role="alert" className="min-w-0 text-[13px] leading-5 text-red-400">{saveError}</span>}
+              {showAppearanceActions && !saveError && savedFlash && <span role="status" className="text-[13px] leading-5 text-ra-ok">已儲存</span>}
               <button
                 type="button"
                 // 走原生 close()，onClose 由 close 事件觸發，瀏覽器才會把焦點還給開啟者
                 onClick={() => dialogRef.current?.close()}
-                className="px-3 py-1.5 bg-ra-raised hover:bg-ra-raised text-ra-t2 rounded-lg text-xs font-medium transition-colors"
+                className={settingsBtnCls}
               >
                 關閉
               </button>
-              {section !== 'logs' && section !== 'shares' && section !== 'system' && section !== 'update' && (
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-60 text-white rounded-lg text-xs font-medium transition-colors"
-                >
+              {showAppearanceActions && (
+                <button type="button" onClick={handleSave} disabled={saving} className={settingsPrimaryCls}>
                   {saving ? '儲存中…' : '儲存'}
                 </button>
               )}

@@ -69,8 +69,9 @@ const shareBtnCls = 'px-2 py-1 rounded-md text-xs bg-ra-raised hover:bg-ra-raise
 /**
  * 單一分享的資訊卡：連結／PIN（可複製）、剩餘時間、線上名單、結束分享。
  * showSession：列出所屬聊天室名稱（設定頁用）；onJump：點名稱跳到該聊天室。
+ * variant=settings 只給設定頁：連結與動作換行，長名稱截斷。預設 dialog 維持分享窗原排版。
  */
-function ShareRow({ share, onRevoke, onClear = null, clearing = false, showSession = false, onJump = null, pinRevealed = true }) {
+function ShareRow({ share, onRevoke, onClear = null, clearing = false, showSession = false, onJump = null, pinRevealed = true, variant = 'dialog' }) {
   const now = useNowTick(1000);
   const [showPin, setShowPin] = useState(pinRevealed);
   const info = shareStatusInfo(share);
@@ -85,61 +86,71 @@ function ShareRow({ share, onRevoke, onClear = null, clearing = false, showSessi
   };
 
   const dot = info.key === 'active' ? 'bg-emerald-400' : info.key === 'locked' ? 'bg-amber-400' : 'bg-gray-600';
+  const settings = variant === 'settings';
+  const rowBtn = settings
+    ? 'inline-flex min-h-12 items-center justify-center rounded-lg border border-ra-line bg-ra-card px-3 text-sm text-ra-t1 hover:bg-ra-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-ra-accent-text disabled:opacity-40 sm:min-h-10'
+    : shareBtnCls;
 
   return (
-    <div className={`rounded-xl border border-ra-line bg-ra-card p-3 text-sm space-y-2 ${ended ? 'opacity-55' : ''}`} data-share-id={share.id}>
-      <div className="flex items-center gap-2 min-w-0">
+    <div className={`max-w-full min-w-0 border border-ra-line bg-ra-card p-3 text-sm ${settings ? 'space-y-3 rounded-lg' : 'space-y-2 rounded-xl'} ${ended ? 'opacity-55' : ''}`} data-share-id={share.id}>
+      <div className="flex min-w-0 items-center gap-2">
         <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} aria-hidden />
         <span className="text-xs font-semibold text-ra-t1">{shareRoleLabel(share)}</span>
-        <span className="text-[11px] text-ra-t4">{info.label}</span>
+        <span className={settings ? 'shrink-0 text-[13px] text-ra-t3' : 'text-[11px] text-ra-t4'}>{info.label}</span>
         {showSession && (
           onJump ? (
-            <button type="button" onClick={() => onJump(share.session_id)} className="min-w-0 truncate text-xs text-violet-300 hover:underline" title="跳到這個聊天室">
+            <button type="button" onClick={() => onJump(share.session_id)} title="跳到這個聊天室"
+              className={settings ? 'min-w-0 flex-1 truncate text-left text-sm text-ra-accent-text hover:underline' : 'min-w-0 truncate text-xs text-violet-300 hover:underline'}>
               {share.session_name || share.session_id}
             </button>
           ) : (
-            <span className="min-w-0 truncate text-xs text-ra-t3">{share.session_name || share.session_id}</span>
+            <span className={settings ? 'min-w-0 flex-1 truncate text-sm text-ra-t2' : 'min-w-0 truncate text-xs text-ra-t3'}>{share.session_name || share.session_id}</span>
           )
         )}
-        <span className="ml-auto shrink-0 text-[11px] text-ra-t4 tabular-nums">
+        <span className={`ml-auto shrink-0 tabular-nums ${settings ? 'text-[13px] text-ra-t3' : 'text-[11px] text-ra-t4'}`}>
           {ended ? '' : `剩 ${formatRemaining(remaining)}`}
         </span>
       </div>
 
-      <div className="flex items-center gap-2 min-w-0">
+      <div className={settings ? 'flex min-w-0 flex-wrap items-center gap-2' : 'flex items-center gap-2 min-w-0'}>
         <input
           readOnly
           value={link}
           onFocus={(e) => e.target.select()}
-          className="flex-1 min-w-0 rounded-md bg-ra-sunken border border-ra-line px-2 py-1 text-xs ra-mono text-ra-t2"
+          aria-label="分享連結"
+          className={settings
+            ? 'min-h-12 w-full min-w-0 basis-full rounded-lg border border-ra-line bg-ra-sunken px-3 text-base ra-mono text-ra-t2 sm:min-h-10 sm:w-auto sm:flex-1 sm:basis-0'
+            : 'flex-1 min-w-0 rounded-md bg-ra-sunken border border-ra-line px-2 py-1 text-xs ra-mono text-ra-t2'}
         />
-        <button type="button" className={shareBtnCls} onClick={() => copy(link, '連結')}>複製連結</button>
-        <button type="button" className={shareBtnCls} onClick={() => copy(shareLinkWithPin(share), '連結（含 PIN）')}
+        <button type="button" className={rowBtn} onClick={() => copy(link, '連結')}>複製連結</button>
+        <button type="button" className={rowBtn} onClick={() => copy(shareLinkWithPin(share), '連結（含 PIN）')}
           title="連結已帶入 PIN，對方開啟後只需輸入暱稱">複製連結＋PIN</button>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs text-ra-t4">PIN</span>
         <span className="ra-mono text-base tracking-[0.25em] text-ra-t1 select-all">{showPin ? share.pin : '••••••'}</span>
-        <button type="button" className={shareBtnCls} onClick={() => setShowPin(!showPin)}>{showPin ? '隱藏' : '顯示'}</button>
-        <button type="button" className={shareBtnCls} onClick={() => copy(share.pin, ' PIN')}>複製 PIN</button>
-        <button type="button" className={shareBtnCls} onClick={() => copy(`${link}\nPIN：${share.pin}`, '連結與 PIN')}>複製全部</button>
+        <button type="button" className={rowBtn} onClick={() => setShowPin(!showPin)}>{showPin ? '隱藏' : '顯示'}</button>
+        <button type="button" className={rowBtn} onClick={() => copy(share.pin, ' PIN')}>複製 PIN</button>
+        <button type="button" className={rowBtn} onClick={() => copy(`${link}\nPIN：${share.pin}`, '連結與 PIN')}>複製全部</button>
       </div>
 
-      <div className="flex items-center gap-2 text-xs text-ra-t4">
+      <div className={settings ? 'flex min-w-0 flex-wrap items-center gap-2 text-sm text-ra-t3' : 'flex items-center gap-2 text-xs text-ra-t4'}>
         <span className="min-w-0 truncate">
           {ended ? '' : online.length > 0 ? `線上：${online.join('、')}` : '目前沒有訪客在線'}
           {share.locked && info.key !== 'ended' ? ' · PIN 錯誤次數過多，已鎖定' : ''}
         </span>
         {info.key === 'ended' && onClear && (
           <button type="button" onClick={() => onClear(share)} disabled={clearing}
-            className={`${shareBtnCls} ml-auto shrink-0`} title="清除這筆分享紀錄，保留聊天室內容">
+            className={settings ? `${rowBtn} ml-auto` : `${shareBtnCls} ml-auto shrink-0`} title="清除這筆分享紀錄，保留聊天室內容">
             清除紀錄
           </button>
         )}
         {!ended || info.key === 'locked' ? (
           <button type="button" onClick={() => onRevoke(share)}
-            className="ml-auto shrink-0 px-2 py-1 rounded-md text-xs bg-red-900/60 hover:bg-red-800 text-red-200">
+            className={settings
+              ? 'ml-auto inline-flex min-h-12 shrink-0 items-center rounded-lg bg-red-900/60 px-3 text-sm text-red-200 hover:bg-red-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ra-accent-text sm:min-h-10'
+              : 'ml-auto shrink-0 px-2 py-1 rounded-md text-xs bg-red-900/60 hover:bg-red-800 text-red-200'}>
             結束分享
           </button>
         ) : null}

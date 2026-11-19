@@ -1,13 +1,13 @@
 /** 設定頁「系統資源」：整機 CPU／記憶體唯讀快照。元件存在期間每 3 秒輪詢；離開分類或關閉設定即卸載並停止。 */
 function StatBar({ label, text, percent }) {
   return (
-    <div>
-      <div className="flex items-baseline justify-between mb-1">
-        <div className="text-xs text-ra-t2">{label}</div>
-        <div className="text-xs text-ra-t1 ra-mono">{text}</div>
+    <div className="flex flex-col gap-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="text-sm text-ra-t2">{label}</div>
+        <div className="text-sm text-ra-t1 ra-mono">{text}</div>
       </div>
-      <div className="h-1.5 w-full rounded-full bg-ra-raised overflow-hidden">
-        <div className="h-full bg-violet-500 transition-[width]" style={{ width: (percent || 0) + '%' }} />
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-ra-sunken">
+        <div className="h-full bg-[var(--ra-accent)] transition-[width]" style={{ width: (percent || 0) + '%' }} />
       </div>
     </div>
   );
@@ -48,19 +48,19 @@ function SystemStatsSection() {
 
   const v = formatSystemStats(stats);
   return (
-    <div className="divide-y divide-ra-line-soft [&>*]:py-6 [&>:first-child]:pt-0 [&>:last-child]:pb-0">
+    <div className="flex flex-col gap-4">
       <div>
-        <div className="text-sm font-semibold text-ra-t1 mb-1">伺服器資源</div>
-        <div className="text-[11px] text-ra-t5 mb-4">
+        <h3 className="text-[15px] font-medium leading-6 text-ra-t1">伺服器資源</h3>
+        <p className="mt-1 text-[13px] leading-5 text-ra-t3">
           執行 agent 的這台主機整機的 CPU 與記憶體，每 3 秒更新；只在此頁開著時才會查詢。
-        </div>
-        <div className="space-y-4">
-          <StatBar label="CPU" text={v.cpuText} percent={v.cpuPercent} />
-          <StatBar label="記憶體" text={v.memText} percent={v.memPercent} />
-        </div>
-        {stats && stats.cpu_percent === null ? <div className="text-[11px] text-ra-t5 mt-3">CPU 需要兩次取樣才能計算，下一次更新就會顯示。</div> : null}
-        {error ? <div className="text-xs text-red-400 mt-3">{error}</div> : null}
+        </p>
       </div>
+      <div className="flex flex-col gap-4">
+        <StatBar label="CPU" text={v.cpuText} percent={v.cpuPercent} />
+        <StatBar label="記憶體" text={v.memText} percent={v.memPercent} />
+      </div>
+      {stats && stats.cpu_percent === null ? <p className="text-[13px] leading-5 text-ra-t3">CPU 需要兩次取樣才能計算，下一次更新就會顯示。</p> : null}
+      {error ? <p role="alert" className="text-[13px] leading-5 text-red-400">{error}</p> : null}
     </div>
   );
 }

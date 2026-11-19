@@ -28,7 +28,8 @@ const LogRow = React.memo(function LogRow({ e }) {
   );
 });
 
-const logBtnCls = 'px-2.5 py-1.5 rounded-lg bg-ra-raised hover:bg-ra-raised text-ra-t2 border border-ra-line';
+const logBtnCls = 'inline-flex min-h-12 items-center justify-center self-end rounded-lg border border-ra-line bg-ra-card px-3 text-sm font-medium text-ra-t1 hover:bg-ra-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-ra-accent-text disabled:opacity-40 sm:min-h-10';
+const logControlCls = 'min-h-12 rounded-lg border border-ra-line bg-ra-bg px-3 text-base text-ra-t1 placeholder:text-ra-t5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ra-accent-text sm:min-h-10';
 
 function LogsSection() {
   const [entries, setEntries] = useState([]);
@@ -125,24 +126,35 @@ function LogsSection() {
   };
 
   return (
-    <div className="h-full min-h-0 flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <select
-          value={minLevel}
-          onChange={(e) => setMinLevel(e.target.value)}
-          className="bg-ra-card border border-ra-line rounded-lg px-2 py-1.5 text-ra-t2"
-        >
-          <option value="DEBUG">DEBUG 以上</option>
-          <option value="INFO">INFO 以上</option>
-          <option value="WARN">WARN 以上</option>
-          <option value="ERROR">ERROR</option>
-        </select>
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="搜尋日誌…"
-          className="flex-1 min-w-[8rem] bg-ra-card border border-ra-line rounded-lg px-2.5 py-1.5 text-ra-t1 placeholder-ra-t5 focus:outline-none focus:border-violet-500"
-        />
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex min-w-0 flex-col gap-1">
+          <label htmlFor="settings-log-level" className="text-[13px] leading-5 text-ra-t3">等級</label>
+          <select
+            id="settings-log-level"
+            value={minLevel}
+            onChange={(e) => setMinLevel(e.target.value)}
+            className={logControlCls}
+          >
+            <option value="DEBUG">DEBUG 以上</option>
+            <option value="INFO">INFO 以上</option>
+            <option value="WARN">WARN 以上</option>
+            <option value="ERROR">ERROR</option>
+          </select>
+        </div>
+        <div className="flex min-w-[8rem] flex-1 flex-col gap-1">
+          <label htmlFor="settings-log-query" className="text-[13px] leading-5 text-ra-t3">搜尋</label>
+          <input
+            id="settings-log-query"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="搜尋日誌…"
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            className={`${logControlCls} w-full`}
+          />
+        </div>
         <button type="button" onClick={() => setFrozen(frozen ? null : entries)} className={logBtnCls}>
           {frozen ? `繼續${entries.length > frozen.length ? `（+${entries.length - frozen.length}）` : ''}` : '暫停'}
         </button>
@@ -153,10 +165,10 @@ function LogsSection() {
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="flex-1 min-h-0 overflow-y-auto app-scroll rounded-lg border border-ra-line-soft bg-ra-sunken font-mono text-[11.5px] leading-relaxed py-1"
+        className="app-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-lg border border-ra-line bg-ra-sunken py-1 font-mono text-[13px] leading-relaxed"
       >
         {shown.length === 0 ? (
-          <div className="px-3 py-6 text-center text-ra-t5">
+          <div className="px-3 py-8 text-center text-[13px] leading-5 text-ra-t3">
             {connected ? '沒有符合的日誌' : '連線中…'}
           </div>
         ) : (
@@ -164,19 +176,19 @@ function LogsSection() {
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-3 text-[11px] text-ra-t5">
-        <span className="inline-flex items-center gap-1.5 min-w-0">
-          <span className={`w-1.5 h-1.5 shrink-0 rounded-full ${connected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+      <div className="flex items-center justify-between gap-3 text-[13px] leading-5 text-ra-t3">
+        <span className="inline-flex min-w-0 items-center gap-2">
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${connected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
           <span className="truncate">
             {connected ? '已連線' : '連線中…'} · {shown.length}/{view.length} 筆（僅本次啟動後；完整紀錄見 logs/server.log）
           </span>
         </span>
-        <label className="inline-flex shrink-0 items-center gap-1.5 cursor-pointer">
+        <label className="inline-flex min-h-12 shrink-0 cursor-pointer items-center gap-2 sm:min-h-10">
           <input
             type="checkbox"
             checked={debugOn}
             onChange={(e) => toggleDebug(e.target.checked)}
-            className="accent-violet-600"
+            className="h-5 w-5"
           />
           Debug 日誌
         </label>

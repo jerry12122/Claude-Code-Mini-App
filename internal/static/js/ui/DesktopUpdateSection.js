@@ -33,89 +33,80 @@ function DesktopUpdateSection({ status, laterVersion = '', request, later, showO
     request('restart');
   };
 
+  const updatePrimaryCls = 'inline-flex min-h-12 items-center justify-center rounded-lg bg-ra-t1 px-3 text-sm font-medium text-ra-bg hover:bg-ra-t2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ra-accent-text disabled:opacity-40 sm:min-h-10';
+  const updateSecondaryCls = 'inline-flex min-h-12 items-center justify-center rounded-lg border border-ra-line bg-ra-card px-3 text-sm font-medium text-ra-t1 hover:bg-ra-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-ra-accent-text disabled:opacity-40 sm:min-h-10';
+
   return (
-    <div className="divide-y divide-ra-line-soft [&>*]:py-6 [&>:first-child]:pt-0 [&>:last-child]:pb-0">
+    <div className="flex flex-col gap-4">
       <div>
-        <div className="text-sm font-semibold text-ra-t1 mb-1">桌面程式更新</div>
-        <div className="text-[11px] text-ra-t5 mb-3 ra-mono">
+        <h3 className="text-[15px] font-medium leading-6 text-ra-t1">桌面程式更新</h3>
+        <p className="mt-1 text-[13px] leading-5 text-ra-t3 ra-mono">
           目前版本 v{st.currentVersion || '—'} · SHA {desktopUpdateShortSha(st.currentSha)}
-        </div>
-
-        <div className="text-xs text-ra-t2">
-          狀態：{view.stateLabel}
-          {st.availableVersion ? <span className="ml-2 ra-mono">可用版本 v{st.availableVersion}</span> : null}
-        </div>
-
-        {inProgress ? (
-          <div className="mt-3">
-            <div className="h-1.5 w-full rounded-full bg-ra-raised overflow-hidden">
-              <div className="h-full bg-violet-500 transition-[width]" style={{ width: percent + '%' }} />
-            </div>
-            <div className="text-[11px] text-ra-t5 mt-1 ra-mono">{percent}%</div>
-          </div>
-        ) : null}
-
-        {view.showNotes && notesHtml ? (
-          <div className="mt-3">
-            <div className="text-[11px] text-ra-t4 mb-1">更新內容</div>
-            <div
-              className="ra-notes rounded-lg border border-ra-line bg-ra-card px-3 py-2 max-h-64 overflow-y-auto"
-              dangerouslySetInnerHTML={{ __html: notesHtml }}
-            />
-          </div>
-        ) : null}
-
-        {st.errorCode ? (
-          <div className="mt-3 text-xs text-red-400">
-            {desktopUpdateErrorText(st.errorCode)}
-            {st.busyReason ? <div className="text-[11px] text-ra-t3 mt-0.5">原因：{desktopUpdateBusyReasonText(st.busyReason)}</div> : null}
-            {st.errorMessage ? <div className="text-[11px] text-ra-t3 mt-0.5 break-words whitespace-pre-line">{st.errorMessage}</div> : null}
-          </div>
-        ) : null}
-
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          {view.actions.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              disabled={a.disabled}
-              onClick={() => run(a)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium border disabled:opacity-40 ${
-                a.id === 'download' || a.id === 'restart'
-                  ? 'bg-violet-600 hover:bg-violet-500 border-violet-500 text-white'
-                  : 'bg-ra-raised hover:bg-ra-raised border-ra-line-strong text-ra-t1'
-              }`}
-            >
-              {a.label}
-            </button>
-          ))}
-        </div>
-
-        {showConfirm ? (
-          <div className="mt-3 rounded-lg border border-violet-500/40 bg-violet-950/20 px-3 py-3 text-xs text-ra-t1">
-            <div>確定要關閉桌面程式並套用更新嗎？</div>
-            <div className="text-[11px] text-ra-t4 mt-1">
-              只有在沒有進行中的工作時才會套用；若仍有工作，更新會被拒絕並保留，之後可再試。
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={confirmRestart}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium border bg-violet-600 hover:bg-violet-500 border-violet-500 text-white"
-              >
-                確定重新啟動並更新
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirming(false)}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium border bg-ra-raised hover:bg-ra-raised border-ra-line-strong text-ra-t1"
-              >
-                取消
-              </button>
-            </div>
-          </div>
-        ) : null}
+        </p>
       </div>
+
+      <p className="text-sm leading-6 text-ra-t2">
+        狀態：{view.stateLabel}
+        {st.availableVersion ? <span className="ml-2 ra-mono">可用版本 v{st.availableVersion}</span> : null}
+      </p>
+
+      {inProgress ? (
+        <div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-ra-sunken">
+            <div className="h-full bg-[var(--ra-accent)] transition-[width]" style={{ width: percent + '%' }} />
+          </div>
+          <p className="mt-1 text-[13px] leading-5 text-ra-t3 ra-mono">{percent}%</p>
+        </div>
+      ) : null}
+
+      {view.showNotes && notesHtml ? (
+        <div>
+          <h4 className="mb-2 text-sm font-medium text-ra-t2">更新內容</h4>
+          <div
+            className="ra-notes max-h-64 overflow-y-auto overscroll-contain rounded-lg border border-ra-line bg-ra-card px-3 py-3"
+            dangerouslySetInnerHTML={{ __html: notesHtml }}
+          />
+        </div>
+      ) : null}
+
+      {st.errorCode ? (
+        <div role="alert" className="text-[13px] leading-5 text-red-400">
+          {desktopUpdateErrorText(st.errorCode)}
+          {st.busyReason ? <p className="mt-1 text-ra-t3">原因：{desktopUpdateBusyReasonText(st.busyReason)}</p> : null}
+          {st.errorMessage ? <p className="mt-1 whitespace-pre-line break-words text-ra-t3">{st.errorMessage}</p> : null}
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-2">
+        {view.actions.map((a) => (
+          <button
+            key={a.id}
+            type="button"
+            disabled={a.disabled}
+            onClick={() => run(a)}
+            className={a.id === 'download' || a.id === 'restart' ? updatePrimaryCls : updateSecondaryCls}
+          >
+            {a.label}
+          </button>
+        ))}
+      </div>
+
+      {showConfirm ? (
+        <div className="rounded-lg border border-ra-line bg-ra-sunken px-4 py-4 text-sm leading-6 text-ra-t1">
+          <p>確定要關閉桌面程式並套用更新嗎？</p>
+          <p className="mt-1 text-[13px] leading-5 text-ra-t3">
+            只有在沒有進行中的工作時才會套用；若仍有工作，更新會被拒絕並保留，之後可再試。
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={confirmRestart} className={updatePrimaryCls}>
+              確定重新啟動並更新
+            </button>
+            <button type="button" onClick={() => setConfirming(false)} className={updateSecondaryCls}>
+              取消
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -125,11 +116,11 @@ function WebUpdateSection({ status }) {
   const st = status || {};
   const newer = st.availableVersion;
   return (
-    <div className="space-y-3 text-sm text-ra-t2">
-      <h3 className="font-semibold text-ra-t1">版本資訊</h3>
+    <div className="flex flex-col gap-3 text-sm leading-6 text-ra-t2">
+      <h3 className="text-lg font-medium text-ra-t1">版本資訊</h3>
       <p>主機版本 v{st.currentVersion || '—'}{newer ? ` · 最新正式版 v${newer}` : ''}</p>
       <p>{st.reloadRequired ? '主機已更新。草稿會保留，請自行重新整理載入新版。' : newer ? '有新版可用，請由主機管理者更新程式。網頁版僅提供通知。' : '每小時檢查新版；此頁不會安裝或重新啟動主機程式。'}</p>
-      {newer && <a className="text-violet-400 underline" href={`https://github.com/jerry12122/Claude-Code-Mini-App/releases/tag/v${newer}`} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">查看正式版</a>}
+      {newer && <a className="w-fit text-ra-accent-text underline underline-offset-2" href={`https://github.com/jerry12122/Claude-Code-Mini-App/releases/tag/v${newer}`} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">查看正式版</a>}
     </div>
   );
 }
