@@ -19,6 +19,7 @@ type migration struct {
 // 不要像舊的 tryAlter 那樣吞掉錯誤。
 var migrations = []migration{
 	{name: "baseline", up: migrateBaseline},
+	{name: "input_request_id", upTx: migrateInputRequestID},
 }
 
 // runMigrations 把資料庫從目前的 user_version 升到 len(list)。

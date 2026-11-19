@@ -21,10 +21,74 @@ function roomTimelineEmpty() {
 }
 
 function roomMessageBefore(a, b) {
+  if (!!a.local !== !!b.local) return a.local ? 1 : -1;
   const ta = String(a.created_at || '');
   const tb = String(b.created_at || '');
   if (ta !== tb) return ta < tb ? -1 : 1;
-  return a.id - b.id;
+  const ia = Number(a.id);
+  const ib = Number(b.id);
+  if (Number.isFinite(ia) && Number.isFinite(ib) && ia !== ib) return ia - ib;
+  return String(a.id).localeCompare(String(b.id));
+}
+
+/** 剪貼簿有檔案才攔截。沒有副檔名的截圖依 MIME 補上，純文字原樣交給瀏覽器。 */
+function clipboardPasteFiles(data) {
+  const files = Array.from(data && data.files ? data.files : []);
+  if (!files.length) return [];
+  return files.map((file) => {
+    const name = String(file.name || '');
+    if (/\.[a-z0-9]+$/i.test(name)) return file;
+    const subtype = String(file.type || '').split('/')[1] || 'bin';
+    const ext = subtype.replace(/jpeg/i, 'jpg').replace(/plain/i, 'txt').replace(/[^a-z0-9]/gi, '') || 'bin';
+    try {
+      return new File([file], 'paste.' + ext, { type: file.type || '' });
+    } catch (_) {
+      return file;
+    }
+  });
+}
+
+function roomLatestBodyId(messages) {
+  const list = Array.isArray(messages) ? messages : [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const item = list[i];
+    if (!item || item.role === 'system') continue;
+    if (String(item.body || item.text || '').trim()) return item.id;
+  }
+  return null;
+}
+
+function roomReconcileLocals(persisted, locals) {
+  const confirmed = new Set(persisted.map((item) => item.input_request_id).filter(Boolean));
+  const pending = locals.filter((item) => item.local && item.input_request_id && !confirmed.has(item.input_request_id));
+  return roomMergeMessages(persisted, pending);
+}
+
+/** 輪詢套用後把尚未被同一個 input_request_id 確認的本地氣泡接回去。 */
+function roomTimelineDeliver(state, page, mode) {
+  const locals = (state.messages || []).filter((item) => item.local);
+  const base = roomTimelineApply({ ...state, messages: (state.messages || []).filter((item) => !item.local) }, page, mode);
+  return { ...base, messages: roomReconcileLocals(base.messages, locals) };
+}
+
+function roomAdmitLocal(state, local) {
+  const rest = (state.messages || []).filter((item) => {
+    if (!item.local) return true;
+    if (item.input_request_id === local.input_request_id) return false;
+    return item.delivery !== 'failed';
+  });
+  return { ...state, messages: roomMergeMessages(rest, [local]) };
+}
+
+function roomDropLocal(state, requestId) {
+  return { ...state, messages: (state.messages || []).filter((item) => !(item.local && item.input_request_id === requestId)) };
+}
+
+function roomPatchLocal(state, requestId, patch) {
+  return {
+    ...state,
+    messages: (state.messages || []).map((item) => (item.local && item.input_request_id === requestId ? { ...item, ...patch } : item)),
+  };
 }
 
 /** 以 id 合併：同 id 以 incoming 為準（pending 就地更新），內容沒變就沿用舊物件；結果舊在上、新在下。 */
@@ -35,7 +99,8 @@ function roomMergeMessages(existing, incoming) {
     if (old && old.text === m.text && old.status === m.status && old.sender === m.sender &&
         old.recipient === m.recipient && old.member_role === m.member_role && old.session_name === m.session_name &&
         old.body === m.body && old.transfer === m.transfer && old.source_kind === m.source_kind &&
-        old.source_session_id === m.source_session_id && old.source_room === m.source_room) continue;
+        old.source_session_id === m.source_session_id && old.source_room === m.source_room &&
+        old.queued === m.queued && old.input_request_id === m.input_request_id) continue;
     byId.set(m.id, m);
   }
   return [...byId.values()].sort(roomMessageBefore);
@@ -54,13 +119,19 @@ function roomTimelineApply(state, page, mode) {
   if (mode === 'older') {
     return { messages: roomMergeMessages(state.messages, incoming), hasMore, nextCursor: hasMore ? nextCursor : '', loaded: true };
   }
-  const known = new Set(state.messages.map((m) => m.id));
+  // 最新頁帶齊這個工作室尚未提升的輸入。已提升或不在這一頁的佇列投影要拿掉，避免跟正式訊息各留一顆。
+  const liveQueue = new Set(incoming.filter((m) => m.queued).map((m) => m.id));
+  const base = {
+    ...state,
+    messages: (state.messages || []).filter((m) => !m.queued || liveQueue.has(m.id)),
+  };
+  const known = new Set(base.messages.map((m) => m.id));
   const overlaps = incoming.some((m) => known.has(m.id));
   // 初次載入，或兩次輪詢之間新訊息多到一頁裝不下（跟已載入的接不起來）：以這一頁為準重來，避免中間缺一塊。
-  if (!state.loaded || state.messages.length === 0 || (!overlaps && hasMore)) {
+  if (!base.loaded || base.messages.length === 0 || (!overlaps && hasMore)) {
     return { messages: roomMergeMessages([], incoming), hasMore, nextCursor: hasMore ? nextCursor : '', loaded: true };
   }
-  const merged = { ...state, messages: roomMergeMessages(state.messages, incoming), loaded: true };
+  const merged = { ...base, messages: roomMergeMessages(base.messages, incoming), loaded: true };
   // 最新頁已涵蓋全部歷史：不會再有更早的了
   if (!hasMore) { merged.hasMore = false; merged.nextCursor = ''; }
   return merged;
@@ -197,4 +268,92 @@ function roomFormBody(form) {
     name: form.name.trim(),
     members: form.members.map((m) => ({ session_id: m.session_id, role: m.role })),
   };
+}
+
+/** 工作室草稿鍵。跟一般 session 的 cc_draft_input 分開，房間之間也不共用。 */
+function roomDraftStorageKey(roomId) {
+  return 'cc_room_draft:' + String(roomId || '');
+}
+
+function roomDraftMention(session) {
+  if (!session || !session.id) return null;
+  return {
+    id: session.id,
+    name: session.name || '',
+    work_dir: session.work_dir || '',
+    agent_type: session.agent_type || '',
+    disguise_agent: session.disguise_agent || '',
+    git_branch: session.git_branch || '',
+  };
+}
+
+function roomDraftParse(raw) {
+  if (raw == null || raw === '') return { ok: true, text: '', mentions: [], targetPmId: '' };
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch (_) { return { ok: false, text: '', mentions: [], targetPmId: '' }; }
+  if (!parsed || typeof parsed !== 'object') return { ok: false, text: '', mentions: [], targetPmId: '' };
+  return {
+    ok: true,
+    text: typeof parsed.text === 'string' ? parsed.text : '',
+    mentions: (Array.isArray(parsed.mentions) ? parsed.mentions : []).map(roomDraftMention).filter(Boolean),
+    targetPmId: typeof parsed.targetPmId === 'string' ? parsed.targetPmId : '',
+  };
+}
+
+function roomDraftSerialize(text, mentions, targetPmId) {
+  return JSON.stringify({
+    text: String(text || ''),
+    mentions: (Array.isArray(mentions) ? mentions : []).map(roomDraftMention).filter(Boolean),
+    targetPmId: String(targetPmId || ''),
+  });
+}
+
+function roomDraftUniqueFiles(items) {
+  const seen = new Set();
+  return (Array.isArray(items) ? items : []).filter((item) => {
+    if (!item || !item.id || seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+}
+
+/** 202 之後只清這一次送出的內容。期間若草稿已換成新的，留下新的。 */
+function roomDraftSameSnapshot(current, sent) {
+  const ids = (list) => (Array.isArray(list) ? list : []).map((item) => item && item.id).join('\n');
+  return !!current && !!sent && current.text === sent.text && ids(current.files) === ids(sent.files) && ids(current.mentions) === ids(sent.mentions);
+}
+
+/** 附件還沒讀回來時，先守住舊 PM，避免檔案草稿被自動改發。 */
+function roomDraftHoldTarget(draft, currentPmId, filesPending) {
+  if (!draft || !draft.targetPmId || draft.targetPmId === currentPmId) return false;
+  if (filesPending) return true;
+  return !!(String(draft.text || '').trim() || (draft.mentions || []).length);
+}
+
+function roomMentionChoices(sessions, targetId, query, selected) {
+  return filterMentionSessions(sessions, targetId, query, (selected || []).map((item) => item.id));
+}
+
+/** 送給 PM 的正文。沒有選取的 @ 不會被拿掉，也不會變成提及。 */
+function roomMentionBody(text, pm, mentions) {
+  const self = {
+    id: (pm && (pm.session_id || pm.id)) || '',
+    name: (pm && (pm.session_name || pm.name)) || '',
+    agent_type: (pm && pm.agent_type) || '',
+  };
+  return expandMentionPrompt(String(text || ''), self, mentions);
+}
+
+function roomComposerEnterAction(event, mention) {
+  const keyEvent = event || {};
+  if (keyEvent.isComposing || keyEvent.keyCode === 229) return 'ime';
+  const menu = mention || {};
+  if (menu.open) {
+    if (keyEvent.key === 'ArrowDown') return 'next';
+    if (keyEvent.key === 'ArrowUp') return 'prev';
+    if (keyEvent.key === 'Escape') return 'close';
+    if (keyEvent.key === 'Enter' && !keyEvent.shiftKey) return (menu.count || 0) > 0 ? 'select' : 'hold';
+  }
+  if (keyEvent.key === 'Enter' && !keyEvent.shiftKey) return 'send';
+  return 'type';
 }

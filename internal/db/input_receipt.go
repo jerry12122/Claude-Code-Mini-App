@@ -100,7 +100,7 @@ func (db *DB) acceptInput(sessionID, actor, requestID, content, author string, i
 	if _, err := tx.Exec(`UPDATE sessions SET queue_paused = 0 WHERE id = ? AND NOT EXISTS (SELECT 1 FROM queued_messages WHERE session_id = ?)`, sessionID, sessionID); err != nil {
 		return false, err
 	}
-	if _, err := tx.Exec(`INSERT INTO queued_messages (session_id, content, attachment_ids, author) VALUES (?, ?, ?, ?)`, sessionID, content, attachmentIDsJSON(ids), author); err != nil {
+	if _, err := tx.Exec(`INSERT INTO queued_messages (session_id, content, attachment_ids, author, input_request_id) VALUES (?, ?, ?, ?, ?)`, sessionID, content, attachmentIDsJSON(ids), author, requestID); err != nil {
 		return false, err
 	}
 	if cancelQuota {

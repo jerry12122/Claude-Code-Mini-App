@@ -35,6 +35,8 @@ type RoomTimelineItem struct {
 	Content         string
 	Status          string
 	CreatedAt       string
+	InputRequestID  string
+	Queued          bool
 }
 
 type RoomTimelinePage struct {
@@ -69,7 +71,7 @@ func (db *DB) RoomTimeline(roomID string, before *RoomCursor, limit int) (*RoomT
 		COALESCE((SELECT r.name FROM room_members other JOIN rooms r ON r.id = other.room_id
 			WHERE other.session_id = m.source_session_id AND m.source_session_id != ''
 			AND NOT EXISTS (SELECT 1 FROM room_members here WHERE here.room_id = rm.room_id AND here.session_id = m.source_session_id)
-			ORDER BY r.name LIMIT 1), '')
+			ORDER BY r.name LIMIT 1), ''), COALESCE(m.input_request_id, '')
 		FROM room_members rm
 		JOIN sessions s ON s.id = rm.session_id
 		JOIN messages m ON m.session_id = rm.session_id
@@ -115,7 +117,7 @@ func (db *DB) RoomTimeline(roomID string, before *RoomCursor, limit int) (*RoomT
 		var attachmentJSON, jobRoom, pmName, workerName, inputAuthor string
 		if err := rows.Scan(&it.MessageID, &it.SessionID, &it.SessionName, &it.MemberRole, &it.AgentType,
 			&it.Role, &it.Author, &it.Content, &it.Status, &it.CreatedAt, &attachmentJSON, &jobRoom, &pmName, &workerName, &inputAuthor,
-			&it.SourceSessionID, &it.SourceName, &it.SourceRoom); err != nil {
+			&it.SourceSessionID, &it.SourceName, &it.SourceRoom, &it.InputRequestID); err != nil {
 			return nil, err
 		}
 		it.attachmentIDs, err = decodeAttachmentIDs(attachmentJSON)
@@ -138,6 +140,27 @@ func (db *DB) RoomTimeline(roomID string, before *RoomCursor, limit int) (*RoomT
 		last := page.Items[limit-1]
 		page.Next = &RoomCursor{CreatedAt: last.CreatedAt, ID: last.MessageID}
 	}
+	if before == nil {
+		queued, err := db.roomQueuedInputs(roomID)
+		if err != nil {
+			return nil, err
+		}
+		confirmed := map[string]struct{}{}
+		for _, it := range page.Items {
+			if it.InputRequestID != "" {
+				confirmed[it.InputRequestID] = struct{}{}
+			}
+		}
+		for _, it := range queued {
+			if it.InputRequestID != "" {
+				if _, ok := confirmed[it.InputRequestID]; ok {
+					continue
+				}
+			}
+			page.Items = append(page.Items, it)
+		}
+		sortRoomTimeline(page.Items)
+	}
 	idsBySession := map[string][]string{}
 	for _, it := range page.Items {
 		if len(it.attachmentIDs) > 0 {
@@ -155,6 +178,65 @@ func (db *DB) RoomTimeline(roomID string, before *RoomCursor, limit int) (*RoomT
 		it.Attachments = hydrateAttachments(it.attachmentIDs, files[it.SessionID])
 	}
 	return page, nil
+}
+
+// roomQueuedInputs 只投影這個工作室已接受、尚未提升的輸入。不讀其他工作室或私人佇列，也不會啟動 session。
+func (db *DB) roomQueuedInputs(roomID string) ([]RoomTimelineItem, error) {
+	rows, err := db.Query(`
+		SELECT q.id, q.session_id, s.name, rm.role, s.agent_type, q.author, q.content,
+			q.created_at, q.attachment_ids, COALESCE(q.input_request_id, '')
+		FROM room_members rm
+		JOIN sessions s ON s.id = rm.session_id
+		JOIN queued_messages q ON q.session_id = s.id
+		WHERE rm.room_id = ? AND q.author = ?
+		ORDER BY q.created_at DESC, q.id DESC`, roomID, RoomUserAuthorPrefix+roomID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []RoomTimelineItem{}
+	for rows.Next() {
+		var it RoomTimelineItem
+		var queueID int64
+		var attachmentJSON string
+		if err := rows.Scan(&queueID, &it.SessionID, &it.SessionName, &it.MemberRole, &it.AgentType,
+			&it.Author, &it.Content, &it.CreatedAt, &attachmentJSON, &it.InputRequestID); err != nil {
+			return nil, err
+		}
+		it.attachmentIDs, err = decodeAttachmentIDs(attachmentJSON)
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(it.Content) == "" && len(it.attachmentIDs) == 0 {
+			continue
+		}
+		it.MessageID = -queueID
+		it.Role = "user"
+		it.Status = MessageStatusDone
+		it.Queued = true
+		it.setRoute("", "", false, "")
+		out = append(out, it)
+	}
+	return out, rows.Err()
+}
+
+func sortRoomTimeline(items []RoomTimelineItem) {
+	for i := 1; i < len(items); i++ {
+		item := items[i]
+		j := i
+		for j > 0 && roomTimelineLater(item, items[j-1]) {
+			items[j] = items[j-1]
+			j--
+		}
+		items[j] = item
+	}
+}
+
+func roomTimelineLater(a, b RoomTimelineItem) bool {
+	if a.CreatedAt != b.CreatedAt {
+		return a.CreatedAt > b.CreatedAt
+	}
+	return a.MessageID > b.MessageID
 }
 
 func (it *RoomTimelineItem) setRoute(pmName, workerName string, sameRoom bool, inputAuthor string) {

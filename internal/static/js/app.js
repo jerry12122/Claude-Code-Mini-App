@@ -482,7 +482,7 @@ function App() {
     if (s) selectSession(s); else showToast('找不到這個 session（可能已被刪除）', { error: true });
   };
   const roomScreen = openRoomId
-    ? <RoomView key={openRoomId} roomId={openRoomId} onClose={closeRoom} onOpenSession={openRoomMember} />
+    ? <RoomView key={openRoomId} roomId={openRoomId} sessions={sidebarSortedSessions} onClose={closeRoom} onOpenSession={openRoomMember} />
     : null;
   const roomListProps = { activeRoomId: openRoomId, onOpenRoom: openRoom, onRoomDeleted: (id) => { if (id === openRoomId) setOpenRoomId(null); } };
 

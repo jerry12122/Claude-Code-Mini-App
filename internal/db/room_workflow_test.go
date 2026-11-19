@@ -327,3 +327,100 @@ func TestCreateRoomWorkerSnapshotsGlobalInstruction(t *testing.T) {
 		t.Fatalf("worker global instruction = %+v, want %+v", got.GlobalInstruction, want)
 	}
 }
+
+func TestRoomInputRequestIDFollowsPromotionAndKeepsSameText(t *testing.T) {
+	d := roomTestDB(t)
+	pm := roomSession(t, d, "PM", "claude")
+	room, err := d.CreateRoom("送出", []RoomMember{{SessionID: pm.ID, Role: RoomRolePM}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.AcceptRoomInput(room.ID, pm.ID, "req-a", "同樣文字", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.AcceptRoomInput(room.ID, pm.ID, "req-a", "同樣文字", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.AcceptRoomInput(room.ID, pm.ID, "req-b", "同樣文字", nil); err != nil {
+		t.Fatal(err)
+	}
+	queued, err := d.ListQueuedMessages(pm.ID)
+	if err != nil || len(queued) != 2 {
+		t.Fatalf("queue=%d err=%v", len(queued), err)
+	}
+	for _, item := range queued {
+		if _, err := d.PromoteQueuedMessage(pm.ID, item); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := d.RoomTimeline(room.ID, nil, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := []string{}
+	for _, item := range page.Items {
+		if item.Body == "同樣文字" || item.Content == "同樣文字" {
+			got = append(got, item.InputRequestID)
+		}
+	}
+	if len(got) != 2 || got[0] == got[1] {
+		t.Fatalf("request ids=%v", got)
+	}
+	seen := map[string]bool{}
+	for _, id := range got {
+		seen[id] = true
+	}
+	if !seen["req-a"] || !seen["req-b"] {
+		t.Fatalf("request ids=%v", got)
+	}
+}
+
+func TestRoomTimelineKeepsAcceptedQueueUntilPromotion(t *testing.T) {
+	d := roomTestDB(t)
+	pm := roomSession(t, d, "PM", "claude")
+	room, err := d.CreateRoom("這間", []RoomMember{{SessionID: pm.ID, Role: RoomRolePM}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.AcceptRoomInput(room.ID, pm.ID, "req-q", "排隊重整仍可見", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Exec(`INSERT INTO queued_messages (session_id, content, attachment_ids, author, input_request_id) VALUES (?, ?, '[]', ?, ?)`,
+		pm.ID, "別間的佇列", RoomUserAuthorPrefix+"other-room", "req-other"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.EnqueueMessage(pm.ID, "私人佇列", ""); err != nil {
+		t.Fatal(err)
+	}
+	page, err := d.RoomTimeline(room.ID, nil, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 {
+		t.Fatalf("timeline=%d", len(page.Items))
+	}
+	item := page.Items[0]
+	if item.Content != "排隊重整仍可見" || !item.Queued || item.InputRequestID != "req-q" || item.MessageID >= 0 || item.Sender != "你" {
+		t.Fatalf("queued item=%+v", item)
+	}
+	queued, err := d.ListQueuedMessages(pm.ID)
+	if err != nil || len(queued) != 3 {
+		t.Fatalf("reading the timeline started or hid queue rows: %d %v", len(queued), err)
+	}
+	var target QueuedMessage
+	for _, q := range queued {
+		if q.Content == "排隊重整仍可見" {
+			target = q
+		}
+	}
+	if _, err := d.PromoteQueuedMessage(pm.ID, target); err != nil {
+		t.Fatal(err)
+	}
+	page, err = d.RoomTimeline(room.ID, nil, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].Queued || page.Items[0].InputRequestID != "req-q" || page.Items[0].MessageID < 1 || page.Items[0].Content != "排隊重整仍可見" {
+		t.Fatalf("promoted=%+v count=%d", page.Items, len(page.Items))
+	}
+}

@@ -168,6 +168,8 @@ type roomTimelineItemJSON struct {
 	Text            string          `json:"text"`
 	Status          string          `json:"status"`
 	CreatedAt       string          `json:"created_at"`
+	InputRequestID  string          `json:"input_request_id,omitempty"`
+	Queued          bool            `json:"queued,omitempty"`
 }
 
 // List GET /rooms
@@ -298,7 +300,7 @@ func (h *RoomsHandler) Timeline(c *fiber.Ctx) error {
 			AgentType: it.AgentType, Role: it.Role, Author: db.RoomMessageAuthor(it.Author), Text: it.Content, Status: it.Status, CreatedAt: it.CreatedAt,
 			Sender: it.Sender, Recipient: it.Recipient, Mine: it.Mine, Attachments: it.Attachments,
 			SourceKind: it.SourceKind, SourceSessionID: it.SourceSessionID, SourceRoom: it.SourceRoom,
-			Body: it.Body, Transfer: it.Transfer,
+			Body: it.Body, Transfer: it.Transfer, InputRequestID: it.InputRequestID, Queued: it.Queued,
 		})
 	}
 	next := ""

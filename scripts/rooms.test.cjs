@@ -9,7 +9,7 @@ const JS = path.join(__dirname, '../internal/static/js');
 const read = (rel) => fs.readFileSync(path.join(JS, rel), 'utf8');
 
 // messageRows.js 提供真正的 formatMessageTime（UTC → 本地）；AGENT_LABEL 是 core 的常數，這裡放同形狀的替身。
-const ctx = vm.createContext({});
+const ctx = vm.createContext({ File });
 vm.runInContext('const AGENT_LABEL = { claude: "Claude", codex: "Codex", cursor: "Cursor" };', ctx);
 for (const f of ['hooks/messageRows.js', 'hooks/rooms.js', 'hooks/roomPoller.js']) vm.runInContext(read(f), ctx, { filename: f });
 const g = vm.runInContext(`({
@@ -17,7 +17,13 @@ const g = vm.runInContext(`({
   roomsUrl, roomUrl, roomTimelineUrl, roomTimelineEmpty, roomMergeMessages, roomTimelineApply,
   roomChip, roomQuotaView, roomMessageMeta, roomMemberState, roomJobsSplit, roomIsNearBottom,
   roomFormInit, roomFormToggle, roomFormSetRole, roomFormError, roomFormBody, startRoomPoller,
+  clipboardPasteFiles, roomLatestBodyId, roomTimelineDeliver, roomAdmitLocal, roomDropLocal, roomPatchLocal,
+  roomDraftStorageKey, roomDraftParse, roomDraftSerialize, roomDraftUniqueFiles, roomDraftSameSnapshot, roomDraftHoldTarget,
+  roomMentionChoices, roomMentionBody, roomComposerEnterAction,
 })`, ctx);
+vm.runInContext('function sessionDisplayAgent(s) { return (s && (s.disguise_agent || s.agent_type)) || ""; }', ctx);
+const mentionSrc = read('chat/MentionMenu.js');
+vm.runInContext(mentionSrc.slice(mentionSrc.indexOf('function mentionQueryAtCursor'), mentionSrc.indexOf('function MentionChips')), ctx, { filename: 'chat/MentionMenu.js' });
 const plain = (v) => JSON.parse(JSON.stringify(v));
 
 // 訊息：API 回傳新到舊；id 是全域遞增整數
@@ -322,6 +328,80 @@ async function pollerScenarios() {
   release();
   await flush();
   assert.equal(e.timers.size, 0);
+}
+
+// ── 送出合併與最新全文 ────────────────────────────────────────
+{
+  const local = (id, text, extra = {}) => ({
+    id: 'local:' + id, local: true, input_request_id: id, role: 'user', text, body: text,
+    delivery: 'sending', created_at: '2026-11-19 12:00:00', ...extra,
+  });
+  const saved = (id, requestId) => msg(id, '2026-11-19 12:00:0' + id, { role: 'user', text: '同樣文字', body: '同樣文字', input_request_id: requestId });
+  let state = g.roomAdmitLocal(g.roomTimelineEmpty(), local('req-a', '同樣文字'));
+  state = g.roomAdmitLocal(state, local('req-b', '同樣文字'));
+  assert.deepEqual(ids(state), ['local:req-a', 'local:req-b']);
+  state = g.roomPatchLocal(state, 'req-a', { delivery: 'queued' });
+  assert.equal(state.messages.find((m) => m.input_request_id === 'req-a').delivery, 'queued');
+  const promoted = g.roomTimelineDeliver(state, { messages: [saved(3, 'req-a')], has_more: false, next_cursor: '' }, 'latest');
+  assert.deepEqual(ids(promoted), [3, 'local:req-b']);
+  const both = g.roomTimelineDeliver(promoted, { messages: [saved(4, 'req-b'), saved(3, 'req-a')], has_more: false, next_cursor: '' }, 'latest');
+  assert.deepEqual(ids(both), [3, 4]);
+  const retried = g.roomAdmitLocal(g.roomAdmitLocal(g.roomTimelineEmpty(), local('req-a', '同樣文字', { delivery: 'failed' })), local('req-a', '同樣文字'));
+  assert.equal(retried.messages.filter((m) => m.input_request_id === 'req-a').length, 1);
+  assert.equal(g.roomDropLocal(retried, 'req-a').messages.length, 0);
+  const assistant = msg(8, '2026-11-19 12:00:08', { role: 'claude', text: '長回覆', body: '長回覆' });
+  const older = msg(7, '2026-11-19 12:00:07', { role: 'user', text: '上一則', body: '上一則' });
+  const system = msg(9, '2026-11-19 12:00:09', { role: 'system', text: '交接', body: '交接' });
+  assert.equal(g.roomLatestBodyId([older, assistant, system]), 8);
+  assert.equal(g.roomLatestBodyId([older, assistant, local('req-c', '新的')]), 'local:req-c');
+  const png = new File(['png'], 'shot', { type: 'image/png' });
+  const note = new File(['hi'], 'note.txt', { type: 'text/plain' });
+  const pasted = g.clipboardPasteFiles({ files: [png, note] });
+  assert.equal(pasted[0].name, 'paste.png');
+  assert.equal(pasted[0].type, 'image/png');
+  assert.equal(pasted[1].name, 'note.txt');
+  assert.equal(g.clipboardPasteFiles({ files: [] }).length, 0);
+  assert.equal(g.clipboardPasteFiles(null).length, 0);
+  const queued = msg(-3, '2026-11-19 12:00:01', { role: 'user', text: '排隊重整仍可見', body: '排隊重整仍可見', input_request_id: 'req-q', queued: true });
+  const visible = g.roomTimelineApply(g.roomTimelineEmpty(), { messages: [queued], has_more: false, next_cursor: '' }, 'latest');
+  assert.deepEqual(ids(visible), [-3]);
+  const confirmed = g.roomTimelineApply(visible, { messages: [msg(9, '2026-11-19 12:00:01', { role: 'user', text: '排隊重整仍可見', body: '排隊重整仍可見', input_request_id: 'req-q' })], has_more: false, next_cursor: '' }, 'latest');
+  assert.deepEqual(ids(confirmed), [9]);
+}
+
+// ── 工作室草稿與 @ ────────────────────────────────────────────
+{
+  assert.equal(g.roomDraftStorageKey('room-a').startsWith('cc_room_draft:'), true);
+  assert.notEqual(g.roomDraftStorageKey('room-a'), 'cc_draft_input:room-a');
+  assert.notEqual(g.roomDraftStorageKey('room-a'), g.roomDraftStorageKey('room-b'));
+  const alpha = { id: 'alpha', name: '同名', work_dir: 'D:/mention-root/alpha', agent_type: 'claude' };
+  const beta = { id: 'beta', name: '同名', work_dir: 'D:/mention-root/beta', agent_type: 'codex' };
+  const raw = g.roomDraftSerialize('房間A草稿', [alpha], 'pm-old');
+  const parsed = g.roomDraftParse(raw);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.text, '房間A草稿');
+  assert.equal(parsed.targetPmId, 'pm-old');
+  assert.equal(parsed.mentions[0].id, 'alpha');
+  assert.equal(g.roomDraftParse('{').ok, false);
+  assert.equal(g.roomDraftUniqueFiles([{ id: 'f1' }, { id: 'f1' }, { id: 'f2' }]).length, 2);
+  const sent = { text: '房間A草稿', files: [{ id: 'f1' }], mentions: [{ id: 'alpha' }] };
+  assert.equal(g.roomDraftSameSnapshot(sent, sent), true);
+  assert.equal(g.roomDraftSameSnapshot({ text: '新草稿', files: [{ id: 'f1' }], mentions: [{ id: 'alpha' }] }, sent), false);
+  assert.equal(g.roomDraftHoldTarget(parsed, 'pm-new', true), true);
+  assert.equal(g.roomDraftHoldTarget({ text: '', mentions: [], targetPmId: 'pm-old' }, 'pm-new', false), false);
+  const choices = g.roomMentionChoices([alpha, beta], 'pm-1', '同名', []);
+  assert.deepEqual(choices.map((item) => item.id), ['alpha', 'beta']);
+  const body = g.roomMentionBody('請問', { session_id: 'pm-1', session_name: 'PM', agent_type: 'claude' }, [beta]);
+  assert.ok(body.includes('session_id=beta'), body);
+  assert.ok(body.includes('from_session_id=<self>'), body);
+  assert.ok(!body.includes('session_id=alpha'), body);
+  assert.equal(g.roomMentionBody('純@未選', { session_id: 'pm-1' }, []), '純@未選');
+  assert.equal(g.roomComposerEnterAction({ key: 'Enter', keyCode: 229, isComposing: true }, { open: true, count: 2 }), 'ime');
+  assert.equal(g.roomComposerEnterAction({ key: 'ArrowDown' }, { open: true, count: 2 }), 'next');
+  assert.equal(g.roomComposerEnterAction({ key: 'Enter' }, { open: true, count: 2 }), 'select');
+  assert.equal(g.roomComposerEnterAction({ key: 'Enter' }, { open: true, count: 0 }), 'hold');
+  assert.equal(g.roomComposerEnterAction({ key: 'Escape' }, { open: true, count: 2 }), 'close');
+  assert.equal(g.roomComposerEnterAction({ key: 'Enter' }, { open: false, count: 0 }), 'send');
 }
 
 // ── 靜態斷言：PM 輸入、安全渲染 ──────────────────────────────

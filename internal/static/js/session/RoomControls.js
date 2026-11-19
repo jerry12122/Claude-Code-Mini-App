@@ -16,31 +16,161 @@ function RoomMemberActions({ member }) {
   );
 }
 
-function RoomComposer({ roomId, pm, onAccepted }) {
-  const [draft, setDraft] = useState('');
+function roomLocalAttachment(item) {
+  if (item.upload?.url) {
+    return {
+      id: item.upload.id,
+      name: item.upload.name || item.name,
+      mime_type: item.upload.mime_type || item.file?.type || '',
+      size: Number(item.upload.size ?? item.size) || 0,
+      url: item.upload.url,
+    };
+  }
+  return {
+    id: item.id,
+    name: item.name,
+    mime_type: item.file?.type || '',
+    size: Number(item.size) || 0,
+    preview_url: item.previewUrl || '',
+    local_preview: true,
+  };
+}
+
+function RoomComposer({ roomId, pm, members, sessions, onAccepted, onDelivery, onDeliveryPatch, onDeliveryDrop }) {
+  let loadedDraft;
+  try {
+    loadedDraft = roomDraftParse(localStorage.getItem(roomDraftStorageKey(roomId)));
+  } catch (_) {
+    loadedDraft = { ok: false, text: '', mentions: [], targetPmId: '' };
+  }
+  const [draft, setDraft] = useState(loadedDraft.ok ? loadedDraft.text : '');
+  const [mentions, setMentions] = useState(loadedDraft.ok ? loadedDraft.mentions : []);
   const [sending, setSending] = useState(false);
   const [files, setFiles] = useState([]);
-  const [feedback, setFeedback] = useState(null);
+  const [feedback, setFeedback] = useState(loadedDraft.ok ? null : { error: true, text: '草稿無法讀取，請重試' });
+  const [revokeGen, setRevokeGen] = useState(0);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionItems, setMentionItems] = useState([]);
+  const [mentionActive, setMentionActive] = useState(0);
+  const [fileRestoreFailed, setFileRestoreFailed] = useState(false);
+  const [draftReadFailed, setDraftReadFailed] = useState(!loadedDraft.ok);
   const attempt = useRef(null);
   const operation = useRef(null);
-  const targetRef = useRef(pm.session_id);
+  const targetRef = useRef(loadedDraft.ok && loadedDraft.targetPmId ? loadedDraft.targetPmId : pm.session_id);
+  const holdTarget = useRef(roomDraftHoldTarget(loadedDraft.ok ? loadedDraft : null, pm.session_id, true));
   const draftRef = useRef('');
   const filesRef = useRef([]);
+  const mentionsRef = useRef(mentions);
+  const revokeQueue = useRef([]);
+  const handedPreviews = useRef(new Set());
+  const filesReady = useRef(false);
+  const draftBroken = useRef(!loadedDraft.ok);
+  mentionsRef.current = mentions;
   const [switchPM, setSwitchPM] = useState(null);
   draftRef.current = draft;
   filesRef.current = files;
   useEffect(() => {
     if (pm.session_id === targetRef.current) return;
-    if (draftRef.current.trim() || filesRef.current.length) setSwitchPM(pm);
+    if (holdTarget.current || draftRef.current.trim() || filesRef.current.length || mentionsRef.current.length) setSwitchPM(pm);
     else targetRef.current = pm.session_id;
   }, [pm.session_id, pm.session_name]);
-  useEffect(() => () => operation.current?.abort(), []);
+  function rememberDraft(text, nextMentions, targetPmId) {
+    if (draftBroken.current) return '';
+    try {
+      localStorage.setItem(roomDraftStorageKey(roomId), roomDraftSerialize(text, nextMentions, targetPmId));
+      return '';
+    } catch (_) {
+      setFeedback({ error: true, text: '草稿無法保存，請保留此頁並稍後重試' });
+      return '草稿無法保存，請保留此頁並稍後重試';
+    }
+  }
+  function retryDraft() {
+    try {
+      const next = roomDraftParse(localStorage.getItem(roomDraftStorageKey(roomId)));
+      if (!next.ok) {
+        draftBroken.current = true;
+        setDraftReadFailed(true);
+        setFeedback({ error: true, text: '草稿無法讀取，請重試' });
+      } else {
+        draftBroken.current = false;
+        setDraftReadFailed(false);
+        setDraft(next.text);
+        setMentions(next.mentions);
+        if (next.targetPmId) targetRef.current = next.targetPmId;
+        setFeedback(null);
+      }
+    } catch (_) {
+      draftBroken.current = true;
+      setDraftReadFailed(true);
+      setFeedback({ error: true, text: '草稿無法讀取，請重試' });
+    }
+    restoreFiles();
+  }
+  function restoreFiles() {
+    let cancelled = false;
+    filesReady.current = false;
+    setFileRestoreFailed(false);
+    readComposerFiles(roomDraftStorageKey(roomId)).then((stored) => {
+      if (cancelled) return;
+      const unique = roomDraftUniqueFiles(stored);
+      setFiles(restoreComposerFiles(unique));
+      const hold = roomDraftHoldTarget({
+        text: draftRef.current, mentions: mentionsRef.current, targetPmId: targetRef.current,
+      }, pm.session_id, false) || (targetRef.current !== pm.session_id && unique.length > 0);
+      holdTarget.current = hold;
+      if (hold) setSwitchPM(pm);
+      else if (targetRef.current !== pm.session_id) {
+        targetRef.current = pm.session_id;
+        setSwitchPM(null);
+      }
+      filesReady.current = true;
+    }).catch(() => {
+      if (cancelled) return;
+      setFileRestoreFailed(true);
+      setFeedback({ error: true, text: '無法還原附件草稿，請重試；目前附件尚未備份' });
+    });
+    return () => { cancelled = true; };
+  }
+  useEffect(() => restoreFiles(), [roomId]);
+  useEffect(() => {
+    if (!filesReady.current) return undefined;
+    let cancelled = false;
+    writeComposerFiles(roomDraftStorageKey(roomId), files).catch(() => {
+      if (!cancelled) setFeedback({ error: true, text: '附件草稿尚未存妥，請勿重整或關閉此頁' });
+    });
+    return () => { cancelled = true; };
+  }, [files, roomId]);
+  useEffect(() => {
+    const urls = revokeQueue.current.splice(0);
+    urls.forEach((url) => URL.revokeObjectURL(url));
+  }, [revokeGen]);
+  useEffect(() => () => {
+    operation.current?.abort();
+    filesRef.current.forEach((item) => {
+      if (!item?.previewUrl || handedPreviews.current.has(item.previewUrl)) return;
+      releaseFile(item);
+    });
+    revokeQueue.current.forEach((url) => URL.revokeObjectURL(url));
+    handedPreviews.current.forEach((url) => URL.revokeObjectURL(url));
+  }, []);
   const labelId = React.useId();
   const filesId = React.useId();
+  const inputRef = useRef(null);
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.blockSize = '40px';
+    // 空草稿固定單行高：窄寬時 placeholder 換行會把 scrollHeight 撐高。
+    if (!draft) return;
+    const limit = Math.min(160, Math.round((window.innerHeight || 800) * 0.3));
+    el.style.blockSize = Math.min(Math.max(el.scrollHeight, 40), limit) + 'px';
+  }, [draft]);
 
-  function pickFiles(event) {
-    const picked = Array.from(event.currentTarget.files);
-    event.currentTarget.value = '';
+  function releaseFile(item) {
+    if (item && item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+  }
+
+  function addFiles(picked) {
     if (!picked.length || operation.current) return;
     if (files.length + picked.length > 20) {
       setFeedback({ error: true, text: '每則訊息最多 20 個附件' });
@@ -48,23 +178,98 @@ function RoomComposer({ roomId, pm, onAccepted }) {
     }
     setFeedback(null);
     setFiles((previous) => [...previous, ...picked.map((file) => ({
-      file, id: newInputRequestID(), name: file.name, size: file.size, status: 'ready',
+      file, id: newInputRequestID(), name: file.name || 'paste', size: file.size, status: 'ready',
+      previewUrl: String(file.type || '').startsWith('image/') ? URL.createObjectURL(file) : '',
     }))]);
+  }
+
+  function pickFiles(event) {
+    const picked = Array.from(event.currentTarget.files || []);
+    event.currentTarget.value = '';
+    addFiles(picked);
+  }
+
+  function pasteFiles(event) {
+    const picked = clipboardPasteFiles(event.clipboardData);
+    if (!picked.length) return;
+    event.preventDefault();
+    addFiles(picked);
+  }
+
+  function syncMention(value, cursor) {
+    if (isGuestMode) {
+      setMentionOpen(false);
+      setMentionItems([]);
+      return;
+    }
+    const hit = mentionQueryAtCursor(value, cursor);
+    if (!hit) {
+      setMentionOpen(false);
+      setMentionItems([]);
+      return;
+    }
+    setMentionOpen(true);
+    setMentionItems(roomMentionChoices(sessions, targetRef.current, hit.query, mentionsRef.current));
+    setMentionActive(0);
+  }
+
+  function selectMention(session) {
+    const chosen = roomDraftMention(session);
+    if (!chosen) return;
+    const cursor = inputRef.current ? inputRef.current.selectionStart : draftRef.current.length;
+    const next = consumeMentionQuery(draftRef.current, cursor);
+    const nextMentions = mentionsRef.current.some((item) => item.id === chosen.id) ? mentionsRef.current : [...mentionsRef.current, chosen];
+    draftBroken.current = false;
+    setDraft(next.text);
+    setMentions(nextMentions);
+    setMentionOpen(false);
+    setMentionItems([]);
+    rememberDraft(next.text, nextMentions, targetRef.current);
+    requestAnimationFrame(() => {
+      const box = inputRef.current;
+      if (!box) return;
+      box.focus();
+      box.setSelectionRange(next.cursor, next.cursor);
+    });
   }
 
   async function submit(event) {
     event.preventDefault();
     const text = draft.trim();
-    if ((!text && !files.length) || operation.current) return;
+    if ((!text && !files.length && !mentions.length) || operation.current) return;
+    const cursor = inputRef.current ? inputRef.current.selectionStart : draft.length;
+    if (mentionQueryAtCursor(draft, cursor)) {
+      setFeedback({ error: true, text: '請先選擇要標記的 session，或刪掉 @' });
+      return;
+    }
     const controller = new AbortController();
     operation.current = controller;
     setSending(true);
     setFeedback(null);
+    const requestHint = newInputRequestID();
+    const sent = { text: draft, files, mentions };
+    const targetMember = (members || []).find((member) => member.session_id === targetRef.current) || { session_id: targetRef.current, session_name: '', agent_type: '' };
+    const body = roomMentionBody(text, targetMember, mentions);
+    const local = {
+      id: 'local:' + requestHint,
+      local: true,
+      input_request_id: requestHint,
+      role: 'user',
+      text: body, body, sender: '你', mine: true, source_kind: 'user', status: 'done',
+      delivery: 'sending',
+      created_at: '',
+      session_name: pm.session_name || 'PM',
+      recipient: pm.session_name || 'PM',
+      attachments: files.map(roomLocalAttachment),
+    };
+    files.forEach((item) => { if (item.previewUrl) handedPreviews.current.add(item.previewUrl); });
+    onDelivery?.(local);
     try {
       const attachmentIds = [];
       const target = targetRef.current;
-      for (const item of files) {
-        if (item.upload?.pmId === target) {
+      const staged = files.map((item) => ({ ...item }));
+      for (const item of staged) {
+        if (item.upload?.pmId === target && item.upload.url) {
           attachmentIds.push(item.upload.id);
           continue;
         }
@@ -73,17 +278,24 @@ function RoomComposer({ roomId, pm, onAccepted }) {
         try {
           const attachment = await uploadChatAttachment(target, item.file, controller.signal);
           attachmentIds.push(attachment.id);
-          updateFile({ status: 'ready', upload: { id: attachment.id, pmId: target } });
+          item.upload = {
+            id: attachment.id, pmId: target, name: attachment.name, mime_type: attachment.mime_type,
+            size: attachment.size, url: attachment.url,
+          };
+          updateFile({ status: 'ready', upload: item.upload });
+          onDeliveryPatch?.(requestHint, { attachments: staged.map(roomLocalAttachment) });
         } catch (err) {
           if (controller.signal.aborted) return;
           updateFile({ status: 'error', error: err.message });
           throw new Error(`${item.name}：${err.message}`);
         }
       }
-      const signature = JSON.stringify([pm.session_id, text, attachmentIds]);
-      const requestId = attempt.current?.signature === signature ? attempt.current.id : newInputRequestID();
+      const signature = JSON.stringify([target, text, attachmentIds, mentions.map((item) => item.id)]);
+      const requestId = attempt.current?.signature === signature ? attempt.current.id : requestHint;
+      if (requestId !== requestHint) onDeliveryPatch?.(requestHint, { id: 'local:' + requestId, input_request_id: requestId });
       attempt.current = { signature, id: requestId };
-      const input = { text, request_id: requestId, pm_id: target, attachment_ids: attachmentIds };
+      local.input_request_id = requestId;
+      const input = { text: body, request_id: requestId, pm_id: target, attachment_ids: attachmentIds };
       const res = await apiFetch(roomUrl(roomId) + '/messages', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal: controller.signal,
       });
@@ -93,12 +305,29 @@ function RoomComposer({ roomId, pm, onAccepted }) {
         throw new Error(message);
       }
       attempt.current = null;
-      setDraft('');
-      setFiles([]);
-      setFeedback({ text: '已送到 PM 的佇列' });
+      staged.forEach((item) => {
+        if (!item.previewUrl) return;
+        revokeQueue.current.push(item.previewUrl);
+        handedPreviews.current.delete(item.previewUrl);
+      });
+      setRevokeGen((n) => n + 1);
+      if (roomDraftSameSnapshot({ text: draftRef.current, files: filesRef.current, mentions: mentionsRef.current }, sent)) {
+        holdTarget.current = false;
+        draftBroken.current = false;
+        setDraft('');
+        setMentions([]);
+        setFiles([]);
+        const saveError = rememberDraft('', [], targetRef.current);
+        writeComposerFiles(roomDraftStorageKey(roomId), []).catch(() => setFeedback({ error: true, text: '附件草稿尚未清掉，請重試' }));
+        if (!saveError) setFeedback({ text: '已排隊' });
+      } else setFeedback({ text: '已排隊' });
+      onDeliveryPatch?.(requestId, { delivery: 'queued', attachments: staged.map(roomLocalAttachment) });
       onAccepted();
     } catch (err) {
-      if (!controller.signal.aborted) setFeedback({ error: true, text: err.message || '暫時無法送出，請重試。' });
+      if (!controller.signal.aborted) {
+        setFeedback({ error: true, text: err.message || '暫時無法送出，請重試。' });
+        onDeliveryPatch?.(local.input_request_id, { delivery: 'failed' });
+      } else onDeliveryDrop?.(local.input_request_id);
     } finally {
       operation.current = null;
       if (!controller.signal.aborted) setSending(false);
@@ -107,25 +336,42 @@ function RoomComposer({ roomId, pm, onAccepted }) {
 
   const pmState = roomMemberState(pm);
   return (
-    <form className="room-composer shrink-0 border-t border-ra-line-soft pt-2.5" onSubmit={submit} aria-labelledby={labelId + '-label'}>
+    <form className="room-composer shrink-0 border-t border-ra-line-soft" onSubmit={submit} aria-labelledby={labelId + '-label'}>
       <div className="mx-auto max-w-3xl">
-        <label id={labelId + '-label'} htmlFor={labelId} className="mb-1 block truncate text-xs text-ra-t3">
-          傳訊息給 <strong className="font-semibold text-ra-t1">{(switchPM ? '目前草稿仍對著上一位 PM' : (pm.session_name || 'PM'))}</strong>
-        </label>
-        <p className="room-pm-state mb-1.5 text-xs text-ra-t2" role="status">
-          {pmState.primary}{pmState.extra ? `。${pmState.extra}` : ''}
+        <p className="room-composer-meta mb-1 flex min-w-0 items-baseline gap-2 text-xs">
+          <label id={labelId + '-label'} htmlFor={labelId} className="min-w-0 truncate text-ra-t3">
+            傳訊息給 <strong className="font-semibold text-ra-t1">{(switchPM ? '目前草稿仍對著上一位 PM' : (pm.session_name || 'PM'))}</strong>
+          </label>
+          <span className="room-pm-state shrink-0 text-ra-t2" role="status">
+            {pmState.primary}{pmState.extra ? `。${pmState.extra}` : ''}
+          </span>
         </p>
         {switchPM ? <div className="mb-2 rounded-lg border border-ra-line bg-ra-card p-2 text-xs text-ra-t2" role="status">
           <p>PM 已換成「{pm.session_name || '新 PM'}」。這則還沒送出的訊息不會自動轉過去。</p>
           <button type="button" className="mt-1 min-h-11 rounded-lg bg-violet-600 px-3 text-sm font-semibold text-white"
-            onClick={() => { targetRef.current = pm.session_id; setSwitchPM(null); }}>改傳給這位 PM</button>
+            onClick={() => { targetRef.current = pm.session_id; holdTarget.current = false; setSwitchPM(null); rememberDraft(draftRef.current, mentionsRef.current, pm.session_id); }}>改傳給這位 PM</button>
         </div> : null}
+        {(draftReadFailed || fileRestoreFailed) ? <button type="button" className="mb-1 min-h-11 text-xs font-semibold text-rose-300" onClick={retryDraft}>重試還原草稿</button> : null}
+        <MentionChips items={mentions} onRemove={(id) => {
+          const nextMentions = mentions.filter((item) => item.id !== id);
+          setMentions(nextMentions);
+          rememberDraft(draft, nextMentions, targetRef.current);
+        }} />
         {files.length ? <div className="app-scroll mt-1 max-h-28 overflow-y-auto">
-          <AttachmentChips items={files} disabled={sending} onRemove={(id) => {
-            setFiles((previous) => previous.filter((item) => item.id !== id));
+          <AttachmentChips items={files} disabled={sending} onRetry={(id) => {
+            setFiles((previous) => previous.map((item) => (item.id === id ? { ...item, status: 'ready', error: '' } : item)));
+            setFeedback(null);
+          }} onRemove={(id) => {
+            setFiles((previous) => {
+              const item = previous.find((entry) => entry.id === id);
+              if (item?.previewUrl && !handedPreviews.current.has(item.previewUrl)) releaseFile(item);
+              return previous.filter((entry) => entry.id !== id);
+            });
             setFeedback(null);
           }} />
         </div> : null}
+        <div className="relative">
+          {mentionOpen ? <MentionMenu items={mentionItems} activeIndex={mentionActive} onSelect={selectMention} /> : null}
         <div className="ra-cmd-bar">
           <div className="relative">
             <input id={filesId} name="files" type="file" multiple disabled={sending} className="room-file-input sr-only" onChange={pickFiles} />
@@ -134,15 +380,36 @@ function RoomComposer({ roomId, pm, onAccepted }) {
               <span className="sr-only">加入附件</span>
             </label>
           </div>
-          <textarea id={labelId} name="text" rows={2} value={draft} readOnly={sending} placeholder="輸入訊息"
-            onChange={(event) => { setDraft(event.target.value); setFeedback(null); }}
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing || event.keyCode === 229) return;
-              event.preventDefault();
-              event.currentTarget.form.requestSubmit();
+          <textarea id={labelId} ref={inputRef} name="text" rows={1} value={draft} readOnly={sending} placeholder="輸入訊息，@ 可標記 session"
+            onPaste={pasteFiles}
+            onChange={(event) => {
+              const value = event.target.value;
+              draftBroken.current = false;
+              setDraftReadFailed(false);
+              setDraft(value);
+              setFeedback(null);
+              rememberDraft(value, mentionsRef.current, targetRef.current);
+              syncMention(value, event.target.selectionStart);
             }}
-            className="min-h-11 w-full min-w-0 resize-y self-center bg-transparent px-2 py-2 text-base leading-6 text-ra-t1 outline-none placeholder:text-ra-t4" />
-          <button type="submit" disabled={sending || (!draft.trim() && !files.length)}
+            onKeyUp={(event) => {
+              if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+              if (event.key === 'Enter' || event.key === 'Escape' || event.key === 'ArrowUp' || event.key === 'ArrowDown') return;
+              syncMention(event.currentTarget.value, event.currentTarget.selectionStart);
+            }}
+            onKeyDown={(event) => {
+              const action = roomComposerEnterAction({
+                key: event.key, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing, keyCode: event.keyCode,
+              }, { open: mentionOpen, count: mentionItems.length });
+              if (action === 'ime' || action === 'type') return;
+              event.preventDefault();
+              if (action === 'next') setMentionActive((index) => Math.min(index + 1, Math.max(mentionItems.length - 1, 0)));
+              else if (action === 'prev') setMentionActive((index) => Math.max(index - 1, 0));
+              else if (action === 'close') setMentionOpen(false);
+              else if (action === 'select' && mentionItems[mentionActive]) selectMention(mentionItems[mentionActive]);
+              else if (action === 'send') event.currentTarget.form.requestSubmit();
+            }}
+            className="room-composer-input w-full min-w-0 resize-none self-center bg-transparent px-2 text-base leading-6 text-ra-t1 outline-none placeholder:text-ra-t4" />
+          <button type="submit" disabled={sending || (!draft.trim() && !files.length && !mentions.length)}
             aria-label="傳給 PM" title={sending ? '傳送中…' : '傳給 PM'}
             className="room-send flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-white hover:brightness-110 disabled:opacity-30">
             <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5m-7 7 7-7 7 7" /></svg>
@@ -150,6 +417,7 @@ function RoomComposer({ roomId, pm, onAccepted }) {
         </div>
         {feedback ? <p className={'mt-1 text-xs ' + (feedback.error ? 'text-rose-400' : 'text-ra-t3')}
           role={feedback.error ? 'alert' : 'status'}>{feedback.text}</p> : null}
+        </div>
       </div>
     </form>
   );

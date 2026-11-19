@@ -149,7 +149,12 @@ func (db *DB) saveUserMessage(sessionID, content, author, source string, ids []s
 		return nil, err
 	}
 	defer tx.Rollback()
+	requestID := ""
 	if queueID != 0 {
+		err := tx.QueryRow(`SELECT input_request_id FROM queued_messages WHERE session_id = ? AND id = ? AND content = ? AND attachment_ids = ?`, sessionID, queueID, content, attachmentIDsJSON(ids)).Scan(&requestID)
+		if err != nil {
+			return nil, fmt.Errorf("排隊訊息已變更或不存在")
+		}
 		res, err := tx.Exec(`DELETE FROM queued_messages WHERE session_id = ? AND id = ? AND content = ? AND attachment_ids = ?`, sessionID, queueID, content, attachmentIDsJSON(ids))
 		if err != nil {
 			return nil, err
@@ -159,8 +164,8 @@ func (db *DB) saveUserMessage(sessionID, content, author, source string, ids []s
 			return nil, fmt.Errorf("排隊訊息已變更或不存在")
 		}
 	}
-	res, err := tx.Exec(`INSERT INTO messages (session_id, role, content, status, attachment_ids, author, source_session_id) VALUES (?, 'user', ?, ?, ?, ?, ?)`,
-		sessionID, content, MessageStatusDone, attachmentIDsJSON(ids), author, source)
+	res, err := tx.Exec(`INSERT INTO messages (session_id, role, content, status, attachment_ids, author, source_session_id, input_request_id) VALUES (?, 'user', ?, ?, ?, ?, ?, ?)`,
+		sessionID, content, MessageStatusDone, attachmentIDsJSON(ids), author, source, requestID)
 	if err != nil {
 		return nil, err
 	}

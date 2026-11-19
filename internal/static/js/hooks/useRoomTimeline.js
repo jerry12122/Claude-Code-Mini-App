@@ -88,7 +88,7 @@ function useRoomTimeline(roomId) {
     try {
       const page = await fetchPage('');
       if (!page) return;
-      setState((prev) => roomTimelineApply(prev, page, 'latest'));
+      setState((prev) => roomTimelineDeliver(prev, page, 'latest'));
       setError('');
     } catch (err) {
       setError(err.message || '載入時間軸失敗');
@@ -104,7 +104,7 @@ function useRoomTimeline(roomId) {
     try {
       const page = await fetchPage(nextCursor);
       if (page && stateRef.current.nextCursor === nextCursor) {
-        setState((prev) => roomTimelineApply(prev, page, 'older'));
+        setState((prev) => roomTimelineDeliver(prev, page, 'older'));
       }
     } catch (err) {
       setError(err.message || '載入更早訊息失敗');
@@ -135,5 +135,15 @@ function useRoomTimeline(roomId) {
     return startRoomPoller({ tick: refresh });
   }, [refresh, notFound]);
 
-  return { state, error, notFound, loadingOlder, loadOlder, refresh };
+  const admitLocal = useCallback((message) => {
+    setState((prev) => roomAdmitLocal(prev, message));
+  }, []);
+  const patchLocal = useCallback((requestId, patch) => {
+    setState((prev) => roomPatchLocal(prev, requestId, patch));
+  }, []);
+  const dropLocal = useCallback((requestId) => {
+    setState((prev) => roomDropLocal(prev, requestId));
+  }, []);
+
+  return { state, error, notFound, loadingOlder, loadOlder, refresh, admitLocal, patchLocal, dropLocal };
 }

@@ -10,9 +10,19 @@ function roomProseClick(e) {
   copyText(text).then((ok) => showToast(ok ? '已複製程式碼' : '複製失敗', ok ? undefined : { error: true }));
 }
 
-function RoomMessageBody({ text, full, pending, children }) {
+function RoomMessageBody({ text, full, pending, expanded, children }) {
   const lines = String(text || '').split('\n');
-  if (pending || (text.length <= 500 && lines.length <= 3)) return children;
+  const long = text.length > 500 || lines.length > 3;
+  if (pending || !long) return children;
+  if (expanded) {
+    return (
+      <div className="room-wrap text-sm">
+        <button type="button" className="mb-1 min-h-11 rounded-md px-2 text-xs font-semibold underline-offset-4 hover:underline"
+          onClick={() => copyText(full || text).then((ok) => showToast(ok ? '已複製全文' : '複製失敗', ok ? undefined : { error: true }))}>複製全文</button>
+        {children}
+      </div>
+    );
+  }
   const preview = lines.slice(0, 3).join('\n');
   return (
     <details className="room-wrap text-sm">
@@ -29,7 +39,7 @@ function RoomMessageBody({ text, full, pending, children }) {
   );
 }
 
-const RoomMessageBubble = React.memo(function RoomMessageBubble({ m, onPreview }) {
+const RoomMessageBubble = React.memo(function RoomMessageBubble({ m, expanded, onPreview }) {
   const meta = roomMessageMeta(m);
   const html = useMemo(
     () => (meta.side === 'assistant' && m.text ? parseMarkdown(m.text, { streaming: meta.pending }) : null),
@@ -45,7 +55,9 @@ const RoomMessageBubble = React.memo(function RoomMessageBubble({ m, onPreview }
   }
   return (
     <article className={'flex min-w-0 ' + (meta.mine ? 'justify-end' : 'justify-start')}
-      data-room-msg-id={m.id} data-side={meta.side} data-align={side}>
+      data-room-msg-id={m.id} data-side={meta.side} data-align={side}
+      data-request-id={m.input_request_id || undefined} data-status={m.status || undefined}
+      data-queued={m.queued ? 'true' : undefined} data-delivery={m.local ? (m.delivery || 'sending') : undefined}>
       {!meta.mine && meta.side === 'assistant' ? (
         <span className={'mr-2 inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md ' + getAgentBadgeClass(m.agent_type)} aria-hidden="true">
           <AgentBadgeIcon agentType={m.agent_type} />
@@ -63,7 +75,7 @@ const RoomMessageBubble = React.memo(function RoomMessageBubble({ m, onPreview }
         <div className={'room-read min-w-0 ' + (meta.mine
           ? 'bubble-user px-4 py-2.5'
           : meta.side === 'assistant' ? 'text-ra-t2' : 'rounded-lg border border-ra-line-soft bg-ra-card px-3 py-2.5 text-sm text-ra-t2')}>
-          {meta.body ? <RoomMessageBody text={meta.body} full={m.text} pending={meta.pending}>
+          {meta.body ? <RoomMessageBody text={meta.body} full={m.text} pending={meta.pending} expanded={expanded}>
             {html ? (
               <div className="room-wrap prose text-ra-t2 text-sm leading-[1.7]" onClick={roomProseClick} dangerouslySetInnerHTML={{ __html: html }} />
             ) : (
@@ -80,6 +92,7 @@ const RoomMessageBubble = React.memo(function RoomMessageBubble({ m, onPreview }
           {meta.pending && !html ? <div className="flex gap-1 py-1" aria-label="串流中"><span className="dot" /><span className="dot" /><span className="dot" /></div> : null}
           {meta.pending && html ? <span className="streaming-tail select-none" aria-hidden="true">...</span> : null}
           {meta.interrupted ? <div className="text-[11px] text-amber-400">已中斷</div> : null}
+          {(m.local || m.queued) ? <p className="mt-1 text-xs text-ra-t3" role="status">{m.delivery === 'failed' ? '傳送失敗' : m.delivery === 'sending' ? '傳送中' : '已排隊'}</p> : null}
         </div>
       </div>
     </article>

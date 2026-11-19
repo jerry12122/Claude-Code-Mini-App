@@ -66,9 +66,14 @@
   <link id="hljs-theme-light" rel="stylesheet" href="./js/vendor/github.min.css" disabled />
   <style>
     .room-screen { container-type: inline-size; display: flex; flex-direction: column; height: 100%; max-height: 100%; min-height: 0; min-width: 0; }
-    .ra-session-card.room-list-card { padding: 0; border-color: oklch(var(--ra-line)); }
-    .room-list-card button.room-list-menu { height: auto; min-height: 44px; }
+    .ra-session-card.room-list-card { padding: 0; }
+    .room-list-card button.room-list-open,
+    .room-list-card button.room-list-menu { position: relative; }
     .room-list-card button.room-list-menu::after { content: none; }
+    @media (pointer: coarse) {
+      .room-list-card button.room-list-open,
+      .room-list-card button.room-list-menu { min-block-size: 44px; }
+    }
     .room-header, .room-timeline, .room-composer { padding-inline: 0.875rem; }
     .room-header, .room-composer, .room-board { background: oklch(var(--ra-card)); }
     .room-header { flex: 0 0 auto; min-width: 0; padding-top: calc(0.5rem + env(safe-area-inset-top) + var(--tg-content-safe-top)); }
@@ -89,9 +94,10 @@
       visibility: hidden; position: absolute; inset: 0; pointer-events: none;
     }
     .room-wrap { min-inline-size: 0; overflow-wrap: anywhere; }
-    .room-composer { padding-bottom: calc(0.625rem + var(--ra-safe-bottom, env(safe-area-inset-bottom))); }
+    .room-screen .room-composer { padding-top: 0.25rem; padding-bottom: calc(0.375rem + var(--ra-safe-bottom, env(safe-area-inset-bottom))); }
     .room-composer .ra-cmd-bar { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; gap: 0.25rem; align-items: end; padding: 4px; }
-    .room-composer textarea { max-block-size: min(10rem, 30dvh); }
+    .room-screen .room-composer textarea { min-block-size: 40px; max-block-size: min(10rem, 30dvh); padding-block: 8px; overflow-y: auto; }
+    .room-board-label-wide { display: none; }
     .room-send { background: var(--ra-accent); }
     .room-file-input:focus-visible + .room-file-label { outline: 2px solid currentColor; outline-offset: 2px; }
     .room-file-input:disabled + .room-file-label { cursor: default; opacity: .5; }
@@ -106,14 +112,18 @@
       .room-members-compact { display: none; }
       .room-members-full { display: flex; }
       .room-message { max-inline-size: min(82%, 72ch); }
-      .room-screen .room-board-toggle { display: none; }
+      .room-board-label-narrow { display: none; }
+      .room-board-label-wide { display: inline; }
       .room-screen .room-workspace {
         display: grid;
         flex: 1 1 0;
         height: 0;
         min-height: 0;
-        grid-template-columns: minmax(0, 1fr) clamp(17.5rem, 22cqi, 21.25rem);
+        grid-template-columns: minmax(0, 1fr);
         grid-template-rows: minmax(0, 1fr);
+      }
+      .room-screen .room-workspace[data-board-open="true"] {
+        grid-template-columns: minmax(0, 1fr) clamp(17.5rem, 22cqi, 21.25rem);
       }
       .room-screen .room-thread,
       .room-screen .room-board {
@@ -122,7 +132,6 @@
         max-height: 100%;
         overflow: auto;
       }
-      .room-workspace .room-board,
       .room-workspace[data-board-open="true"] .room-board {
         display: flex;
         border-inline-start: 1px solid oklch(var(--ra-line-soft));

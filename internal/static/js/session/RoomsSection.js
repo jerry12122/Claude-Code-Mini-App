@@ -125,15 +125,15 @@ function RoomsSection({ sessions, activeRoomId, onOpenRoom, onRoomDeleted, touch
           const active = r.id === activeRoomId;
           return (
             <li key={r.id} className={'ra-session-card room-list-card group/card' + (active ? ' active' : '')}>
-              <div className="flex min-w-0 items-stretch">
+              <div className="flex min-w-0 items-center">
                 <button type="button" onClick={() => onOpenRoom(r.id)} aria-current={active ? 'true' : undefined}
                   title={`${r.name}（${r.member_count} 位成員）`}
-                  className="flex min-h-11 min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400 rounded-lg">
-                  <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-ra-t3">{r.name}</span>
-                  <span className="shrink-0 text-[11px] text-ra-t5">{r.member_count}</span>
+                  className="room-list-open flex min-w-0 flex-1 items-center gap-2 px-2.5 py-[7px] text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400 rounded-lg">
+                  <span className="inline-flex h-[22px] min-w-[22px] shrink-0 items-center justify-center rounded-[6px] bg-ra-raised px-1 text-[11px] font-semibold tabular-nums text-ra-t3">{r.member_count}</span>
+                  <span className="room-list-name min-w-0 flex-1 truncate text-[13.5px] font-medium leading-snug text-ra-t3">{r.name}</span>
                 </button>
                 <button type="button" data-context-surface aria-label={`更多操作：${r.name}`} aria-haspopup="menu"
-                  className="room-list-menu shrink-0 min-w-11 self-stretch rounded-lg text-ra-t4 hover:bg-ra-raised hover:text-ra-t1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400"
+                  className="room-list-menu shrink-0 min-w-[32px] rounded-lg text-ra-t4 hover:bg-ra-raised hover:text-ra-t1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400"
                   onClick={(e) => { e.stopPropagation(); setMenu(openContextPayload(e, { roomId: r.id }, touch)); }}>⋯</button>
               </div>
             </li>

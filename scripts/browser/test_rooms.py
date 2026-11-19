@@ -28,9 +28,31 @@ def test_room_controls(page, login, width, scenario):
     expect(card).to_be_visible()
     # 點按鈕的留白，不點文字；卡片與按鈕一樣高，不留下不可操作的 padding。
     opener = card.locator("button").first
-    assert opener.bounding_box()["height"] >= 44
-    assert abs(card.bounding_box()["height"] - opener.bounding_box()["height"]) <= 2
-    assert card.evaluate("el => getComputedStyle(el).borderTopColor") != "rgba(0, 0, 0, 0)"
+    metrics = card.evaluate("""el => {
+      const button = el.querySelector('button');
+      const buttonBox = button.getBoundingClientRect();
+      const cardBox = el.getBoundingClientRect();
+      const session = document.querySelector('.ra-session-card:not(.room-list-card)');
+      const sessionBox = session ? session.getBoundingClientRect() : null;
+      const name = el.querySelector('.room-list-name');
+      const sessionName = session ? session.querySelector('.truncate') : null;
+      return {
+        button: buttonBox.height,
+        card: cardBox.height,
+        coarse: matchMedia('(pointer: coarse)').matches,
+        session: sessionBox ? sessionBox.height : buttonBox.height,
+        nameTop: name ? name.getBoundingClientRect().top - cardBox.top : 0,
+        sessionTop: sessionName ? sessionName.getBoundingClientRect().top - sessionBox.top : 0,
+        roomBorder: getComputedStyle(el).borderTopColor,
+        sessionBorder: session ? getComputedStyle(session).borderTopColor : '',
+      };
+    }""")
+    if metrics["coarse"]:
+        assert metrics["button"] >= 44, metrics
+    assert abs(metrics["card"] - metrics["button"]) <= 2, metrics
+    assert abs(metrics["card"] - metrics["session"]) <= 4, metrics
+    assert abs(metrics["nameTop"] - metrics["sessionTop"]) <= 4, metrics
+    assert metrics["roomBorder"] == metrics["sessionBorder"], metrics
     opener.click(position={"x": 3, "y": 3})
     screen = page.get_by_role("region", name="工作室 " + name, exact=True)
     expect(screen).to_be_visible()

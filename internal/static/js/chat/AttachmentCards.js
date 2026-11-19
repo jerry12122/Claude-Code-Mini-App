@@ -108,6 +108,7 @@ function MessageAttachmentCard({ attachment: a, onPreview }) {
   const [details, setDetails] = useState(null);
   const actionControllerRef = useRef(null);
   const isImage = String(a.mime_type || '').startsWith('image/');
+  const localPreview = !!a.local_preview;
 
   useEffect(() => {
     if (!window.IntersectionObserver) { setVisible(true); return; }
@@ -166,7 +167,12 @@ function MessageAttachmentCard({ attachment: a, onPreview }) {
 
   return (
     <div ref={cardRef} className="rounded-lg border border-white/20 bg-black/10 p-2 min-w-0 max-w-full" onPointerDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} onClick={e => e.stopPropagation()} onContextMenu={e => e.stopPropagation()}>
-      {isImage && (
+      {isImage && localPreview && (
+        a.preview_url
+          ? <img src={a.preview_url} alt={a.name} onError={() => setError('圖片無法預覽')} className="mb-2 max-h-48 max-w-full rounded-md object-contain" />
+          : <div className="mb-2 flex h-24 items-center justify-center rounded-md bg-white/5 text-xs text-white/70">圖片無法預覽</div>
+      )}
+      {isImage && !localPreview && (
         <button type="button" onClick={() => preview && onPreview(preview)} disabled={!preview} aria-label={`放大 ${a.name}`} className="mb-2 block w-full text-left disabled:cursor-default">
           {preview ? <img src={preview} alt={a.name} onError={() => setError('圖片無法預覽，仍可嘗試下載')} className="max-h-48 max-w-full rounded-md object-contain" /> : <div className="flex h-24 items-center justify-center rounded-md bg-white/5 text-xs text-white/70">{error || '載入圖片…'}</div>}
         </button>
@@ -179,8 +185,8 @@ function MessageAttachmentCard({ attachment: a, onPreview }) {
         </div>
       </div>
       <div className="mt-2 flex flex-wrap gap-3 text-[11px]">
-        {!a.legacy && <button type="button" onClick={download} disabled={busy} className="hover:underline disabled:opacity-40">{busy ? '讀取中…' : '下載'}</button>}
-        {!isGuestMode && <button type="button" onClick={showDetails} disabled={busy} className="text-white/70 hover:underline disabled:opacity-40">{details ? '收起詳細資訊' : '附件詳細資訊'}</button>}
+        {!localPreview && !a.legacy && <button type="button" onClick={download} disabled={busy} className="hover:underline disabled:opacity-40">{busy ? '讀取中…' : '下載'}</button>}
+        {!localPreview && !isGuestMode && <button type="button" onClick={showDetails} disabled={busy} className="text-white/70 hover:underline disabled:opacity-40">{details ? '收起詳細資訊' : '附件詳細資訊'}</button>}
         {error && isImage && <button type="button" onClick={() => { setError(''); setRetry(n => n + 1); }} className="hover:underline">重試預覽</button>}
       </div>
       {error && <div role="status" className="mt-1 text-[11px] text-red-200">{error}</div>}

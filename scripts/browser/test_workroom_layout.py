@@ -214,6 +214,11 @@ def test_workroom_layout(page, login):
 
     for px in CONTAINER_WIDTHS:
         fit(px)
+        toggle = screen.locator(".room-board-toggle")
+        if px >= 960 and toggle.get_attribute("aria-expanded") != "true":
+            toggle.click()
+        elif px < 960 and toggle.get_attribute("aria-expanded") == "true":
+            toggle.click()
         m = _metrics(screen)
         assert abs(m["width"] - px) <= 1, m
         assert m["scroll"], m
@@ -226,7 +231,8 @@ def test_workroom_layout(page, login):
             assert m["boardDisplay"] != "none", m
             assert 278 <= m["boardWidth"] <= 342, m
             expect(screen.locator(".room-members-full")).to_be_visible()
-            expect(screen.get_by_role("button", name="工作概況")).to_be_hidden()
+            expect(toggle).to_be_visible()
+            assert toggle.get_attribute("aria-expanded") == "true"
         else:
             assert m["boardDisplay"] == "none", m
             expect(screen.get_by_role("button", name="工作概況")).to_be_visible()
@@ -237,6 +243,8 @@ def test_workroom_layout(page, login):
         page.screenshot(path=str(OUT / f"container-{px}.png"))
 
     fit(1280)
+    if screen.locator(".room-board-toggle").get_attribute("aria-expanded") != "true":
+        screen.locator(".room-board-toggle").click()
     expect(screen.locator(".room-header [role=listitem]").first).to_contain_text("很長的PM名稱")
     board = screen.locator("#room-work-board")
     expect(board.get_by_role("heading", name="進行中與需要處理")).to_be_visible()
@@ -252,6 +260,8 @@ def test_workroom_layout(page, login):
     expect(screen.get_by_role("region", name=name + " 授權者 的授權與回答", exact=True)).to_be_visible()
     expect(screen.get_by_role("region", name=name + " 回答者 的授權與回答", exact=True)).to_be_visible()
     page.screenshot(path=str(OUT / "pending-two.png"))
+    if screen.locator(".room-board-toggle").get_attribute("aria-expanded") == "true":
+        screen.locator(".room-board-toggle").click()
     fit(768)
     screen.get_by_role("button", name="工作概況").click()
     expect(screen.locator(".room-thread")).to_be_hidden()
