@@ -57,6 +57,9 @@ jobs:
       - name: 測試（production 標籤，前端嵌入）
         run: go test -tags production ./internal/...
 
+      - name: Tailwind CSS 是否最新
+        run: python scripts/build-css.py --check
+
       - name: 打包（產物與 checksums 到 dist/）
         run: bash scripts/release/package.sh dist
 

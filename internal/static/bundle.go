@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -23,7 +24,25 @@ var (
 	localScriptRe = regexp.MustCompile(`(?m)^[ \t]*<script\b[^>]*\bsrc="\./(js/[^"]+)"[^>]*></script>[ \t]*\r?\n?`)
 	babelCDNRe    = regexp.MustCompile(`(?m)^[ \t]*<script src="https://unpkg\.com/@babel/standalone/[^"]*"></script>[ \t]*\r?\n?`)
 	babelPresetRe = regexp.MustCompile(`(?m)^[ \t]*<script>Babel\.registerPreset\([^\n]*</script>[ \t]*\r?\n?`)
+
+	// Tailwind Play CDN（即時編譯）與其內嵌設定；預設改換成 scripts/build-css.py 產生的靜態 CSS。
+	tailwindScriptRe = regexp.MustCompile(`(?m)^[ \t]*<script src="\./js/vendor/tailwind\.js"></script>[ \t]*\r?\n?`)
+	tailwindConfigRe = regexp.MustCompile(`(?s)[ \t]*<script>\s*tailwind\.config = .*?</script>[ \t]*\r?\n?`)
 )
+
+// tailwindJIT 為真時保留 Play CDN（開發時改 className 立即生效，不必重產 CSS）。
+func tailwindJIT() bool { return os.Getenv("CMA_TAILWIND_JIT") != "" }
+
+// useStaticTailwind 把 Play CDN 換成靜態 CSS。<link> 放在 <head> 最後，順序與 Play CDN 把 <style>
+// 附加到 <head> 末端相同：utility 才會贏過頁面自己的同權重規則（例如 .ra-display 與 tracking-tight）。
+func useStaticTailwind(html []byte) []byte {
+	if !tailwindScriptRe.Match(html) {
+		return html
+	}
+	out := tailwindScriptRe.ReplaceAll(html, nil)
+	out = tailwindConfigRe.ReplaceAll(out, nil)
+	return bytes.Replace(out, []byte("</head>"), []byte("  <link rel=\"stylesheet\" href=\"./js/vendor/tailwind.css\" />\n</head>"), 1)
+}
 
 // bundler 把 index.html 的 body 內列出的本地腳本依序編成單一全域 script。
 // 每個檔案各自編譯後串接（不包 module），頂層宣告與載入順序維持原本多個 <script> 的語意。
@@ -139,6 +158,9 @@ func rewriteIndex(html []byte, production bool) []byte {
 	out := append(append([]byte{}, head...), body...)
 	out = babelCDNRe.ReplaceAll(out, nil)
 	out = babelPresetRe.ReplaceAll(out, nil)
+	if !tailwindJIT() {
+		out = useStaticTailwind(out)
+	}
 	if production {
 		out = bytes.ReplaceAll(out, []byte("/umd/react.development.js"), []byte("/umd/react.production.min.js"))
 		out = bytes.ReplaceAll(out, []byte("/umd/react-dom.development.js"), []byte("/umd/react-dom.production.min.js"))

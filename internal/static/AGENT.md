@@ -10,6 +10,7 @@
 4. 任何 `<script>` **都不能加 `async`**，否則載入順序不保證，會打破上面的共用作用域假設。
 5. 沒有模組系統：**不要寫 `import`/`export`**，新增的東西直接宣告在全域即可被其他檔案用。
 6. 開發模式（未加 `-tags production` 的建置，例如 `go run ./cmd/desktop`、`go run ./cmd/server`）直接從磁碟提供 `internal/static/`，改完 `.js` 重新整理即可。**production 建置（`-tags production`，即發佈的桌面 EXE）會把 `index.html`、`favicon.ico`、`js/` 嵌入執行檔**，改前端後必須重新建置才會生效（見下方「資源來源」）。
+7. **Tailwind 是預先編譯的靜態 CSS**：`js/vendor/tailwind.css` 由 `python scripts/build-css.py` 產生並提交。新增或改了 `className` 後要重跑它（CI 的 `--check` 會擋下過期）；開發時設 `CMA_TAILWIND_JIT=1` 啟動伺服器可改回即時編譯（Play CDN），不必每次重產。
 
 ## 檔案地圖
 

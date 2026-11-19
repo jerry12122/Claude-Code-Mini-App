@@ -7,7 +7,7 @@ const PRECACHE_ASSETS = [
   '/favicon.ico',
   '/js/vendor/fonts.css',
   '/js/vendor/telegram-web-app.js',
-  '/js/vendor/tailwind.js'
+  '/js/vendor/tailwind.css'
 ];
 
 function shouldBypass(pathname, headers) {

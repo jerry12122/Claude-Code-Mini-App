@@ -17,6 +17,12 @@
   逐檔轉 JSX（`react-classic`，等同 `React.createElement`），再串接成單一虛擬檔 `js/app.bundle.js`，
   並把 `index.html` 改寫成只載入這一支。開發建置在檔案變動時重新編譯，production 只編一次。
   `<script type="text/babel">` 標籤是歷史寫法，實際不經過瀏覽器端 Babel。
+  **唯一的產生步驟：Tailwind CSS。** 沒有 Node／npm，但 `internal/static/js/vendor/tailwind.css` 是由
+  `python scripts/build-css.py`（Tailwind 獨立 CLI，版本與 SHA-256 固定在腳本內）從 `index.html` 內嵌的
+  `tailwind.config` 與所有 `className` 產生並**提交進 repo**，`bundle.go` 預設改寫 `index.html` 載入它，
+  取代 407KB 的 Play CDN（每次載入都在瀏覽器內即時編譯）。改了 `className`、`tailwind.config` 或自訂
+  `<style>` 後要重新執行；CI 與發版跑 `python scripts/build-css.py --check`，過期會失敗。
+  開發時想改 class 立即生效，設 `CMA_TAILWIND_JIT=1` 啟動，伺服器就改回 Play CDN。
 * **無模組系統**：esbuild 只做 transform、不做 bundle，不解析 `import`／`export`。
   所有符號都在**同一個全域作用域**。
   `window.*` 不作為匯出手段（目前應用層 `window.X =` 匯出為 0 處，vendor 不算）。

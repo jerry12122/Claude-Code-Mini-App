@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### 改進
+- Tailwind 改為預先編譯的靜態 CSS（`scripts/build-css.py`），不再於每次載入時在瀏覽器內即時編譯：首載少傳約 354KB（壓縮後約 113KB），行動寬度下主執行緒任務時間約減 43%；輸入框初始高度不再先 36px 後跳成 38px。開發時設 `CMA_TAILWIND_JIT=1` 可改回即時編譯
 - 前端靜態資源（JS／CSS／HTML）改以 gzip／brotli 壓縮傳輸，首次載入由約 1.4MB 降到約 0.4MB；圖片、串流、WebSocket 與 API 回應不壓縮
 
 ### 新增

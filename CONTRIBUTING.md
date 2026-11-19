@@ -7,7 +7,7 @@ Thank you for your interest in contributing to MiniApp! This document provides g
 Before contributing, please keep in mind the following project design choices:
 
 1. **Single Go Binary**: The entire app (API, WebSockets, background tasks, static web assets) is distributed as a single compiled Go binary.
-2. **No Frontend Build Step**: The web interface lives in `internal/static/` using React, Tailwind (CDN), and standard ES modules/Babel in-browser parsing. Do not introduce a Node.js bundling or compilation pipeline (e.g. webpack, vite) that breaks direct editing of `internal/static/`.
+2. **No Frontend Build Step**: The web interface lives in `internal/static/` using React, Tailwind (precompiled to a committed static CSS by the standalone CLI via `python scripts/build-css.py`; no Node/npm — set `CMA_TAILWIND_JIT=1` to use the live Play CDN while developing), and in-server JSX transform. Do not introduce a Node.js bundling or compilation pipeline (e.g. webpack, vite) that breaks direct editing of `internal/static/`.
 3. **Multi-Agent First**: Features should remain compatible across the supported coding agents (Claude Code, Cursor Agent, Codex, Kiro ACP, Antigravity) without vendor-locking.
 4. **Spec-Driven Development (Spectra)**: Major features and schema updates follow SDD. Specs live in `docs/spectra/specs/`, and changes in `docs/spectra/changes/`.
 

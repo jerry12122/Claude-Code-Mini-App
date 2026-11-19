@@ -14,6 +14,8 @@ files = ["hooks/tabGroups.js", "ui/SplitLayout.js", "core/toast.js", "hooks/comp
 if (root / "js/chat/ComposerTools.js").exists():
     files.insert(-1, "chat/ComposerTools.js")
 files.insert(-1, "chat/SessionActionCards.js")
+files.insert(-1, "hooks/quotaResumeBanner.js")
+files.insert(-1, "chat/QuotaResumeBanner.js")
 files[0:0] = ["hooks/useGitStatus.js", "chat/GitControls.js"]
 source = "\n".join((root / "js" / f).read_text(encoding="utf-8") for f in files)
 compiled = subprocess.run(["go", "run", "github.com/evanw/esbuild/cmd/esbuild", "--loader=jsx", "--target=es2020"],

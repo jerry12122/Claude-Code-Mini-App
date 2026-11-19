@@ -4,7 +4,7 @@ const sw = require(path.join(__dirname, '../internal/static/sw.js'));
 
 // 1. 驗證快取資產包含核心靜態檔
 assert.ok(Array.isArray(sw.PRECACHE_ASSETS), 'PRECACHE_ASSETS 必須是陣列');
-for (const required of ['/', '/index.html', '/manifest.webmanifest', '/favicon.ico']) {
+for (const required of ['/', '/index.html', '/manifest.webmanifest', '/favicon.ico', '/js/vendor/tailwind.css']) {
   assert.ok(sw.PRECACHE_ASSETS.includes(required), `PRECACHE_ASSETS 缺少必要檔案: ${required}`);
 }
 

@@ -49,4 +49,8 @@ jobs:
       - name: 前端單元測試
         run: node --test scripts/*.test.cjs
 
+      # tailwind.css 是提交進 repo 的產生檔；改了 className／tailwind.config 卻沒重產會在這裡失敗
+      - name: Tailwind CSS 是否最新
+        run: python scripts/build-css.py --check
+
       # scripts/*.test.py 需要 Playwright 與本機瀏覽器，不在 CI 跑（見 CONTRIBUTING.md）
