@@ -232,6 +232,7 @@ function createHarness() {
   // 可控時鐘：429 的重試延遲用它推進。
   let nowMs = 1000000;
   ctx.Date = class FakeDate extends Date { static now() { return nowMs; } };
+  vm.runInContext(read('hooks/quotaResumeBanner.js'), ctx);
   vm.runInContext(read('hooks/useChatSocket.js'), ctx);
 
   function mount(props) {

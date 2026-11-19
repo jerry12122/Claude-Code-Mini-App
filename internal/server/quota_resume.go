@@ -7,11 +7,8 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
-	"net/http"
 	"strings"
 	"time"
-
-	"github.com/fasthttp/websocket"
 
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/quota"
@@ -54,7 +51,7 @@ func (r roomRuntime) resumeDue(ctx context.Context, now time.Time, refresh func(
 	if ctx.Err() != nil || refresh == nil {
 		return
 	}
-	on, err := quotaResumeSwitchOn(r.db)
+	on, err := r.db.AutoResumeOnQuota()
 	if err != nil {
 		slog.Error("[quota-resume] settings", "err", err)
 		return
@@ -87,7 +84,7 @@ func (r roomRuntime) resumeOne(ctx context.Context, now time.Time, item db.DueQu
 		slog.Warn("[quota-resume] refresh", "session", sessionID, "err", err)
 		return
 	}
-	on, err := quotaResumeSwitchOn(r.db)
+	on, err := r.db.AutoResumeOnQuota()
 	if err != nil || !on {
 		return
 	}
@@ -138,7 +135,7 @@ func (r roomRuntime) deliverQuotaResume(ctx context.Context, sessionID string, g
 	}
 	if err != nil {
 		slog.Warn("[quota-resume] wake", "session", sessionID, "err", err)
-		on, onErr := quotaResumeSwitchOn(r.db)
+		on, onErr := r.db.AutoResumeOnQuota()
 		if onErr == nil && !on {
 			r.releaseResuming(sessionID, generation)
 			return
@@ -149,7 +146,7 @@ func (r roomRuntime) deliverQuotaResume(ctx context.Context, sessionID string, g
 	if started {
 		return
 	}
-	on, err := quotaResumeSwitchOn(r.db)
+	on, err := r.db.AutoResumeOnQuota()
 	if err != nil {
 		slog.Error("[quota-resume] settings", "session", sessionID, "err", err)
 		return
@@ -177,7 +174,7 @@ func (r roomRuntime) quotaResumeHeldGeneration(sessionID string, generation int6
 	if generation <= 0 {
 		return false
 	}
-	on, err := quotaResumeSwitchOn(r.db)
+	on, err := r.db.AutoResumeOnQuota()
 	if err != nil || !on {
 		return false
 	}
@@ -195,14 +192,6 @@ func (r roomRuntime) restoreWaiting(sessionID string, generation int64) {
 	if _, err := r.db.RestoreQuotaResumeWaiting(sessionID, generation); err != nil {
 		slog.Error("[quota-resume] restore", "session", sessionID, "err", err)
 	}
-}
-
-func quotaResumeSwitchOn(database *db.DB) (bool, error) {
-	settings, err := database.GetGeneralSettings()
-	if err != nil {
-		return false, err
-	}
-	return settings.AutoResumeOnQuota, nil
 }
 
 // quotaResumePlan 只看 session 窗口。keep＝維持 waiting 與原時間；delay＝改到 reset 後 60 秒；start＝可以啟動。
@@ -239,7 +228,7 @@ func quotaResumePlan(snap quota.Snapshot, now time.Time) (kind, at string) {
 			if !item.has {
 				return "keep", ""
 			}
-			return "delay", item.reset.UTC().Add(time.Minute).Truncate(time.Second).Format(time.RFC3339)
+			return "delay", db.QuotaResumeAt(item.reset)
 		}
 	}
 	return "start", ""
@@ -250,34 +239,15 @@ func (r roomRuntime) wakeQuota(ctx context.Context, sessionID string) (bool, err
 	if !r.quotaResumeHeldGeneration(sessionID, generation) {
 		return false, errQuotaResumeNotHeld
 	}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, "ws://"+r.address+"/sessions/"+sessionID+"/ws", http.Header{roomWakeHeader: {r.wakeToken}})
+	payload, err := r.wakeSession(ctx, sessionID, 5*time.Second, map[string]any{"type": "quota_resume", "generation": generation}, "quota_resumed")
 	if err != nil {
 		return false, err
 	}
-	defer conn.Close()
-	deadline, _ := ctx.Deadline()
-	_ = conn.SetWriteDeadline(deadline)
-	_ = conn.SetReadDeadline(deadline)
-	if err := conn.WriteJSON(map[string]any{"type": "quota_resume", "generation": generation}); err != nil {
-		return false, err
+	var event struct {
+		Started *bool `json:"started"`
 	}
-	for {
-		_, payload, err := conn.ReadMessage()
-		if err != nil {
-			return false, err
-		}
-		var event struct {
-			Type    string `json:"type"`
-			Started *bool  `json:"started"`
-		}
-		if json.Unmarshal(payload, &event) != nil || event.Type != "quota_resumed" {
-			continue
-		}
-		if event.Started == nil {
-			return false, errors.New("quota_resumed 缺少 started")
-		}
-		return *event.Started, nil
+	if json.Unmarshal(payload, &event) != nil || event.Started == nil {
+		return false, errors.New("quota_resumed 缺少 started")
 	}
+	return *event.Started, nil
 }

@@ -100,6 +100,8 @@
 
 ## 8. 5.1 端到端觀察（2026-11-19）
 
+> 下文的臨時程序 `scripts/quota-banner-fixture` 已於清理時移除；可重跑的驗證以 `internal/server/quota_e2e_test.go` 的 `TestQuotaE2E*` 為準。
+
 臨時程序是 `go run ./scripts/quota-banner-fixture`。它不呼叫 `server.Start`，因此不同步模型、不暖機、不打真供應商；runner 與額度都在行程內，而且只聽 127.0.0.1。30 秒輪詢是正式的 `watchQuota`，測試沒有改 30／60 秒常數，也沒有把手動 `resumeDue` 當成這次已驗過。輪詢啟動或延後只對上刷新前列出的世代與預定時間。
 
 已用假額度與真內部 WS 走完：

@@ -44,6 +44,11 @@ func quotaResumeTime(t time.Time) string {
 	return t.UTC().Truncate(time.Second).Format(time.RFC3339)
 }
 
+// QuotaResumeAt 是額度重置後實際再試的時間：重置時間加 60 秒緩衝（吸收時鐘差）。
+func QuotaResumeAt(reset time.Time) string {
+	return quotaResumeTime(reset.Add(time.Minute))
+}
+
 // TransitionQuotaResume 以單一條件式 UPDATE 轉移狀態。
 // from 必須等於目前 quota_resume_state 才會成功。表外轉移回傳 false, nil，不寫入。
 // attempts 只在 waiting→resuming 加 1；轉入 none 時歸零且 quota_resume_at 清空。

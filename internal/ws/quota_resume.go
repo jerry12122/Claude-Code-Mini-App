@@ -24,11 +24,11 @@ func finishHeldQuotaResume(database *db.DB, sessionID, agentType string, userMsg
 	if userMsgID <= 0 || !runFailed || cancelled || permDenied || agentType == agent.TypeTelegram {
 		return nil
 	}
-	settings, err := database.GetGeneralSettings()
+	on, err := database.AutoResumeOnQuota()
 	if err != nil {
 		return err
 	}
-	if !settings.AutoResumeOnQuota || refresh == nil {
+	if !on || refresh == nil {
 		return nil
 	}
 	snap, err := refresh(context.Background(), agentType)
@@ -39,7 +39,7 @@ func finishHeldQuotaResume(database *db.DB, sessionID, agentType string, userMsg
 	if !ok {
 		return nil
 	}
-	at := reset.UTC().Add(time.Minute).Truncate(time.Second).Format(time.RFC3339)
+	at := db.QuotaResumeAt(reset)
 	if held > 0 {
 		_, _, attempts, err := database.GetQuotaResume(sessionID)
 		if err != nil {
@@ -71,8 +71,7 @@ func quotaResumeGenerationHeld(database *db.DB, sessionID string, generation int
 	if generation <= 0 {
 		return false
 	}
-	settings, err := database.GetGeneralSettings()
-	if err != nil || !settings.AutoResumeOnQuota {
+	if on, err := database.AutoResumeOnQuota(); err != nil || !on {
 		return false
 	}
 	owned, current, err := database.ClaimQuotaResume(sessionID)

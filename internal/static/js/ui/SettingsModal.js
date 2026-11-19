@@ -161,6 +161,32 @@ function GlobalInstructionSettings() {
   );
 }
 
+// 「一般」頁的核取列：標題＋勾選框＋說明。children 接在勾選列之後（例如守門的門檻輸入）。
+function GeneralCheckbox({ title, label, hint, hintId, id, checked, disabled, onChange, children }) {
+  return (
+    <div>
+      <div className="text-sm font-semibold text-ra-t1 mb-1">{title}</div>
+      <label htmlFor={id} className="flex items-start gap-3 cursor-pointer">
+        <input
+          id={id}
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          onChange={onChange}
+          className="mt-0.5 w-4 h-4 accent-violet-600 shrink-0"
+        />
+        <div className="min-w-0">
+          <div className="text-sm text-ra-t1">{label}</div>
+          {hint ? <div id={hintId} className="text-[11px] text-ra-t5 mt-0.5">{hint}</div> : null}
+        </div>
+      </label>
+      {children}
+    </div>
+  );
+}
+
+/** 「一般」設定頁：開關即時 PUT，與外觀設定分開存。 */
+/** 「一般」設定頁：開關即時 PUT，與外觀設定分開存。 */
 function formatQuotaPercent(value) {
   const n = Number(value);
   return Number.isFinite(n) ? String(n) : '';
@@ -197,7 +223,6 @@ function generalPatch(general, patch, confirm) {
   return { put: true, next: { ...general, ...patch } };
 }
 
-/** 「一般」設定頁：開關即時 PUT，與外觀設定分開存。 */
 function GeneralSection() {
   const [general, setGeneral] = useState(() => ({ ...GENERAL_DEFAULTS }));
   const [loading, setLoading] = useState(true);
@@ -289,91 +314,61 @@ function GeneralSection() {
   return (
     <div className="divide-y divide-ra-line-soft [&>*]:py-6 [&>:first-child]:pt-0 [&>:last-child]:pb-0">
       <GlobalInstructionSettings />
-      <div>
-        <div className="text-sm font-semibold text-ra-t1 mb-1">開啟 VSCode</div>
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={general.vscodeNoAdmin}
-            disabled={loading || saving}
-            onChange={(e) => toggle(e.target.checked)}
-            className="mt-0.5 w-4 h-4 accent-violet-600 shrink-0"
-          />
-          <div className="min-w-0">
-            <div className="text-sm text-ra-t1">以一般使用者權限開啟 VSCode</div>
-            <div className="text-[11px] text-ra-t5 mt-0.5">
-              當伺服器程式本身以系統管理員身分執行時，直接開啟 VSCode 會因權限不一致出現
-              「Another instance of Code is already running as administrator」錯誤。開啟此選項後，
-              伺服器改透過 <code className="ra-mono">explorer.exe</code> 分派 <code className="ra-mono">vscode://</code> 連結以一般使用者權限啟動 VSCode（僅 Windows 有效）。
-            </div>
-          </div>
-        </label>
-      </div>
-      <div>
-        <div className="text-sm font-semibold text-ra-t1 mb-1">Claude 完全跳過授權</div>
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={!!general.claudeAutoAllowAsk}
-            disabled={loading || saving}
-            onChange={(e) => {
+      <GeneralCheckbox
+        title="開啟 VSCode"
+        label="以一般使用者權限開啟 VSCode"
+        hint={<>
+          當伺服器程式本身以系統管理員身分執行時，直接開啟 VSCode 會因權限不一致出現
+          「Another instance of Code is already running as administrator」錯誤。開啟此選項後，
+          伺服器改透過 <code className="ra-mono">explorer.exe</code> 分派 <code className="ra-mono">vscode://</code> 連結以一般使用者權限啟動 VSCode（僅 Windows 有效）。
+        </>}
+        checked={general.vscodeNoAdmin}
+        disabled={loading || saving}
+        onChange={(e) => toggle(e.target.checked)}
+      />
+      <GeneralCheckbox
+        title="Claude 完全跳過授權"
+        label="自動允許 ask 規則詢問"
+        hint={<>
+          僅作用於權限模式為「跳過授權」的 Claude 會話。開啟後，命中 ask 規則的工具呼叫會由伺服器直接允許，
+          並在該輪回覆留一行紀錄。deny 規則與 Claude 的提問不受影響。預設關閉。
+        </>}
+        checked={!!general.claudeAutoAllowAsk}
+        disabled={loading || saving}
+        onChange={(e) => {
               const want = e.target.checked;
               // 受控元件：取消確認時把瀏覽器先勾上的狀態彈回，且不送 PUT。
               if (want && !general.claudeAutoAllowAsk) e.target.checked = false;
               toggleAutoAllow(want);
             }}
-            className="mt-0.5 w-4 h-4 accent-violet-600 shrink-0"
-          />
-          <div className="min-w-0">
-            <div className="text-sm text-ra-t1">自動允許 ask 規則詢問</div>
-            <div className="text-[11px] text-ra-t5 mt-0.5">
-              僅作用於權限模式為「跳過授權」的 Claude 會話。開啟後，命中 ask 規則的工具呼叫會由伺服器直接允許，
-              並在該輪回覆留一行紀錄。deny 規則與 Claude 的提問不受影響。預設關閉。
-            </div>
-          </div>
-        </label>
-      </div>
-      <div>
-        <div className="text-sm font-semibold text-ra-t1 mb-1">額度用盡後自動繼續</div>
-        <label htmlFor="auto-resume-on-quota" className="flex items-start gap-3 cursor-pointer">
-          <input
-            id="auto-resume-on-quota"
-            type="checkbox"
-            checked={!!general.autoResumeOnQuota}
-            disabled={loading || saving}
-            onChange={(e) => {
+      />
+      <GeneralCheckbox
+        title="額度用盡後自動繼續"
+        label="額度重置後自動繼續"
+        hint={<>
+          5 小時額度重置後，伺服器會在無人看管時自動繼續執行。會話多半以跳過授權（bypassPermissions）運行，
+          開啟等於沒有人在場時仍會改檔與執行指令。預設關閉。
+        </>}
+        hintId="auto-resume-hint"
+        id="auto-resume-on-quota"
+        checked={!!general.autoResumeOnQuota}
+        disabled={loading || saving}
+        onChange={(e) => {
               const decision = generalPatch(general, { autoResumeOnQuota: e.target.checked }, () => true);
               if (decision.put) saveGeneral(decision.next);
             }}
-            className="mt-0.5 w-4 h-4 accent-violet-600 shrink-0"
-          />
-          <div className="min-w-0">
-            <div className="text-sm text-ra-t1">額度重置後自動繼續</div>
-            <div id="auto-resume-hint" className="text-[11px] text-ra-t5 mt-0.5">
-              5 小時額度重置後，伺服器會在無人看管時自動繼續執行。會話多半以跳過授權（bypassPermissions）運行，
-              開啟等於沒有人在場時仍會改檔與執行指令。預設關閉。
-            </div>
-          </div>
-        </label>
-      </div>
-      <div>
-        <div className="text-sm font-semibold text-ra-t1 mb-1">額度守門</div>
-        <label htmlFor="quota-guard-enabled" className="flex items-start gap-3 cursor-pointer">
-          <input
-            id="quota-guard-enabled"
-            type="checkbox"
-            checked={!!general.quotaGuardEnabled}
-            disabled={loading || saving}
-            onChange={(e) => {
+      />
+      <GeneralCheckbox
+        title="額度守門"
+        label="自動啟動佇列前檢查額度"
+        id="quota-guard-enabled"
+        checked={!!general.quotaGuardEnabled}
+        disabled={loading || saving}
+        onChange={(e) => {
               const decision = generalPatch(general, { quotaGuardEnabled: e.target.checked }, () => true);
               if (decision.put) saveGeneral(decision.next);
             }}
-            className="mt-0.5 w-4 h-4 accent-violet-600 shrink-0"
-          />
-          <div className="min-w-0">
-            <div className="text-sm text-ra-t1">自動啟動佇列前檢查額度</div>
-          </div>
-        </label>
+      >
         <p id="quota-guard-hint" className="text-[11px] text-ra-t5 mt-1">
           任一有百分比的額度視窗已用達門檻時暫停佇列。直接送出與按「繼續」不受影響。守門關閉時不能改數字。
           離開欄位或按 Enter 才儲存。
@@ -401,7 +396,7 @@ function GeneralSection() {
           className="mt-1 w-28 px-2 py-1.5 rounded-lg text-sm bg-ra-raised text-ra-t1 border border-ra-line-strong disabled:opacity-40"
         />
         {error ? <div id="quota-guard-error" role="alert" className="text-xs text-red-400 mt-2">{error}</div> : null}
-      </div>
+      </GeneralCheckbox>
       <div>
         <div className="text-sm font-semibold text-ra-t1 mb-1">模型清單</div>
         <div className="text-[11px] text-ra-t5 mb-2">

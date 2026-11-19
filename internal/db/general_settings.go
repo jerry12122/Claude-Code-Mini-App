@@ -24,6 +24,12 @@ type GeneralSettings struct {
 	QuotaGuardPercent float64 `json:"quotaGuardPercent"`
 }
 
+// AutoResumeOnQuota 讀取「額度用盡後自動繼續」開關；沒有設定列時為 false。
+func (db *DB) AutoResumeOnQuota() (bool, error) {
+	s, err := db.GetGeneralSettings()
+	return s.AutoResumeOnQuota, err
+}
+
 // GetGeneralSettings 讀取一般設定；無列時回預設值（全 false）。
 func (db *DB) GetGeneralSettings() (GeneralSettings, error) {
 	var value string

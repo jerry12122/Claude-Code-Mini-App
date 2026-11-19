@@ -144,28 +144,36 @@ func (r roomRuntime) watch(ctx context.Context) {
 	}
 }
 
-func (r roomRuntime) wake(ctx context.Context, sessionID string) error {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+// wakeSession 以內部喚醒身分連上該 session 的 WS，送出 msg，讀到 doneType 事件後回傳該事件原文。
+func (r roomRuntime) wakeSession(ctx context.Context, sessionID string, timeout time.Duration, msg any, doneType string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	conn, _, err := websocket.DefaultDialer.DialContext(ctx, "ws://"+r.address+"/sessions/"+sessionID+"/ws", http.Header{roomWakeHeader: {r.wakeToken}})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer conn.Close()
 	deadline, _ := ctx.Deadline()
 	_ = conn.SetWriteDeadline(deadline)
 	_ = conn.SetReadDeadline(deadline)
-	if err := conn.WriteJSON(map[string]string{"type": "room_drain"}); err != nil {
-		return err
+	if err := conn.WriteJSON(msg); err != nil {
+		return nil, err
 	}
 	for {
 		_, payload, err := conn.ReadMessage()
 		if err != nil {
-			return err
+			return nil, err
 		}
-		var event struct{ Type string }
-		if json.Unmarshal(payload, &event) == nil && event.Type == "room_drained" {
-			return nil
+		var event struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(payload, &event) == nil && event.Type == doneType {
+			return payload, nil
 		}
 	}
+}
+
+func (r roomRuntime) wake(ctx context.Context, sessionID string) error {
+	_, err := r.wakeSession(ctx, sessionID, 2*time.Second, map[string]string{"type": "room_drain"}, "room_drained")
+	return err
 }
