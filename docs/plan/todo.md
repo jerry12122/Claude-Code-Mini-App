@@ -5,6 +5,7 @@
 ---
 
 ## 🚀 待執行項目
+- [ ] 工作室首次運行後優化：來源身分與暫停狀態、派工優先的桌面／手機版面、長文閱讀、工作室內授權與交接驗收；目前只有[優化計畫與畫面稿](todo/workroom-optimization.md)，尚未開始本計畫的產品實作（2026-11-18）
 - [ ] Windows x64 安裝包發版驗收：實作與本機 smoke／46 項發布檢查完成，尚待 Win10／乾淨帳戶、真實 Runtime 缺少、安裝版跨版更新及手動遷移驗收。2026-11-18 再單跑 `TestRunReturnsWhenOrphanHoldsStdoutAfterResult` 約 2 秒通過；普通全套仍未重跑（見 [紀錄](../reviews/2026-11-18-windows-installer.md)、[規劃](todo/windows-installer.md)）
 - [ ] 桌面自我更新實機驗收：從 v0.13.0 在真實 GitHub 自動更新到下一版（目前只在 fixture 驗證）、點系統匣圖示「檢查更新」、真實 helper 啟動失敗。2026-11-18 未對本機已安裝的桌面程式做這些動作（見封存的 design.md）
 - [x] 版本化桌面 EXE 自更新後檔名不變：評估完成（2026-11-18），不需改程式。便攜 ZIP 內本來就是固定名稱 `claude-miniapp-desktop.exe`（`scripts/release/package.sh`），安裝器入口也是固定名稱，README 推薦的預設入口已是 Setup 安裝包；帶版號的 EXE 只是自我更新用的獨立資產，只有手動直接下載該檔執行的人會遇到檔名仍帶舊版號
@@ -12,7 +13,7 @@
 - [x] `internal/cursor` 的 `runner_test.go:251`（「Run 卡在孤兒進程占住的 stdout」）偶發失敗已修（2026-11-18）：根因是 result 後放棄等待時 `KillTree` 殺不到已退出 wrapper 底下的孤兒（PID 不存在），`cmd.Wait` 只能等 `WaitDelay` 5 秒；負載下前段啟動時間再疊加就超過 7 秒逾時。這也是產品行為問題（result 後有孤兒時任務多卡約 5 秒）。放棄分支把 `WaitDelay` 縮到 200ms；同負載條件下 8 次由失敗 7 次變為 0 次，單次耗時 6.1s→約 1.4s。已知餘險：孤兒進程本身未被殺掉（Windows 限制），約 7 秒後自行結束；前段啟動時間在本機波動大，原因未查
 - [ ] Antigravity 後續驗收：真實 CLI 多輪對話、權限模式、帳戶配額與 TG WebView；回合 Token 統計串接待補（見 [整合計劃](agy-integration.md)）；補充（2026-11-18 核對）：「回合 Token 統計」不是只補 agy 一條線，而是尚未設計的跨 provider 資料流（`agent.Event` 沒有用量欄位；`internal/usage` 的單回合 `Info` 與 `FromClaudeResult` 等解析函式沒有呼叫者，該套件其餘部分則被額度功能使用）。已寫設計草案並建議預設不做，待使用者決定（見 [草案](todo/turn-token-usage.md)）
 - [x] 附件輸入與聊天呈現：輸入框內佔位／重試、訊息附件卡片、驗證預覽與歷史持久化；實機驗證待補（見 [計劃](todo/attachment-experience.md)）
-- [ ] Claude ask 規則走 miniapp 授權：瀏覽器已驗（2026-11-18，臨時實例，`bypassPermissions`，既有 `Bash(curl *)`）：面板顯示 `Bash` 與 `curl --version`；允許後同輪執行（回覆為 curl 8.8.0）；拒絕後不執行、也不再跳第二次允許。單元測試 `TestClaudeAsker`／handoff 通過。尚未做：桌面版、Telegram 通知、連續 20 次、等待超過 5 分鐘、未命中規則不詢問（見 [計劃](todo/claude-permission-prompt.md)）
+- [ ] Claude ask 規則走 miniapp 授權：瀏覽器已驗（2026-11-18，臨時實例，`bypassPermissions`，既有 `Bash(curl *)`）：面板顯示 `Bash` 與 `curl --version`；允許後同輪執行（回覆為 curl 8.8.0）；拒絕後不執行、也不再跳第二次允許。單元測試 `TestClaudeAsker`／handoff 通過。另有全域開關「Claude 完全跳過授權」（`claudeAutoAllowAsk`，預設關，開啟需確認）：只對 `bypassPermissions` 的 Claude run 自動允許 ask 規則詢問，回覆與 server log 各留一行摘要（最多 200 字元）。尚未做：桌面版、Telegram 通知、連續 20 次、等待超過 5 分鐘、未命中規則不詢問。開關的真實 `claude -p` 端到端已驗（2026-11-18）：關有面板、開無面板且回覆有稽核行、`AskUserQuestion` 仍提問、`deny` 仍擋（見 [計劃](todo/claude-permission-prompt.md)）
 - [ ] 手機實機驗證：TG WebView（iOS／Android）📎 檔案選擇器、佇列 UI
 - [x] 驗證 Codex／Cursor／Kiro 能以絕對路徑讀取工作目錄外的圖片（2026-11-18）：claude／codex／kiroacp／antigravity／cursor 皆讀到影像且像素核對正確；測試路徑是 `workspace/rooms/…`，不是真實附件上傳流程，附件流程的實機驗證仍待補（見 [supervisor 試跑紀錄](todo/supervisor-room.md)）
 - [ ] （未來優化，2026-10-06 決定暫緩）agent 圖片的 session／分享驗證與歷史 URL 遷移；目前 `internal/static/uploads` 仍由公開靜態路由讀取，需先確認相容性與授權載入方式

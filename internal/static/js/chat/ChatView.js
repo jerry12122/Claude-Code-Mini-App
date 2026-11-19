@@ -69,58 +69,6 @@ function TelegramOlderControl({ paging, onLoad }) {
   );
 }
 
-function QuestionCard({ question, error, canAct, connected, send }) {
-  const [answers, setAnswers] = useState(() => question.questions.map(() => ({ selected: [], text: '' })));
-  const [submitting, setSubmitting] = useState(false);
-  const [localError, setLocalError] = useState('');
-  const remoteError = error?.request_id === question.request_id ? error.message : '';
-  useEffect(() => { setSubmitting(false); }, [error, connected, question]);
-  const update = (i, value) => setAnswers(prev => prev.map((answer, n) => n === i ? value : answer));
-  const complete = answers.every(a => a.selected.length > 0 || a.text.trim());
-  const disabled = !canAct || !connected || submitting;
-  const submit = (event) => {
-    event.preventDefault();
-    if (disabled || !complete) return;
-    setLocalError('');
-    if (send({ type: 'question_answer', request_id: question.request_id, answers })) setSubmitting(true);
-    else setLocalError('連線中斷，請重連後再送出');
-  };
-  return (
-    <form onSubmit={submit} className="rounded-xl border border-blue-700 bg-blue-950/30 px-4 py-3 text-sm">
-      <div className="text-blue-300 font-semibold mb-3">Claude 需要你的回答</div>
-      {question.questions.map((q, i) => (
-        <fieldset key={i} disabled={disabled} className="mb-4 min-w-0">
-          <legend className="font-medium text-gray-100 mb-2 whitespace-pre-wrap">{q.question} <span className="text-xs text-gray-400">（{q.multiSelect ? '可複選' : '單選'}）</span></legend>
-          {q.options.map((option, n) => (
-            <label key={n} className="flex items-start gap-2 p-2 rounded hover:bg-blue-900/30 cursor-pointer">
-              <input type={q.multiSelect ? 'checkbox' : 'radio'} name={`${question.request_id}-${i}`}
-                checked={answers[i].selected.includes(option.label)} className="mt-1"
-                onChange={event => update(i, { text: q.multiSelect ? answers[i].text : '', selected: q.multiSelect
-                  ? event.target.checked ? [...answers[i].selected, option.label] : answers[i].selected.filter(v => v !== option.label)
-                  : [option.label] })} />
-              <span className="min-w-0 break-words"><span className="text-gray-100">{option.label}</span>
-                {option.description && <span className="block text-xs text-gray-400 whitespace-pre-wrap">{option.description}</span>}
-                {option.preview && <pre className="mt-1 text-xs whitespace-pre-wrap break-words">{option.preview}</pre>}
-              </span>
-            </label>
-          ))}
-          <label className="block mt-2 text-xs text-gray-400">其他回答{q.multiSelect ? '（可補充）' : ''}
-            <textarea value={answers[i].text} maxLength={16000} rows={2}
-              onChange={event => update(i, { selected: q.multiSelect ? answers[i].selected : [], text: event.target.value })}
-              className="block mt-1 w-full rounded bg-gray-900 border border-gray-600 p-2 text-sm text-gray-100" />
-          </label>
-        </fieldset>
-      ))}
-      {(remoteError || localError) && <div role="alert" className="text-red-300 mb-2">{remoteError || localError}</div>}
-      {!canAct ? <p className="text-gray-400 text-xs">等待有權限的人回答…</p> : (
-        <button type="submit" disabled={disabled || !complete} className="px-3 py-2 bg-blue-700 hover:bg-blue-600 text-white rounded-lg disabled:opacity-40">
-          {submitting ? '送出中…' : '送出回答'}
-        </button>
-      )}
-    </form>
-  );
-}
-
 function ChatView({ session, onBack, showBack = true, fullHeight = true, usePermModeDropdown = false, onJumpToSession, allSessions = [], guest = null, onOpenComposer, handoffInfo = null, onHandoffChange, isSplit = false, onToggleSplit = null, splitOrientation = 'horizontal', onToggleSplitOrientation = null, isSecondaryPane = false, onClosePane = null, isFocused = true }) {
   const jumpToSession = typeof onJumpToSession === 'function' ? onJumpToSession : () => {};
   const agentType = session.agent_type || 'claude';
@@ -130,6 +78,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const showPermModeSelect = agentType !== 'codex' && agentType !== 'kiro' && agentType !== 'telegram';
   const showEffortSelect = agentType !== 'cursor' && agentType !== 'telegram';
   const chatScrollRef = useRef(null);
+  const socket = useChatSocket({ session, agentType, showPermModeSelect, showEffortSelect, guest, onHandoffChange, isFocused, scrollRef: chatScrollRef });
   const {
     messages,
     state,
@@ -149,7 +98,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     sessionModel,
     liveActivity,
     runStartedAt,
-    queue, queuePaused, lingering,
+    queue, queuePaused, quotaResume, lingering,
     send,
     submitInput,
     flushPendingModes,
@@ -157,7 +106,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     commitPermMode,
     online,
     shareEnded,
-  } = useChatSocket({ session, agentType, showPermModeSelect, showEffortSelect, guest, onHandoffChange, isFocused, scrollRef: chatScrollRef });
+  } = socket;
 
   // ── 分享聊天室 ──
   // guest 為 null＝擁有者；否則是訪客（viewer 唯讀、editor 可輸入、snapshot 只能看歷史）。
@@ -204,7 +153,6 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   // 已送出優雅停止：只驅動呼吸燈與「再按一次強制停止」文案，不鎖按鈕。任務停或切換 session 時重設。
   const [interrupting, setInterrupting] = useState(false);
   const interruptSentAtRef = useRef(0);
-  const [shellConfirmPending, setShellConfirmPending] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const chatRootRef = useRef(null);
   const dragDepthRef = useRef(0);
@@ -439,7 +387,6 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     setMentionActiveIdx(0);
     setInterrupting(false);
     interruptSentAtRef.current = 0;
-    setShellConfirmPending(false);
     setLightboxSrc(null);
     setDragOver(false);
     dragDepthRef.current = 0;
@@ -730,16 +677,6 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     }
   };
 
-  const handleAllowOnce = () => {
-    if (!sendOrToast({ type: 'allow_once', tools: permTools.map(t => t.tool_name) })) return;
-    setPermTools([]);
-  };
-
-  const handleDenyOnce = () => {
-    if (!sendOrToast({ type: 'deny_once' })) return;
-    setPermTools([]);
-  };
-
   /** 僅更新畫面選擇，送出訊息時才會送 set_mode */
   const handlePermModeDraftChange = (newMode) => {
     setMode(normalizePermMode(agentType, newMode));
@@ -747,15 +684,6 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   /** 僅更新畫面選擇，送出訊息時才會送 set_model / set_effort */
   const handleModelDraftChange = (newModel) => setModelSel(newModel);
   const handleEffortDraftChange = (newEffort) => setEffortSel(newEffort);
-  /** 授權面板「允許並記住」：須立即寫入後端並重試 */
-  const handlePermModeCommitNow = (newMode) => {
-    if (!commitPermMode(newMode)) {
-      showToast('連線中斷，操作未送出，請稍後再試', { error: true, duration: 3000 });
-      return;
-    }
-    setPermTools([]);
-  };
-
   const handleInterrupt = () => {
     const now = Date.now();
     // 只擋誤觸連點；刻意再按（約 300ms 後）會送第二次 interrupt，後端才強制停止。
@@ -763,12 +691,6 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     if (!sendOrToast({ type: 'interrupt' })) return;
     interruptSentAtRef.current = now;
     setInterrupting(true);
-  };
-
-  // 點了之後等伺服器回應：避免對 Shell 允許／拒絕連點（這三顆不會立刻收起面板）
-  const sendShellConfirm = (type) => {
-    if (shellConfirmPending) return;
-    if (sendOrToast({ type })) setShellConfirmPending(true);
   };
 
   const fileInputRef = useRef(null);
@@ -872,16 +794,6 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     syncComposerMenus(input, el ? el.selectionStart : input.length, newMode);
   };
 
-  const handleShellApprove = () => {
-    if (!sendOrToast({ type: 'shell_approve' })) return;
-    setShellPendingCmd(null);
-  };
-
-  const handleShellCancel = () => {
-    if (!sendOrToast({ type: 'shell_cancel' })) return;
-    setShellPendingCmd(null);
-  };
-
   const openHandoffComposer = () => {
     if (!handoffInfo || typeof onOpenComposer !== 'function') return;
     const h = handoffInfo;
@@ -921,14 +833,9 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     if (isDisabled) closeComposerMenus();
   }, [isDisabled]);
 
-  // 中斷呼吸燈：任務停下來就解除。Shell 確認：狀態或請求一變就解除，另有 10 秒保底，避免伺服器沒回應時按鈕永遠鎖住。
+  // 中斷呼吸燈：任務停下來就解除。
   useEffect(() => { if (!taskRunning) setInterrupting(false); }, [taskRunning]);
-  useEffect(() => { setShellConfirmPending(false); }, [state, shellRequest]);
-  useEffect(() => {
-    if (!shellConfirmPending) return undefined;
-    const t = setTimeout(() => setShellConfirmPending(false), 10000);
-    return () => clearTimeout(t);
-  }, [shellConfirmPending]);
+
 
   useEffect(() => {
     if (!composerMenuOpen) return;
@@ -1209,90 +1116,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         }}
         </VirtualMessages>
 
-        {/* Shell 指令批准對話框 */}
-        {state === 'SHELL_AWAITING_APPROVAL' && shellPendingCmd && canAct && (
-          <div className="rounded-xl border border-amber-700/60 bg-amber-950/30 px-4 py-3 text-sm mr-8">
-            <div className="text-amber-400 font-semibold mb-2">⚠️ 即將執行 Shell 指令</div>
-            <div className="text-gray-400 text-xs mb-1">Shell：{shellPendingCmd.shell_type || shellType}</div>
-            {shellPendingCmd.work_dir && (
-              <div className="text-gray-400 text-xs mb-2">目錄：<span className="font-mono text-gray-300">{shellPendingCmd.work_dir}</span></div>
-            )}
-            <pre className="bg-gray-900/60 rounded px-3 py-2 text-xs font-mono text-gray-200 mb-3 whitespace-pre-wrap break-words">{shellPendingCmd.command}</pre>
-            <div className="flex gap-2">
-              <button onClick={handleShellApprove}
-                className="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 text-white rounded-lg text-xs font-medium">
-                確認執行
-              </button>
-              <button onClick={handleShellCancel}
-                className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-xs">
-                取消
-              </button>
-            </div>
-          </div>
-        )}
-
-        {question && (
-          <QuestionCard key={question.request_id} question={question} error={questionError}
-            canAct={canAct} connected={connected} send={send} />
-        )}
-
-        {/* AI 授權確認 */}
-        {state === 'AWAITING_CONFIRM' && permTools.length > 0 && (
-          <div className="rounded-xl border border-yellow-700 bg-yellow-950/40 px-4 py-3 text-sm mr-8">
-            <div className="text-yellow-400 font-semibold mb-2">需要授權</div>
-            {permTools.map((t, i) => <PermToolDetail key={i} tool={t} />)}
-            {permRetryTools && (
-              <div className="mt-2 text-xs text-yellow-200/90">
-                允許後會重試任務，並在本次重試中放行以上工具，不限於畫面上的單一操作。這次允許不會永久記住。
-              </div>
-            )}
-            {!canAct && <div className="mt-2 text-xs text-yellow-200/70">等待有權限的人處理…</div>}
-            <div className={canAct ? 'flex gap-2 mt-3' : 'hidden'}>
-              <button onClick={handleAllowOnce}
-                className="px-3 py-1.5 bg-yellow-700 hover:bg-yellow-600 text-white rounded-lg text-xs">
-                {permRetryTools ? '允許工具並重試' : '允許此操作'}
-              </button>
-              {/* 切到 acceptEdits 只對編輯類工具有效；Bash 等會再被拒一次，所以只在全是編輯工具時顯示 */}
-              {!isGuest && permTools.every((t) => EDIT_TOOL_NAMES.has(t.tool_name)) && (
-                <button onClick={() => handlePermModeCommitNow('acceptEdits')}
-                  className="px-3 py-1.5 bg-orange-700 hover:bg-orange-600 text-white rounded-lg text-xs">
-                  允許並自動允許編輯
-                </button>
-              )}
-              <button onClick={handleDenyOnce}
-                className="px-3 py-1.5 bg-red-900 hover:bg-red-800 text-red-100 rounded-lg text-xs">
-                拒絕
-              </button>
-            </div>
-          </div>
-        )}
-
-        {state === 'AWAITING_SHELL_CONFIRM' && shellRequest && canAct && (
-          <div className="rounded-xl border border-orange-700/90 bg-orange-950/35 px-4 py-3 text-sm mr-8">
-            <div className="text-orange-300 font-semibold mb-2">允許執行 Shell 指令？</div>
-            <div className="text-gray-200 text-xs font-mono break-words mb-1 whitespace-pre-wrap">{shellRequest.line}</div>
-            <div className="text-gray-500 text-[10px] font-mono mb-2">
-              指令名稱：<span className="text-orange-200/90">{shellRequest.command}</span>
-              {shellRequest.workDirKey ? (
-                <span className="block truncate mt-0.5" title={shellRequest.workDirKey}>目錄：{shellRequest.workDirKey}</span>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap gap-2 mt-2">
-              <button type="button" onClick={() => sendShellConfirm('shell_allow_once')} disabled={shellConfirmPending}
-                className="px-3 py-1.5 bg-orange-800 hover:bg-orange-700 text-white rounded-lg text-xs disabled:opacity-40">
-                允許一次
-              </button>
-              <button type="button" onClick={() => sendShellConfirm('shell_allow_remember_workdir')} disabled={shellConfirmPending}
-                className="px-3 py-1.5 bg-amber-900 hover:bg-amber-800 text-amber-100 rounded-lg text-xs disabled:opacity-40">
-                允許並記住此目錄
-              </button>
-              <button type="button" onClick={() => sendShellConfirm('shell_deny')} disabled={shellConfirmPending}
-                className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs disabled:opacity-40">
-                拒絕
-              </button>
-            </div>
-          </div>
-        )}
+        <SessionActionCards key={`actions:${session.id}`} socket={socket} canAct={canAct} isGuest={isGuest} />
 
         {handoffInfo && !isGuest && (
           <div className="rounded-xl border border-rose-700/70 bg-rose-950/30 px-4 py-3 text-sm mr-8">
@@ -1333,8 +1157,15 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       )}
       </div>
 
+      <QuotaResumeBanner
+        resume={quotaResume}
+        isOwner={!isGuest}
+        connected={connected}
+        onCancel={() => sendOrToast({ type: 'quota_resume_cancel' })}
+      />
+
       {agentRunning && !agentReadOnly && !isSnapshot && !shareOver && (
-        <LiveActivity key={session.id} activity={liveActivity} state={state} connected={connected} runStartedAt={runStartedAt} />
+        <LiveActivity key={`activity:${session.id}`} activity={liveActivity} state={state} connected={connected} runStartedAt={runStartedAt} />
       )}
 
       {/* 輸入區：水平內距略小於訊息列表，讓輸入框可用寬度較大。唯讀訪客／分享已結束時改顯示提示列。 */}

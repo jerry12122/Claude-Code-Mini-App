@@ -1,23 +1,92 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 )
 
 // QueuedMessage 是 session 執行中時使用者先送出、等前一個任務完成才執行的訊息。
 type QueuedMessage struct {
-	ID            int64        `json:"id"`
-	Content       string       `json:"content"`
-	Author        string       `json:"author,omitempty"` // 送出者暱稱；空字串＝擁有者
-	CreatedAt     string       `json:"created_at"`
-	AttachmentIDs []string     `json:"-"`
-	Attachments   []Attachment `json:"attachments,omitempty"`
+	ID              int64        `json:"id"`
+	Content         string       `json:"content"`
+	Author          string       `json:"author,omitempty"` // 送出者暱稱；空字串＝擁有者
+	SourceSessionID string       `json:"source_session_id,omitempty"`
+	CreatedAt       string       `json:"created_at"`
+	AttachmentIDs   []string     `json:"-"`
+	Attachments     []Attachment `json:"attachments,omitempty"`
 }
 
 // EnqueueMessage 把訊息排到佇列尾端。佇列原本為空時順便解除暫停：
 // 暫停只針對「失敗當下還留著的那批」，新的一批重新開始。
 func (db *DB) EnqueueMessage(sessionID, content, author string, ids ...string) (*QueuedMessage, error) {
+	return db.enqueueMessage(sessionID, content, author, "", ids)
+}
+
+// EnqueueMessageFrom 與 EnqueueMessage 相同，但只在 source 是既存 session 時寫下可信來源。
+func (db *DB) EnqueueMessageFrom(sessionID, content, author, source string, ids ...string) (*QueuedMessage, error) {
+	if source != "" {
+		var one int
+		if err := db.QueryRow(`SELECT 1 FROM sessions WHERE id = ?`, source).Scan(&one); err != nil {
+			return nil, fmt.Errorf("來源 session 不存在")
+		}
+	}
+	return db.enqueueMessage(sessionID, content, author, source, ids)
+}
+
+// EnqueueMessageFromCancelQuota 把新佇列訊息與取消舊自動復原放在同一筆交易。
+// 取消失敗時不留下新訊息，也不解除暫停。source 不是既存 session 時不取消。
+func (db *DB) EnqueueMessageFromCancelQuota(sessionID, content, author, source string, ids ...string) (*QueuedMessage, error) {
+	if source != "" {
+		var one int
+		if err := db.QueryRow(`SELECT 1 FROM sessions WHERE id = ?`, source).Scan(&one); err != nil {
+			return nil, fmt.Errorf("來源 session 不存在")
+		}
+	}
+	attachments, err := db.ResolveAttachments(sessionID, ids)
+	if err != nil {
+		return nil, err
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM queued_messages WHERE session_id = ?`, sessionID).Scan(&n); err != nil {
+		return nil, err
+	}
+	if n == 0 {
+		if _, err := tx.Exec(`UPDATE sessions SET queue_paused = 0 WHERE id = ?`, sessionID); err != nil {
+			return nil, err
+		}
+	}
+	res, err := tx.Exec(`INSERT INTO queued_messages (session_id, content, attachment_ids, author, source_session_id) VALUES (?, ?, ?, ?, ?)`, sessionID, content, attachmentIDsJSON(ids), author, source)
+	if err != nil {
+		return nil, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	if err := execCancelQuotaResume(tx, sessionID); err != nil {
+		return nil, err
+	}
+	var createdAt string
+	if err := tx.QueryRow(`SELECT created_at FROM queued_messages WHERE id = ?`, id).Scan(&createdAt); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &QueuedMessage{
+		ID: id, Content: content, Author: author, SourceSessionID: source, CreatedAt: createdAt,
+		AttachmentIDs: ids, Attachments: attachments,
+	}, nil
+}
+
+func (db *DB) enqueueMessage(sessionID, content, author, source string, ids []string) (*QueuedMessage, error) {
 	attachments, err := db.ResolveAttachments(sessionID, ids)
 	if err != nil {
 		return nil, err
@@ -31,7 +100,7 @@ func (db *DB) EnqueueMessage(sessionID, content, author string, ids ...string) (
 			return nil, err
 		}
 	}
-	res, err := db.Exec(`INSERT INTO queued_messages (session_id, content, attachment_ids, author) VALUES (?, ?, ?, ?)`, sessionID, content, attachmentIDsJSON(ids), author)
+	res, err := db.Exec(`INSERT INTO queued_messages (session_id, content, attachment_ids, author, source_session_id) VALUES (?, ?, ?, ?, ?)`, sessionID, content, attachmentIDsJSON(ids), author, source)
 	if err != nil {
 		return nil, err
 	}
@@ -39,14 +108,64 @@ func (db *DB) EnqueueMessage(sessionID, content, author string, ids ...string) (
 	if err != nil {
 		return nil, err
 	}
-	q := &QueuedMessage{ID: id, Content: content, Author: author, AttachmentIDs: ids, Attachments: attachments}
+	q := &QueuedMessage{ID: id, Content: content, Author: author, SourceSessionID: source, AttachmentIDs: ids, Attachments: attachments}
 	err = db.QueryRow(`SELECT created_at FROM queued_messages WHERE id = ?`, id).Scan(&q.CreatedAt)
 	return q, err
 }
 
+// EnqueueFront 把訊息插到佇列最前面。id 取整張 queued_messages 的 MIN(最小 id, 0) - 1，
+// 所以不同 session 也不會撞到同一個負數主鍵。不改變暫停狀態。
+func (db *DB) EnqueueFront(sessionID, content, author string, ids ...string) (*QueuedMessage, error) {
+	attachments, err := db.ResolveAttachments(sessionID, ids)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
+		return nil, err
+	}
+	done := false
+	defer func() {
+		if !done {
+			_, _ = conn.ExecContext(context.Background(), `ROLLBACK`)
+		}
+	}()
+	var minID sql.NullInt64
+	if err := conn.QueryRowContext(ctx, `SELECT MIN(id) FROM queued_messages`).Scan(&minID); err != nil {
+		return nil, err
+	}
+	base := int64(0)
+	if minID.Valid && minID.Int64 < 0 {
+		base = minID.Int64
+	}
+	id := base - 1
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO queued_messages (id, session_id, content, attachment_ids, author) VALUES (?, ?, ?, ?, ?)`,
+		id, sessionID, content, attachmentIDsJSON(ids), author); err != nil {
+		return nil, err
+	}
+	var createdAt string
+	if err := conn.QueryRowContext(ctx, `SELECT created_at FROM queued_messages WHERE id = ?`, id).Scan(&createdAt); err != nil {
+		return nil, err
+	}
+	if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
+		return nil, err
+	}
+	done = true
+	return &QueuedMessage{
+		ID: id, Content: content, Author: author, CreatedAt: createdAt,
+		AttachmentIDs: ids, Attachments: attachments,
+	}, nil
+}
+
 // ListQueuedMessages 依送出順序（FIFO）回傳佇列。
 func (db *DB) ListQueuedMessages(sessionID string) ([]QueuedMessage, error) {
-	rows, err := db.Query(`SELECT id, content, created_at, attachment_ids, author FROM queued_messages WHERE session_id = ? ORDER BY id`, sessionID)
+	rows, err := db.Query(`SELECT id, content, created_at, attachment_ids, author, source_session_id FROM queued_messages WHERE session_id = ? ORDER BY id`, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +174,7 @@ func (db *DB) ListQueuedMessages(sessionID string) ([]QueuedMessage, error) {
 	for rows.Next() {
 		var q QueuedMessage
 		var ids string
-		if err := rows.Scan(&q.ID, &q.Content, &q.CreatedAt, &ids, &q.Author); err != nil {
+		if err := rows.Scan(&q.ID, &q.Content, &q.CreatedAt, &ids, &q.Author, &q.SourceSessionID); err != nil {
 			return nil, err
 		}
 		q.AttachmentIDs, err = decodeAttachmentIDs(ids)
@@ -87,8 +206,8 @@ func (db *DB) PopQueuedMessage(sessionID string) (*QueuedMessage, error) {
 	defer tx.Rollback()
 	var q QueuedMessage
 	var ids string
-	err = tx.QueryRow(`SELECT id, content, created_at, attachment_ids, author FROM queued_messages WHERE session_id = ? ORDER BY id LIMIT 1`, sessionID).
-		Scan(&q.ID, &q.Content, &q.CreatedAt, &ids, &q.Author)
+	err = tx.QueryRow(`SELECT id, content, created_at, attachment_ids, author, source_session_id FROM queued_messages WHERE session_id = ? ORDER BY id LIMIT 1`, sessionID).
+		Scan(&q.ID, &q.Content, &q.CreatedAt, &ids, &q.Author, &q.SourceSessionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -106,14 +225,44 @@ func (db *DB) PopQueuedMessage(sessionID string) (*QueuedMessage, error) {
 }
 
 // DeleteQueuedMessage 刪除指定一則；帶 sessionID 避免跨 session 誤刪。
+// 不取消自動復原。Telegram 出列走這裡，避免把正在跑的排程清掉。
 func (db *DB) DeleteQueuedMessage(sessionID string, id int64) error {
 	_, err := db.Exec(`DELETE FROM queued_messages WHERE session_id = ? AND id = ?`, sessionID, id)
 	return err
 }
 
+// DeleteQueuedMessageCancelQuota 在同一筆交易刪除指定列並取消自動復原。
+// 任一失敗都回滾，佇列與狀態保持原樣。列已經不在時仍取消排程，與原本的冪等刪除一致。
+func (db *DB) DeleteQueuedMessageCancelQuota(sessionID string, id int64) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM queued_messages WHERE session_id = ? AND id = ?`, sessionID, id); err != nil {
+		return err
+	}
+	if err := execCancelQuotaResume(tx, sessionID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// ClearQueuedMessages 刪掉這個 session 的佇列，並在同一筆交易把自動復原清成 none、世代加 1。
+// 世代不歸零。刪除本身不解除暫停，也不啟動佇列。
 func (db *DB) ClearQueuedMessages(sessionID string) error {
-	_, err := db.Exec(`DELETE FROM queued_messages WHERE session_id = ?`, sessionID)
-	return err
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM queued_messages WHERE session_id = ?`, sessionID); err != nil {
+		return err
+	}
+	if err := execCancelQuotaResume(tx, sessionID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (db *DB) SetQueuePaused(sessionID string, paused bool) error {

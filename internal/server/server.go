@@ -141,8 +141,19 @@ func startNormal(ctx context.Context) (*Server, error) {
 	return runNormal(ctx, cfg)
 }
 
+type isolatedExternal struct {
+	refresh      func(context.Context, string) (quota.Snapshot, error)
+	seedProvider string
+	seed         quota.Snapshot
+}
+
 // runNormal 是 Start 在 config.Load 成功之後的原流程。行為與抽出前相同，避免正常啟動讀兩次設定。
-func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
+// ext 只有隔離臨時程序會帶入；正式 Start 不帶，模型同步與額度暖機維持原樣。
+func runNormal(ctx context.Context, cfg *config.Config, ext ...isolatedExternal) (*Server, error) {
+	var external isolatedExternal
+	if len(ext) > 0 {
+		external = ext[0]
+	}
 	allowedNets, err := auth.ParseCIDRs(cfg.Web.AllowedCIDRs)
 	if err != nil {
 		return nil, fmt.Errorf("CIDR 設定錯誤: %v", err)
@@ -163,9 +174,9 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("DB 初始化失敗: %v", err)
 	}
 
-	if err := database.ResetRunningSessions(); err != nil {
+	if err := recoverSessionsAfterStartup(database, time.Now()); err != nil {
 		database.Close()
-		return nil, fmt.Errorf("重啟任務狀態恢復失敗: %w", err)
+		return nil, err
 	}
 	if err := database.ResetPendingMessages(); err != nil {
 		database.Close()
@@ -176,7 +187,10 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("工作室派工狀態恢復失敗: %w", err)
 	}
 	// 背景執行：各 CLI 抓清單各要 1 秒上下，而且失敗本來就不擋啟動。
-	go syncModelOptions(database)
+	// 隔離啟動不跑這段，避免臨時程序去叫真 CLI。
+	if external.refresh == nil {
+		go syncModelOptions(database)
+	}
 
 	for _, id := range cfg.WhitelistTgIDs {
 		if err := database.AddUser(id, ""); err != nil {
@@ -426,6 +440,9 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 			if h := c.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
 				token := strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
 				if subtle.ConstantTimeCompare([]byte(token), []byte(cfg.McpToken)) == 1 {
+					if c.Context().RemoteIP().IsLoopback() {
+						c.Locals("mcp_agent", true)
+					}
 					return authorizedNext()
 				}
 			}
@@ -484,7 +501,7 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 	app.Get("/share/:token", shareH.Page)
 	app.Post("/share/:token/join", api.JoinLimiter(), smallJSONBody, shareH.Join)
 
-	sth := api.NewSettingsHandler(database)
+	sth := api.NewSettingsHandler(database, cfg.QuotaGuardPercent)
 	app.Get("/settings/appearance", authMiddleware, sth.GetAppearance)
 	app.Put("/settings/appearance", authMiddleware, sth.PutAppearance)
 	app.Get("/settings/general", authMiddleware, sth.GetGeneral)
@@ -512,7 +529,14 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 	app.Get("/sessions/:id/uploads/:attachmentId", authMiddleware, uh.Content)
 
 	quotaSvc := quota.NewService()
-	go quotaSvc.Warmup(context.Background())
+	if external.refresh == nil {
+		go quotaSvc.Warmup(context.Background())
+	} else {
+		quotaSvc.UseFetch(external.refresh)
+		if external.seedProvider != "" {
+			quotaSvc.Store(external.seedProvider, external.seed)
+		}
+	}
 	qh := api.NewQuotaHandler(quotaSvc)
 	app.Get("/quota", authMiddleware, qh.GetAll)
 	app.Get("/quota/:provider", authMiddleware, qh.Get)
@@ -522,6 +546,11 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 	app.Get("/sessions/:id/files", authMiddleware, filesH.List)
 	app.Get("/sessions/:id/files/content", authMiddleware, filesH.Content)
 	roomRuntime := newRoomRuntime(database, cfg.Server.Port)
+	if external.refresh != nil {
+		roomRuntime.quotaRefresh = external.refresh
+	} else {
+		roomRuntime.quotaRefresh = quotaSvc.RefreshManual
+	}
 	roomRuntime.registerRoutes(app, authMiddleware, quotaSvc)
 
 	tgMgr := tgclient.NewManager(cfg.TelegramClient, database)
@@ -566,8 +595,21 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 	app.Get("/logs/ws", authMiddleware, fiberws.New(guardedSocket(ws.NewLogStreamHandler())))
 	app.Get("/logs/level", authMiddleware, api.GetLogLevel)
 	app.Put("/logs/level", authMiddleware, api.PutLogLevel)
-	app.Get("/sessions/:id/ws", roomRuntime.wsAuth(authMiddleware), fiberws.New(guardedSocket(ws.NewHandler(database, cfg.BotToken, shellOpts, quotaSvc, notifyCfg,
-		ws.WithQuotaGuardPercent(cfg.QuotaGuardPercent), ws.WithRoomBridge(roomRuntime.bridge)))))
+	handlerOpts := []ws.HandlerOption{
+		ws.WithQuotaGuardPercent(cfg.QuotaGuardPercent),
+		ws.WithQuotaGuardSettings(func() (bool, float64) {
+			gs, err := database.EffectiveGeneralSettings(cfg.QuotaGuardPercent)
+			if err != nil {
+				return false, 90
+			}
+			return gs.QuotaGuardEnabled, gs.QuotaGuardPercent
+		}),
+		ws.WithRoomBridge(roomRuntime.bridge),
+	}
+	if external.refresh != nil {
+		handlerOpts = append(handlerOpts, ws.WithQuotaResumeRefresh(external.refresh))
+	}
+	app.Get("/sessions/:id/ws", roomRuntime.wsAuth(authMiddleware), fiberws.New(guardedSocket(ws.NewHandler(database, cfg.BotToken, shellOpts, quotaSvc, notifyCfg, handlerOpts...))))
 
 	if cfg.McpToken != "" {
 		header := http.Header{"Authorization": {"Bearer " + cfg.McpToken}}
@@ -595,6 +637,9 @@ func runNormal(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
+	if external.refresh != nil {
+		addr = fmt.Sprintf("127.0.0.1:%d", cfg.Server.Port)
+	}
 	slog.Info(fmt.Sprintf("MiniApp v%s listening on %s", version.Version, addr))
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {

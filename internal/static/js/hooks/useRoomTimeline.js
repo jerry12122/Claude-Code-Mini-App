@@ -18,7 +18,9 @@ function useRoomDetail(roomId) {
   const [room, setRoom] = useState(null);
   const [error, setError] = useState('');
   const [notFound, setNotFound] = useState(false);
+  const [stale, setStale] = useState(false);
   const generation = useRef(0);
+  const roomRef = useRef(null);
 
   const load = useCallback(async () => {
     const mine = ++generation.current;
@@ -26,18 +28,28 @@ function useRoomDetail(roomId) {
       const res = await apiFetch(roomUrl(roomId));
       if (mine !== generation.current) return;
       if (res.status === 404) { setNotFound(true); return; }
-      if (!res.ok) { setError(await roomApiError(res, '載入工作室失敗')); return; }
+      if (!res.ok) {
+        if (roomRef.current) setStale(true);
+        setError(await roomApiError(res, '載入工作室失敗'));
+        return;
+      }
       const data = await res.json();
       if (mine !== generation.current) return;
+      roomRef.current = data;
       setRoom(data);
+      setStale(false);
       setError('');
     } catch (_) {
-      if (mine === generation.current) setError('載入工作室失敗');
+      if (mine === generation.current) {
+        if (roomRef.current) setStale(true);
+        setError('載入工作室失敗');
+      }
     }
   }, [roomId]);
 
   useEffect(() => {
-    setRoom(null); setError(''); setNotFound(false);
+    roomRef.current = null;
+    setRoom(null); setError(''); setNotFound(false); setStale(false);
     load();
     return () => { ++generation.current; };
   }, [load]);
@@ -49,7 +61,7 @@ function useRoomDetail(roomId) {
     return () => { window.removeEventListener(ROOMS_CHANGED_EVENT, load); stop(); };
   }, [load, notFound]);
 
-  return { room, error, notFound };
+  return { room, error, notFound, stale };
 }
 
 function useRoomTimeline(roomId) {

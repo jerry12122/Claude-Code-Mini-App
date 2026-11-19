@@ -244,11 +244,15 @@ type AskResult struct {
 // ponytail: 同一目標 session 的 Ask 以 askLock 序列化，但 send_message／set_model 等其他 begin() 呼叫不受此鎖；
 // 它們會結束目前這輪，等待中的 Ask 以 Error 回報「被中斷」。要嚴格互斥就得改成依 msgID 追蹤每一輪。
 func (r *Registry) Ask(ctx context.Context, sessionID, text string, timeout time.Duration) (AskResult, error) {
+	return r.AskFrom(ctx, sessionID, text, "", timeout)
+}
+
+func (r *Registry) AskFrom(ctx context.Context, sessionID, text, sourceSessionID string, timeout time.Duration) (AskResult, error) {
 	lock := r.askLock(sessionID)
 	lock.Lock()
 	defer lock.Unlock()
 
-	done, st, err := r.begin(sessionID, map[string]string{"type": "input", "data": text})
+	done, st, err := r.begin(sessionID, consultInput(text, sourceSessionID))
 	if err != nil {
 		return AskResult{}, err
 	}
@@ -288,7 +292,20 @@ func (r *Registry) Status(sessionID string) (state, text string, perm json.RawMe
 }
 
 func (r *Registry) SendMessage(sessionID, text string) error {
-	return r.send(sessionID, map[string]string{"type": "input", "data": text})
+	return r.SendFrom(sessionID, text, "")
+}
+
+// SendFrom 送出文字。sourceSessionID 只有在呼叫端已確認該 session 存在時才會寫進訊息。
+func (r *Registry) SendFrom(sessionID, text, sourceSessionID string) error {
+	return r.send(sessionID, consultInput(text, sourceSessionID))
+}
+
+func consultInput(text, sourceSessionID string) map[string]string {
+	payload := map[string]string{"type": "input", "data": text}
+	if sourceSessionID != "" {
+		payload["source_session_id"] = sourceSessionID
+	}
+	return payload
 }
 
 func (r *Registry) ShellExec(sessionID, command string) error {

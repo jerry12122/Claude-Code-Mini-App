@@ -29,6 +29,8 @@ func TestWrapConsultEnvelopeContainsIdentitiesAndBody(t *testing.T) {
 		"\nhop: 2\n",
 		"這個 API 怎麼用？",
 		"你是 session_id: 22222222-2222-2222-2222-222222222222（實作）",
+		"若需要回覆",
+		"純通知不必回覆",
 		`send_message(session_id="11111111-1111-1111-1111-111111111111", from_session_id="22222222-2222-2222-2222-222222222222", text=...)`,
 	}
 	for _, s := range mustContain {

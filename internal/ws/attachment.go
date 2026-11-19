@@ -16,7 +16,7 @@ func attachmentPrompt(database *db.DB, sessionID, text string, ids []string) (st
 	}
 	var prompt strings.Builder
 	for _, a := range attachments {
-		p, err := media.ExistingUploadPath(sessionID, a.StorageName)
+		p, err := media.ExistingUploadPath(a.SessionID, a.StorageName)
 		if err != nil {
 			return "", err
 		}

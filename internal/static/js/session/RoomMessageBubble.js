@@ -10,18 +10,19 @@ function roomProseClick(e) {
   copyText(text).then((ok) => showToast(ok ? '已複製程式碼' : '複製失敗', ok ? undefined : { error: true }));
 }
 
-function RoomMessageBody({ text, pending, children }) {
-  if (pending || (text.length <= 500 && text.split('\n', 9).length < 9)) return children;
-  const preview = Array.from(text.trimStart().slice(0, 240).replace(/\s+/gu, ' ')).slice(0, 120).join('');
+function RoomMessageBody({ text, full, pending, children }) {
+  const lines = String(text || '').split('\n');
+  if (pending || (text.length <= 500 && lines.length <= 3)) return children;
+  const preview = lines.slice(0, 3).join('\n');
   return (
     <details className="room-wrap text-sm">
-      <summary className="cursor-pointer py-1">
+      <summary className="min-h-11 cursor-pointer py-1">
         <span className="text-xs font-semibold">展開全文</span>
-        <span className="mt-1 block text-sm leading-relaxed">{preview}…</span>
+        <span className="mt-1 block whitespace-pre-wrap text-sm leading-relaxed">{preview}{lines.length > 3 || text.length > preview.length ? '…' : ''}</span>
       </summary>
       <div className="mt-2 pt-1">
-        <button type="button" className="mb-1 min-h-9 rounded-md px-2 text-xs font-semibold underline-offset-4 hover:underline"
-          onClick={() => copyText(text).then((ok) => showToast(ok ? '已複製全文' : '複製失敗', ok ? undefined : { error: true }))}>複製全文</button>
+        <button type="button" className="mb-1 min-h-11 rounded-md px-2 text-xs font-semibold underline-offset-4 hover:underline"
+          onClick={() => copyText(full || text).then((ok) => showToast(ok ? '已複製全文' : '複製失敗', ok ? undefined : { error: true }))}>複製全文</button>
         {children}
       </div>
     </details>
@@ -56,18 +57,25 @@ const RoomMessageBubble = React.memo(function RoomMessageBubble({ m, onPreview }
           {meta.recipient ? <span className="room-wrap text-xs leading-snug text-ra-t3">
             <span aria-hidden="true">→ </span><span className="sr-only">傳給 </span>{meta.recipient}
           </span> : null}
+          {meta.sourceRoom ? <span className="room-wrap text-xs text-ra-t3">來自 {meta.sourceRoom}</span> : null}
           {meta.time ? <time className="ra-msg-time shrink-0 tabular-nums text-ra-t4" dateTime={m.created_at}>{meta.time}</time> : null}
         </header>
-        <div className={'min-w-0 ' + (meta.mine
+        <div className={'room-read min-w-0 ' + (meta.mine
           ? 'bubble-user px-4 py-2.5'
           : meta.side === 'assistant' ? 'text-ra-t2' : 'rounded-lg border border-ra-line-soft bg-ra-card px-3 py-2.5 text-sm text-ra-t2')}>
-          {m.text ? <RoomMessageBody text={m.text} pending={meta.pending}>
+          {meta.body ? <RoomMessageBody text={meta.body} full={m.text} pending={meta.pending}>
             {html ? (
               <div className="room-wrap prose text-ra-t2 text-sm leading-[1.7]" onClick={roomProseClick} dangerouslySetInnerHTML={{ __html: html }} />
             ) : (
-              <div className="room-wrap whitespace-pre-wrap leading-relaxed">{m.text}</div>
+              <div className="room-wrap whitespace-pre-wrap leading-relaxed">{meta.body}</div>
             )}
           </RoomMessageBody> : null}
+          {meta.transfer ? <details className="mt-2">
+            <summary className="min-h-11 cursor-pointer text-xs font-semibold text-ra-t3">傳遞資訊</summary>
+            <pre className="room-wrap whitespace-pre-wrap text-xs text-ra-t3">{meta.transfer}</pre>
+            {meta.sourceSessionID ? <p className="mt-1 text-xs text-ra-t4">已記錄的來源 session：{meta.sourceSessionID}</p>
+              : <p className="mt-1 text-xs text-ra-t4">這段文字來自訊息原文，沒有經過驗證的來源紀錄。</p>}
+          </details> : null}
           {m.attachments?.length ? <div className={m.text ? 'mt-2' : ''}><MessageAttachments items={m.attachments} onPreview={onPreview} /></div> : null}
           {meta.pending && !html ? <div className="flex gap-1 py-1" aria-label="串流中"><span className="dot" /><span className="dot" /><span className="dot" /></div> : null}
           {meta.pending && html ? <span className="streaming-tail select-none" aria-hidden="true">...</span> : null}

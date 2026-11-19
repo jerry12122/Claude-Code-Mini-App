@@ -5,14 +5,16 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/ws"
 )
 
 type SettingsHandler struct {
-	db *db.DB
+	db                      *db.DB
+	quotaGuardConfigPercent float64
 }
 
-func NewSettingsHandler(database *db.DB) *SettingsHandler {
-	return &SettingsHandler{db: database}
+func NewSettingsHandler(database *db.DB, quotaGuardConfigPercent float64) *SettingsHandler {
+	return &SettingsHandler{db: database, quotaGuardConfigPercent: quotaGuardConfigPercent}
 }
 
 // GetAppearance GET /settings/appearance
@@ -33,9 +35,9 @@ func (h *SettingsHandler) PutAppearance(c *fiber.Ctx) error {
 	return c.JSON(res)
 }
 
-// GetGeneral GET /settings/general
+// GetGeneral GET /settings/general — 回傳有效值（含尚未儲存時由 config 百分比推得的守門設定）。
 func (h *SettingsHandler) GetGeneral(c *fiber.Ctx) error {
-	res, err := h.db.GetGeneralSettings()
+	res, err := h.db.EffectiveGeneralSettings(h.quotaGuardConfigPercent)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -43,10 +45,28 @@ func (h *SettingsHandler) GetGeneral(c *fiber.Ctx) error {
 }
 
 // PutGeneral PUT /settings/general — 整包覆寫。
+// quotaGuardPercent 必須在 (0, 100]；不合法回 400 且不寫入、也不清除自動復原狀態。
+// autoResumeOnQuota 由 true 改為 false 時，由 PutGeneralSettings 在同一筆交易裡清除狀態並寫入設定。
 func (h *SettingsHandler) PutGeneral(c *fiber.Ctx) error {
+	var incoming db.GeneralSettings
+	if err := json.Unmarshal(c.Body(), &incoming); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
+	if incoming.QuotaGuardPercent <= 0 || incoming.QuotaGuardPercent > 100 {
+		return c.Status(400).JSON(fiber.Map{"error": "quotaGuardPercent 必須大於 0 且小於等於 100"})
+	}
+	prev, err := h.db.GetGeneralSettings()
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
 	res, err := h.db.PutGeneralSettings(c.Body())
 	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	if prev.AutoResumeOnQuota && !res.AutoResumeOnQuota {
+		if err := ws.BroadcastQuotaResumeClears(h.db); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		}
 	}
 	return c.JSON(res)
 }

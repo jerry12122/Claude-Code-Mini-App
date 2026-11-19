@@ -194,3 +194,123 @@ func TestQuotaGuardResumeBypassesGuard(t *testing.T) {
 		t.Fatalf("使用者按繼續應啟動下一則: starts=%d queue=%d", h.starts, queueLen(h.db, h.id))
 	}
 }
+
+// newRuntimeGuardHarness 的守門每次呼叫都讀 enabled／percent，用來模擬執行期改設定。
+func newRuntimeGuardHarness(t *testing.T, snap quota.Snapshot) (h *guardHarness, enabled *bool, percent *float64) {
+	t.Helper()
+	on := true
+	threshold := 90.0
+	database, err := db.Open(t.TempDir() + "/guard-runtime.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	s, err := database.CreateSession("guard-runtime", "", "", "default", "claude", nil, "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h = &guardHarness{db: database, id: s.ID, snap: snap, percent: threshold}
+	h.d = &sessionDispatcher{
+		database: database, sessionID: s.ID, actor: "owner",
+		start: func(in clientMsg, q *db.QueuedMessage) error {
+			if q != nil {
+				if _, err := database.PromoteQueuedMessage(s.ID, *q); err != nil {
+					return err
+				}
+			}
+			h.starts++
+			return nil
+		},
+		reply:          func(serverMsg) bool { return true },
+		broadcastQueue: func() { h.queueBroadcasts++ },
+		broadcast: func(m serverMsg) {
+			if m.Type == "error" {
+				h.errors = append(h.errors, m.Content)
+			}
+		},
+		quotaGuard: quotaGuardFromSettings(func() quota.Snapshot { return h.snap }, func() (bool, float64) {
+			return on, threshold
+		}),
+	}
+	return h, &on, &threshold
+}
+
+func TestQuotaGuardRuntimeThresholdChange(t *testing.T) {
+	h, _, percent := newRuntimeGuardHarness(t, snapWith(false, quota.Window{Key: "session", Label: "5h", Percent: pct(50)}))
+	*percent = 90
+	h.enqueue(t, "a")
+	h.d.Drain()
+	if h.starts != 1 || queueLen(h.db, h.id) != 0 {
+		t.Fatalf("門檻 90、已用 50%% 應啟動: starts=%d queue=%d", h.starts, queueLen(h.db, h.id))
+	}
+	*percent = 40
+	h.enqueue(t, "b")
+	h.d.Drain()
+	if h.starts != 1 {
+		t.Fatalf("門檻改 40 後不應再啟動: starts=%d", h.starts)
+	}
+	if paused, _ := h.db.QueuePaused(h.id); !paused {
+		t.Fatal("應暫停")
+	}
+	s, err := h.db.GetSession(h.id)
+	if err != nil || !strings.Contains(s.LastErrorText, "50") || !strings.Contains(s.LastErrorText, "40") {
+		t.Fatalf("原因應含 50%% 已用與 40%% 門檻: %q err=%v", s.LastErrorText, err)
+	}
+}
+
+func TestQuotaGuardRuntimeDisableAllowsNextStart(t *testing.T) {
+	h, enabled, percent := newRuntimeGuardHarness(t, snapWith(false, quota.Window{Key: "session", Percent: pct(95)}))
+	*percent = 90
+	if h.d.quotaGuard == nil || h.d.quotaGuard() == "" {
+		t.Fatal("關閉前守門應會擋下 95%")
+	}
+	*enabled = false
+	h.enqueue(t, "a")
+	h.d.Drain()
+	if h.starts != 1 || queueLen(h.db, h.id) != 0 {
+		t.Fatalf("關閉守門後應照跑: starts=%d queue=%d", h.starts, queueLen(h.db, h.id))
+	}
+	if paused, _ := h.db.QueuePaused(h.id); paused {
+		t.Fatal("關閉守門不應暫停")
+	}
+}
+
+func TestQuotaGuardRuntimeDirectSendAndResumeIgnoreGuard(t *testing.T) {
+	over := snapWith(false, quota.Window{Key: "session", Percent: pct(95)})
+	h, _, percent := newRuntimeGuardHarness(t, over)
+	*percent = 10
+	h.d.Dispatch(clientMsg{Type: "input", RequestID: "r1", Data: "hello"})
+	if h.starts != 1 {
+		t.Fatalf("直接送出不應被守門擋住: starts=%d", h.starts)
+	}
+	if paused, _ := h.db.QueuePaused(h.id); paused {
+		t.Fatal("直接送出不應暫停")
+	}
+
+	h.enqueue(t, "a", "b")
+	h.d.Drain()
+	if h.starts != 1 || queueLen(h.db, h.id) != 2 {
+		t.Fatalf("自動啟動應被 10%% 門檻暫停: starts=%d queue=%d", h.starts, queueLen(h.db, h.id))
+	}
+	h.d.Resume()
+	if h.starts != 2 || queueLen(h.db, h.id) != 1 {
+		t.Fatalf("按繼續應不受守門影響: starts=%d queue=%d", h.starts, queueLen(h.db, h.id))
+	}
+}
+
+func TestQuotaGuardRuntimeStaleAndNoPercentPass(t *testing.T) {
+	h, _, percent := newRuntimeGuardHarness(t, snapWith(true, quota.Window{Key: "session", Percent: pct(99)}))
+	*percent = 10
+	h.enqueue(t, "a")
+	h.d.Drain()
+	if h.starts != 1 {
+		t.Fatalf("stale 應放行: starts=%d", h.starts)
+	}
+
+	h.snap = snapWith(false, quota.Window{Key: "plan_spend", Used: pct(33), Limit: pct(20)})
+	h.enqueue(t, "b")
+	h.d.Drain()
+	if h.starts != 2 {
+		t.Fatalf("無 percent 的視窗應放行: starts=%d", h.starts)
+	}
+}

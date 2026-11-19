@@ -40,16 +40,23 @@ func (db *DB) InputAccepted(sessionID, actor, requestID, content, author string,
 // AcceptInput atomically records acceptance and queues the work. A crash between
 // commit and acknowledgement leaves one recoverable queue item, never a receipt alone.
 func (db *DB) AcceptInput(sessionID, actor, requestID, content, author string, ids []string) (duplicate bool, err error) {
-	return db.acceptInput(sessionID, actor, requestID, content, author, ids, "")
+	return db.acceptInput(sessionID, actor, requestID, content, author, ids, "", false)
+}
+
+// AcceptInputCancelQuota 把新訊息的 receipt、佇列與取消舊自動復原放在同一筆交易。
+// 取消失敗時整筆回滾，不留 receipt 或佇列，呼叫端可以用原來的 request_id 再試。
+// 同一個 request_id 的重送是重複接受，不取消、也不推進世代。
+func (db *DB) AcceptInputCancelQuota(sessionID, actor, requestID, content, author string, ids []string) (duplicate bool, err error) {
+	return db.acceptInput(sessionID, actor, requestID, content, author, ids, "", true)
 }
 
 func (db *DB) AcceptRoomInput(roomID, pmID, requestID, content string, ids []string) error {
 	author := RoomUserAuthorPrefix + roomID
-	_, err := db.acceptInput(pmID, author, requestID, content, author, ids, roomID)
+	_, err := db.acceptInput(pmID, author, requestID, content, author, ids, roomID, false)
 	return err
 }
 
-func (db *DB) acceptInput(sessionID, actor, requestID, content, author string, ids []string, roomID string) (duplicate bool, err error) {
+func (db *DB) acceptInput(sessionID, actor, requestID, content, author string, ids []string, roomID string, cancelQuota bool) (duplicate bool, err error) {
 	if requestID == "" || len(requestID) > 128 {
 		return false, fmt.Errorf("訊息 ID 必須介於 1 到 128 bytes")
 	}
@@ -95,6 +102,11 @@ func (db *DB) acceptInput(sessionID, actor, requestID, content, author string, i
 	}
 	if _, err := tx.Exec(`INSERT INTO queued_messages (session_id, content, attachment_ids, author) VALUES (?, ?, ?, ?)`, sessionID, content, attachmentIDsJSON(ids), author); err != nil {
 		return false, err
+	}
+	if cancelQuota {
+		if err := execCancelQuotaResume(tx, sessionID); err != nil {
+			return false, err
+		}
 	}
 	return false, tx.Commit()
 }

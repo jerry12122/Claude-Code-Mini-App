@@ -97,3 +97,17 @@
 - 時間用額度服務給的 `ResetsAt`；伺服器與供應商時鐘差由 60 秒緩衝吸收，仍可能落在邊界，由「到期後再確認一次額度」兜底。
 - 只涵蓋有 `session` 視窗的 provider；沒有該視窗的（如 cursor 的金額型）不武裝。
 - 重跑的是原 prompt，不保證與失敗前的半成品輸出銜接；Claude 端是否已記錄該輪取決於 CLI，步驟 1 取樣時一併確認，必要時改成送「請繼續上一個任務」。
+
+## 8. 5.1 端到端觀察（2026-11-19）
+
+臨時程序是 `go run ./scripts/quota-banner-fixture`。它不呼叫 `server.Start`，因此不同步模型、不暖機、不打真供應商；runner 與額度都在行程內，而且只聽 127.0.0.1。30 秒輪詢是正式的 `watchQuota`，測試沒有改 30／60 秒常數，也沒有把手動 `resumeDue` 當成這次已驗過。輪詢啟動或延後只對上刷新前列出的世代與預定時間。
+
+已用假額度與真內部 WS 走完：
+
+- 用盡 → 橫幅 → 到期 → 自動重跑 → 成功：`TestQuotaE2ERealWatchContinues`，以及 18771 的 flow。瀏覽器先出現「額度用盡，預計 00:46 自動繼續」與取消鈕，佇列暫停；約一個輪詢後橫幅消失，回覆為 `ok:請回一個字`。使用者訊息列出現兩次，這是既有的重跑限制。
+- waiting 重啟與 resuming 重啟：同一支測試在啟動前種下兩種狀態。啟動後 sync 都是 waiting，同一個 30 秒輪詢把兩則都跑完並回到 none。
+- 仍滿 → 延後：`TestQuotaE2ERealWatchDelays`。時間改成新的 resets_at+60 秒，佇列 `keep` 仍暫停、沒有啟動。重新連線的 sync 帶新時間。延後寫入成功後，會把該 session 最新的 queue_update（含新時間）推給當時已連線的客戶端。寫入沒對上或失敗時不推。
+- 關開關：`TestQuotaE2ESwitchOffStays`。連線先看到 waiting，PUT 關閉後看到 none；再等過一個 30 秒輪詢，狀態仍是 none，佇列 `stay` 沒有被啟動。
+- 守門門檻：`TestQuotaE2EGuardThreshold`。快取 session 50%，執行中把設定改成 40，下一則自動啟動被暫停。這是設定頁所用的 PUT，不是這輪親手點設定頁。
+
+留給 PM：delay、restart、off、guard 的畫面還沒在這輪瀏覽器逐一點過。flow 的成功路徑已在 Chrome 看過。設定頁把 90 改成 40 的點擊尚未重做。

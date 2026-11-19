@@ -118,11 +118,12 @@ func (d *sessionDispatcher) Dispatch(input clientMsg) {
 		return
 	}
 	if input.RequestID != "" {
-		if _, err := d.database.AcceptInput(d.sessionID, d.actor, input.RequestID, input.Data, d.author, input.AttachmentIDs); err != nil {
+		// 新接受與取消舊排程同一筆交易。失敗時不留 receipt／佇列，也不啟動。
+		// 同一個 request_id 重送不會再次取消。
+		if _, err := d.database.AcceptInputCancelQuota(d.sessionID, d.actor, input.RequestID, input.Data, d.author, input.AttachmentIDs); err != nil {
 			uncertain(err)
 			return
 		}
-		// Acceptance is durable before replying, even when no runner can start yet.
 		d.reply(serverMsg{Type: "input_accepted", RequestID: input.RequestID})
 		d.broadcastQueue()
 		if !d.busy(s) {
@@ -130,25 +131,15 @@ func (d *sessionDispatcher) Dispatch(input clientMsg) {
 		}
 		return
 	}
-	// Legacy clients without a request ID keep their original input contract.
-	n, err := d.database.CountQueuedMessages(d.sessionID)
-	if err != nil {
+	// 舊客戶端沒有 request_id：先把新訊息與取消一起提交，再啟動。
+	// 不能先 start 再取消，否則新 run 可能已經武裝，晚到的取消會清掉新排程。
+	if _, err := d.database.EnqueueMessageFromCancelQuota(d.sessionID, input.Data, d.author, input.SourceSessionID, input.AttachmentIDs...); err != nil {
 		reject(err)
 		return
 	}
-	if d.busy(s) || n > 0 {
-		if _, err := d.database.EnqueueMessage(d.sessionID, input.Data, d.author, input.AttachmentIDs...); err != nil {
-			reject(err)
-			return
-		}
-		d.broadcastQueue()
-		if !d.busy(s) {
-			d.drainLocked(false)
-		}
-		return
-	}
-	if err := d.start(input, nil); err != nil {
-		reject(err)
+	d.broadcastQueue()
+	if !d.busy(s) {
+		d.drainLocked(false)
 	}
 }
 
@@ -170,13 +161,29 @@ func (d *sessionDispatcher) drain(guarded bool) {
 	d.broadcastQueue()
 }
 
+// Resume 是使用者按「繼續」。先清掉自動排程，再沿原本的手動恢復啟動一次，不過額度守門。
 func (d *sessionDispatcher) Resume() {
+	d.resume(true)
+}
+
+// ResumeAutomatic 是內部 quota_resume 搶到這一個世代之後的啟動。不清排程，也不把次數歸零。
+func (d *sessionDispatcher) ResumeAutomatic() {
+	d.resume(false)
+}
+
+func (d *sessionDispatcher) resume(cancelSchedule bool) {
 	release, err := admitWork()
 	if err != nil {
 		d.reply(updateInProgressMsg(""))
 		return
 	}
 	defer release()
+	if cancelSchedule {
+		if err := d.database.CancelQuotaResume(d.sessionID); err != nil {
+			d.reply(serverMsg{Type: "error", Content: "無法取消自動繼續，請稍後再試"})
+			return
+		}
+	}
 	if err := d.database.SetQueuePaused(d.sessionID, false); err != nil {
 		d.reply(serverMsg{Type: "error", Content: "無法恢復佇列，請稍後再試"})
 		return

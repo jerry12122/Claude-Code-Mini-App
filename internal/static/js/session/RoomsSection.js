@@ -124,16 +124,16 @@ function RoomsSection({ sessions, activeRoomId, onOpenRoom, onRoomDeleted, touch
         {rooms.map((r) => {
           const active = r.id === activeRoomId;
           return (
-            <li key={r.id} className={'ra-session-card group/card' + (active ? ' active' : '')}>
-              <div className="flex min-w-0 items-center gap-2">
+            <li key={r.id} className={'ra-session-card room-list-card group/card' + (active ? ' active' : '')}>
+              <div className="flex min-w-0 items-stretch">
                 <button type="button" onClick={() => onOpenRoom(r.id)} aria-current={active ? 'true' : undefined}
                   title={`${r.name}（${r.member_count} 位成員）`}
-                  className="flex min-w-0 flex-1 items-center gap-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 rounded">
+                  className="flex min-h-11 min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400 rounded-lg">
                   <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-ra-t3">{r.name}</span>
                   <span className="shrink-0 text-[11px] text-ra-t5">{r.member_count}</span>
                 </button>
                 <button type="button" data-context-surface aria-label={`更多操作：${r.name}`} aria-haspopup="menu"
-                  className="shrink-0 min-w-[32px] min-h-[32px] rounded-lg text-ra-t4 hover:bg-ra-raised hover:text-ra-t1 focus-visible:ring-2 focus-visible:ring-violet-400"
+                  className="room-list-menu shrink-0 min-w-11 self-stretch rounded-lg text-ra-t4 hover:bg-ra-raised hover:text-ra-t1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400"
                   onClick={(e) => { e.stopPropagation(); setMenu(openContextPayload(e, { roomId: r.id }, touch)); }}>⋯</button>
               </div>
             </li>

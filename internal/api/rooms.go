@@ -70,14 +70,30 @@ type roomMemberJSON struct {
 	AgentType   string         `json:"agent_type"`
 	Status      string         `json:"status"`
 	Quota       *roomQuotaJSON `json:"quota,omitempty"`
+	QueueLength int            `json:"queue_length"`
+	QueuePaused bool           `json:"queue_paused"`
+	LastError   string         `json:"last_error,omitempty"`
+	LastErrorAt string         `json:"last_error_at,omitempty"`
+	Attention   string         `json:"attention,omitempty"`
 }
 
 type roomJSON struct {
-	ID        string           `json:"id"`
-	Name      string           `json:"name"`
-	CreatedAt string           `json:"created_at"`
-	Members   []roomMemberJSON `json:"members"`
-	PMID      string           `json:"pm_id,omitempty"`
+	ID         string           `json:"id"`
+	Name       string           `json:"name"`
+	CreatedAt  string           `json:"created_at"`
+	Members    []roomMemberJSON `json:"members"`
+	PMID       string           `json:"pm_id,omitempty"`
+	ObservedAt string           `json:"observed_at,omitempty"`
+	Handoff    *roomHandoffJSON `json:"handoff,omitempty"`
+}
+
+type roomHandoffJSON struct {
+	Name    string `json:"pm_name"`
+	Inputs  int    `json:"inputs"`
+	Reports int    `json:"reports"`
+	Queue   int    `json:"queue_length"`
+	Busy    bool   `json:"busy"`
+	Paused  bool   `json:"paused"`
 }
 
 func (h *RoomsHandler) SendToPM(c *fiber.Ctx) error {
@@ -133,20 +149,25 @@ func (h *RoomsHandler) Board(c *fiber.Ctx) error {
 }
 
 type roomTimelineItemJSON struct {
-	ID          int64           `json:"id"`
-	SessionID   string          `json:"session_id"`
-	SessionName string          `json:"session_name"`
-	MemberRole  string          `json:"member_role"`
-	AgentType   string          `json:"agent_type"`
-	Role        string          `json:"role"`
-	Author      string          `json:"author"`
-	Sender      string          `json:"sender,omitempty"`
-	Recipient   string          `json:"recipient,omitempty"`
-	Mine        bool            `json:"mine,omitempty"`
-	Attachments []db.Attachment `json:"attachments,omitempty"`
-	Text        string          `json:"text"`
-	Status      string          `json:"status"`
-	CreatedAt   string          `json:"created_at"`
+	ID              int64           `json:"id"`
+	SessionID       string          `json:"session_id"`
+	SessionName     string          `json:"session_name"`
+	MemberRole      string          `json:"member_role"`
+	AgentType       string          `json:"agent_type"`
+	Role            string          `json:"role"`
+	Author          string          `json:"author"`
+	Sender          string          `json:"sender,omitempty"`
+	Recipient       string          `json:"recipient,omitempty"`
+	Mine            bool            `json:"mine,omitempty"`
+	SourceKind      string          `json:"source_kind,omitempty"`
+	SourceSessionID string          `json:"source_session_id,omitempty"`
+	SourceRoom      string          `json:"source_room,omitempty"`
+	Body            string          `json:"body,omitempty"`
+	Transfer        string          `json:"transfer,omitempty"`
+	Attachments     []db.Attachment `json:"attachments,omitempty"`
+	Text            string          `json:"text"`
+	Status          string          `json:"status"`
+	CreatedAt       string          `json:"created_at"`
 }
 
 // List GET /rooms
@@ -276,6 +297,8 @@ func (h *RoomsHandler) Timeline(c *fiber.Ctx) error {
 			ID: it.MessageID, SessionID: it.SessionID, SessionName: it.SessionName, MemberRole: it.MemberRole,
 			AgentType: it.AgentType, Role: it.Role, Author: db.RoomMessageAuthor(it.Author), Text: it.Content, Status: it.Status, CreatedAt: it.CreatedAt,
 			Sender: it.Sender, Recipient: it.Recipient, Mine: it.Mine, Attachments: it.Attachments,
+			SourceKind: it.SourceKind, SourceSessionID: it.SourceSessionID, SourceRoom: it.SourceRoom,
+			Body: it.Body, Transfer: it.Transfer,
 		})
 	}
 	next := ""
@@ -323,14 +346,25 @@ func validateRoomMembers(raw []roomMemberBody) ([]db.RoomMember, string) {
 }
 
 func (h *RoomsHandler) detail(r *db.Room) roomJSON {
-	out := roomJSON{ID: r.ID, Name: r.Name, CreatedAt: r.CreatedAt, Members: make([]roomMemberJSON, 0, len(r.Members))}
+	out := roomJSON{ID: r.ID, Name: r.Name, CreatedAt: r.CreatedAt, Members: make([]roomMemberJSON, 0, len(r.Members)),
+		ObservedAt: time.Now().UTC().Format(time.RFC3339)}
 	out.PMID, _ = h.db.RoomPM(r.ID)
 	for _, m := range r.Members {
 		out.Members = append(out.Members, roomMemberJSON{
 			SessionID: m.SessionID, Role: m.Role, Position: m.Position,
 			SessionName: m.SessionName, AgentType: m.AgentType, Status: m.Status,
-			Quota: h.memberQuota(m.AgentType),
+			Quota: h.memberQuota(m.AgentType), QueueLength: m.QueueLength, QueuePaused: m.QueuePaused,
+			LastError: m.LastError, LastErrorAt: m.LastErrorAt,
+			Attention: db.RoomAttention(m.Status, m.ShellPending, m.PendingDenials),
 		})
+	}
+	if out.PMID != "" {
+		if preview, err := h.db.RoomHandoffPreview(r.ID, out.PMID); err == nil {
+			out.Handoff = &roomHandoffJSON{
+				Name: preview.Name, Inputs: preview.Inputs, Reports: preview.Reports,
+				Queue: preview.Queue, Busy: preview.Busy, Paused: preview.Paused,
+			}
+		}
 	}
 	return out
 }
@@ -360,7 +394,7 @@ func (h *RoomsHandler) writeErr(c *fiber.Ctx, op string, err error) error {
 		return jsonErr(c, 404, err.Error())
 	case errors.Is(err, db.ErrRoomSessionMissing):
 		return jsonErr(c, 400, err.Error())
-	case errors.Is(err, db.ErrRoomPM), errors.Is(err, db.ErrRoomPMChanged), errors.Is(err, db.ErrRoomHandoffBusy), errors.Is(err, db.ErrRoomMemoChanged):
+	case errors.Is(err, db.ErrRoomPM), errors.Is(err, db.ErrRoomPMChanged), errors.Is(err, db.ErrRoomHandoffBusy), errors.Is(err, db.ErrRoomMemoChanged), errors.Is(err, db.ErrInputConflict):
 		return jsonErr(c, 409, err.Error())
 	}
 	return roomsInternal(c, op, err)

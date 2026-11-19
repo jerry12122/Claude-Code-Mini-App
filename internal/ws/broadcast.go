@@ -4,6 +4,8 @@ import (
 	"sync"
 
 	fiberws "github.com/gofiber/contrib/websocket"
+
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
 )
 
 // broadcaster：同一 session 可有多條 WS 同時訂閱，任務事件廣播給全部訂閱者
@@ -44,6 +46,19 @@ func (b *broadcaster) has(sessionID string) bool {
 	return len(b.subs[sessionID]) > 0
 }
 
+func (b *broadcaster) sessionIDs() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	ids := make([]string, 0, len(b.subs))
+	for id := range b.subs {
+		if id == eventsKey {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // Broadcast 將訊息送給該 session 所有訂閱連線
 func (b *broadcaster) Broadcast(sessionID string, msg serverMsg) {
 	b.mu.Lock()
@@ -60,6 +75,34 @@ func (b *broadcaster) Broadcast(sessionID string, msg serverMsg) {
 
 // eventsKey：全域事件頻道（非特定 session），供側欄即時更新列表。
 const eventsKey = "*"
+
+// BroadcastSessionQueue 把這個 session 目前的佇列與自動復原狀態再送給已連線的客戶端。
+// 讀取失敗不送空的成功訊息。
+func BroadcastSessionQueue(database *db.DB, sessionID string) error {
+	msg, err := queueUpdate(database, sessionID)
+	if err != nil {
+		return err
+	}
+	hub.Broadcast(sessionID, msg)
+	return nil
+}
+
+// BroadcastQuotaResumeClears 把已連線 session 的佇列與自動復原狀態從資料庫再送一次。
+// 關全域開關清掉狀態後呼叫，讓畫面上的橫幅跟著消失。
+func BroadcastQuotaResumeClears(database *db.DB) error {
+	var first error
+	for _, id := range hub.sessionIDs() {
+		msg, err := queueUpdate(database, id)
+		if err != nil {
+			if first == nil {
+				first = err
+			}
+			continue
+		}
+		hub.Broadcast(id, msg)
+	}
+	return first
+}
 
 // NotifySessionsChanged 通知所有 /events 訂閱者重新抓 session 列表。
 func NotifySessionsChanged() {

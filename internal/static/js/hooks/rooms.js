@@ -33,7 +33,9 @@ function roomMergeMessages(existing, incoming) {
   for (const m of incoming) {
     const old = byId.get(m.id);
     if (old && old.text === m.text && old.status === m.status && old.sender === m.sender &&
-        old.recipient === m.recipient && old.member_role === m.member_role && old.session_name === m.session_name) continue;
+        old.recipient === m.recipient && old.member_role === m.member_role && old.session_name === m.session_name &&
+        old.body === m.body && old.transfer === m.transfer && old.source_kind === m.source_kind &&
+        old.source_session_id === m.source_session_id && old.source_room === m.source_room) continue;
     byId.set(m.id, m);
   }
   return [...byId.values()].sort(roomMessageBefore);
@@ -78,9 +80,38 @@ function roomQuotaView(q) {
   return { text: raw, stale: false, title: `額度${when}` };
 }
 
-/** 標頭晶片所需欄位。狀態點與狀態文字沿用 ui 層的 sessionStatusDotClass／sessionStatusLabel，所以這裡只帶原始 status。 */
+/** 成員狀態只看後端欄位。額度百分比與錯誤文字都不決定是否暫停或需要處理。 */
+function roomMemberState(member) {
+  const m = member || {};
+  const queue = Number(m.queue_length) || 0;
+  const paused = !!m.queue_paused;
+  const attention = m.attention === 'confirm' || m.attention === 'input' || m.attention === 'shell' ? m.attention : '';
+  let primary = '閒置';
+  if (attention === 'confirm') primary = '待你授權';
+  else if (attention === 'input') primary = '待你回答';
+  else if (attention === 'shell') primary = '待你確認指令';
+  else if (paused) primary = queue > 0 ? `佇列已暫停，還有 ${queue} 則` : '佇列已暫停';
+  else if (m.status === 'running') primary = '執行中，活動資料未提供';
+  const extra = [];
+  if (attention && paused) extra.push(queue > 0 ? `佇列已暫停，還有 ${queue} 則` : '佇列已暫停');
+  else if (!paused && queue > 0) extra.push(`佇列 ${queue} 則`);
+  return {
+    primary, extra: extra.join('；'), attention, paused, queue,
+    error: typeof m.last_error === 'string' ? m.last_error : '',
+    errorAt: m.last_error_at || '',
+  };
+}
+
+function roomJobsSplit(jobs) {
+  const list = Array.isArray(jobs) ? jobs : [];
+  const closed = new Set(['done', 'failed', 'interrupted']);
+  return { open: list.filter((job) => !closed.has(job.status)), closed: list.filter((job) => closed.has(job.status)) };
+}
+
+/** 標頭晶片所需欄位。狀態文字來自 roomMemberState，不靠顏色點單獨表達。 */
 function roomChip(member) {
   const q = roomQuotaView(member.quota);
+  const state = roomMemberState(member);
   return {
     sessionId: member.session_id,
     name: member.session_name || '未命名',
@@ -89,6 +120,12 @@ function roomChip(member) {
     role: member.role,
     roleLabel: ROOM_ROLE_LABEL[member.role] || member.role,
     status: member.status || 'idle',
+    statePrimary: state.primary,
+    stateExtra: state.extra,
+    attention: state.attention,
+    queuePaused: state.paused,
+    lastError: state.error,
+    lastErrorAt: state.errorAt,
     quotaText: q.text,
     quotaStale: q.stale,
     quotaTitle: q.title,
@@ -106,7 +143,12 @@ function roomMessageMeta(m) {
     sourceName: m.session_name || '未命名',
     sender: m.sender || (side === 'user' ? (m.author || '你') : side === 'system' ? '系統' : m.session_name || agentLabel),
     recipient: m.recipient || '',
-    mine: side === 'user' && (m.mine ?? !m.author),
+    mine: m.source_kind ? m.source_kind === 'user' : side === 'user' && (m.mine ?? !m.author),
+    body: m.body || m.text || '',
+    transfer: m.transfer || '',
+    sourceKind: m.source_kind || '',
+    sourceRoom: m.source_room || '',
+    sourceSessionID: m.source_session_id || '',
     agentLabel,
     memberRoleLabel: ROOM_ROLE_LABEL[m.member_role] || m.member_role || '',
     time: formatMessageTime(m.created_at),

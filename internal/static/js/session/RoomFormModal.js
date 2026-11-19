@@ -14,6 +14,8 @@ function RoomFormModal({ room, sessions, onClose, onSaved }) {
   const previousPM = room?.members.find((m) => m.role === 'pm');
   const nextPM = form.members.find((m) => m.role === 'pm');
   const handoff = previousPM && nextPM && previousPM.session_id !== nextPM.session_id;
+  const preview = room?.handoff;
+  const blocked = !!(handoff && preview?.busy);
 
   useLayoutEffect(() => {
     const dialog = dialogRef.current;
@@ -26,6 +28,7 @@ function RoomFormModal({ room, sessions, onClose, onSaved }) {
     const bad = roomFormError(form);
     if (bad) { setError(bad); return; }
     if (!nextPM) { setError('請指定一位 PM'); return; }
+    if (handoff && preview?.busy) { setError('現任 PM 正在執行，或還有未完成的授權。先處理完才能交接。'); return; }
     setSaving(true); setError('');
     try {
       const res = await apiFetch(room ? roomUrl(room.id) : roomsUrl(), {
@@ -72,7 +75,14 @@ function RoomFormModal({ room, sessions, onClose, onSaved }) {
             className="mt-1 w-full rounded-lg border border-ra-line bg-ra-card px-3 py-2 text-sm text-ra-t1 focus:border-violet-500 focus:outline-none" />
           <fieldset className="mt-4 min-w-0">
             <legend className="text-xs font-semibold text-ra-t3">成員（已選 {form.members.length}）</legend>
-            <p className="mt-0.5 text-xs text-ra-t4">每個工作室有一位 PM。選另一位 PM 即可交接，原 PM 會改為執行者。</p>
+            <p className="mt-0.5 text-xs text-ra-t4">每個工作室有一位 PM。選另一位 PM 即可交接，原 PM 會改為執行者，名稱不會被改寫。</p>
+            {handoff ? <div className="mt-2 rounded-lg border border-ra-line-soft bg-ra-card p-2 text-xs text-ra-t2">
+              <p>現任 {preview?.pm_name || previousPM.session_name || 'PM'}，接任 {sessions.find((s) => s.id === nextPM.session_id)?.name || '新 PM'}。</p>
+              {preview ? <p>將移交群聊輸入 {preview.inputs} 則、回報 {preview.reports} 則。新 PM 自己的暫停與私人佇列維持原狀。</p>
+                : <p>尚未取得移交數量。送出時仍由伺服器檢查。</p>}
+              {preview?.busy ? <p>現任 PM 正在執行，或還有未完成的授權。先處理完才能交接，不會被中斷。</p> : null}
+              {preview?.paused && !preview.busy ? <p>現任 PM 的佇列已暫停{preview.queue_length ? `，還有 ${preview.queue_length} 則` : ''}。這樣也可以交接。</p> : null}
+            </div> : null}
             {sessions.length === 0 ? <div className="py-4 text-center text-xs text-ra-t4">目前沒有 session 可選</div> : (
               <ul className="mt-2 space-y-1">
                 {sessions.map((s) => {
@@ -108,7 +118,7 @@ function RoomFormModal({ room, sessions, onClose, onSaved }) {
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => dialogRef.current?.close()}
               className="rounded-lg px-3 py-2 text-sm text-ra-t3 hover:bg-ra-raised">取消</button>
-            <button type="submit" disabled={saving}
+            <button type="submit" disabled={saving || blocked}
               className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-60">
               {saving ? '儲存中…' : (handoff ? '交接 PM 並儲存' : room ? '儲存' : '建立')}
             </button>

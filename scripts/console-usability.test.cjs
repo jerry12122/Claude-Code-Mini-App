@@ -130,22 +130,80 @@ const inputStart = chat.lastIndexOf('<textarea', chat.indexOf('data-chat-input')
 assert.match(chat.slice(inputStart, chat.indexOf('/>', inputStart)), /aria-label="訊息或指令"/);
 
 // Failed authorization delivery must keep the pending tools available for retry.
-let canSend = false, cleared = false;
+// actionLock 是元件裡的 ref。成功送出後面板會收起，下一個請求由 effect 解鎖；
+// 這段切片沒有跑 effect，所以每個 handler 開始時把鎖復原，代表新的請求。
+let canSend = false, cleared = false, sends = 0;
 const authorization = vm.createContext({
   permTools: [{ tool_name: 'Bash' }],
-  sendOrToast: () => canSend,
+  actionLock: { current: false },
+  sendOrToast: () => {
+    if (!canSend) return false;
+    sends += 1;
+    return true;
+  },
   setPermTools: tools => { cleared = tools.length === 0; },
 });
-const allowStart = chat.indexOf('  const handleAllowOnce =');
-const allowEnd = chat.indexOf('  /**', allowStart);
-vm.runInContext(chat.slice(allowStart, allowEnd) + '\nglobalThis.handlers = [handleAllowOnce, handleDenyOnce];', authorization);
+const actions = fs.readFileSync(path.join(root, 'js/chat/SessionActionCards.js'), 'utf8');
+const allowStart = actions.indexOf('  const handleAllowOnce =');
+const allowEnd = actions.indexOf('  /**', allowStart);
+vm.runInContext(actions.slice(allowStart, allowEnd) + '\nglobalThis.handlers = [handleAllowOnce, handleDenyOnce];', authorization);
 for (const handler of authorization.handlers) {
+  authorization.actionLock.current = false;
   cleared = false;
   canSend = false;
+  sends = 0;
   handler();
   assert.equal(cleared, false, 'failed authorization retains the pending tools');
+  assert.equal(sends, 0, 'a disconnected click does not count as sent');
+  assert.equal(authorization.actionLock.current, false, 'failed send releases the lock');
   canSend = true;
   handler();
+  handler();
+  assert.equal(sends, 1, 'one request is sent once when clicked twice synchronously');
   assert.equal(cleared, true, 'successful authorization retains the existing clear behavior');
+  assert.equal(authorization.actionLock.current, true, 'the same request stays locked after the first send');
 }
+
+const shell = vm.createContext({
+  canAct: true,
+  connected: true,
+  shellConfirmPending: false,
+  actionLock: { current: false },
+  setShellConfirmPending: (value) => { shell.shellConfirmPending = value; },
+  sendOrToast: () => false,
+});
+const shellStart = actions.indexOf('  const sendShellConfirm =');
+const shellEnd = actions.indexOf('  const handleShellApprove =', shellStart);
+vm.runInContext(actions.slice(shellStart, shellEnd) + '\nthis.sendShell = sendShellConfirm;', shell);
+shell.connected = false;
+shell.sendShell('shell_allow_once');
+assert.equal(shell.actionLock.current, false, 'disconnect does not lock or clear the shell request');
+assert.equal(shell.shellConfirmPending, false);
+shell.connected = true;
+shell.sendOrToast = () => false;
+shell.sendShell('shell_deny');
+assert.equal(shell.actionLock.current, false, 'a failed shell send releases the lock and keeps the request');
+assert.equal(shell.shellConfirmPending, false);
+let shellSends = 0;
+shell.sendOrToast = (message) => { shellSends += 1; shell.last = message; return true; };
+shell.sendShell('shell_allow_once');
+shell.sendShell('shell_allow_once');
+assert.equal(shellSends, 1, 'the same shell request is sent once');
+assert.equal(shell.last.type, 'shell_allow_once');
+assert.equal(shell.actionLock.current, true);
+assert.equal(shell.shellConfirmPending, true);
+const timers = [];
+shell.setTimeout = (fn, ms) => { timers.push({ fn, ms }); return 1; };
+shell.clearTimeout = () => {};
+shell.useEffect = (fn) => { fn(); };
+const timeoutStart = actions.indexOf('  // shell-confirm-timeout');
+const timeoutEnd = actions.indexOf('  return (<>', timeoutStart);
+vm.runInContext(actions.slice(timeoutStart, timeoutEnd), shell);
+assert.equal(timers.length, 1);
+assert.equal(timers[0].ms, 10000);
+timers[0].fn();
+assert.equal(shell.shellConfirmPending, false, 'timeout clears the pending flag');
+assert.equal(shell.actionLock.current, false, 'timeout releases the action lock when state and request stay unchanged');
+shell.sendShell('shell_allow_once');
+assert.equal(shellSends, 2, 'after the timeout the same card can be sent again');
 console.log('console usability checks passed');

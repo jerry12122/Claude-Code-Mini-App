@@ -16,7 +16,7 @@ const DefaultMaxHops = 5
 type consultMode int
 
 const (
-	// consultAsync：send_message，發問方不等待，接收方要用 send_message 回嘴。
+	// consultAsync：send_message，發送方不等待；接收方自行判斷是否需要回覆。
 	consultAsync consultMode = iota
 	// consultAsk：ask_session，發問方卡在 tool call 等這一輪結果，接收方直接回答即可。
 	consultAsk
@@ -67,7 +67,7 @@ func wrapConsultEnvelope(from, to *db.Session, body string, hop int, mode consul
 	if mode == consultAsk {
 		b.WriteString("對方正同步等待你這一輪的回答：直接回答即可，不要再用 send_message 回覆。\n")
 	} else {
-		fmt.Fprintf(&b, "回覆請用 miniapp MCP send_message(session_id=%q, from_session_id=%q, text=...)\n", from.ID, to.ID)
+		fmt.Fprintf(&b, "若需要回覆，使用 miniapp MCP send_message(session_id=%q, from_session_id=%q, text=...)；是否回覆由目前的工作流程決定，純通知不必回覆。\n", from.ID, to.ID)
 	}
 	return b.String()
 }

@@ -79,6 +79,9 @@ func newGuestEnv(t *testing.T) *guestEnv {
 	app.Delete("/shares/:id", auth, shareH.Revoke)
 	app.Delete("/shares", auth, shareH.RevokeAll)
 	app.Get("/guest/me", auth, shareH.Me)
+	settingsH := api.NewSettingsHandler(database, 90)
+	app.Get("/settings/general", auth, settingsH.GetGeneral)
+	app.Put("/settings/general", auth, settingsH.PutGeneral)
 	app.Get("/system/stats", auth, api.NewSystemHandler(sysmon.NewSampler()).Stats)
 	fileH := api.NewFilesHandler(database)
 	app.Get("/sessions/:id/files", auth, fileH.List)
@@ -157,6 +160,28 @@ func (e *guestEnv) status(method, path, token string) int {
 }
 
 var jsonHdr = map[string]string{"Content-Type": "application/json"}
+
+func TestGuestCannotReadOrWriteGeneralSettings(t *testing.T) {
+	env := newGuestEnv(t)
+	sess := env.session("一般設定")
+	token, _ := env.guest(sess.ID, "editor", "live", "訪客")
+	if _, err := env.database.PutGeneralSettings([]byte(`{"vscodeNoAdmin":true,"claudeAutoAllowAsk":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	if code, body := env.do("GET", "/settings/general", token, nil, nil); code != 403 {
+		t.Fatalf("guest GET /settings/general=%d %s", code, body)
+	}
+	if code, body := env.do("PUT", "/settings/general", token, strings.NewReader(`{"vscodeNoAdmin":false,"claudeAutoAllowAsk":false}`), jsonHdr); code != 403 {
+		t.Fatalf("guest PUT /settings/general=%d %s", code, body)
+	}
+	got, err := env.database.GetGeneralSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.ClaudeAutoAllowAsk || !got.VscodeNoAdmin {
+		t.Fatalf("訪客請求不應改設定: %+v", got)
+	}
+}
 
 func TestGuestCannotReadGit(t *testing.T) {
 	env := newGuestEnv(t)

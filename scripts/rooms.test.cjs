@@ -15,7 +15,7 @@ for (const f of ['hooks/messageRows.js', 'hooks/rooms.js', 'hooks/roomPoller.js'
 const g = vm.runInContext(`({
   ROOM_POLL_MS, ROOM_PAGE_SIZE,
   roomsUrl, roomUrl, roomTimelineUrl, roomTimelineEmpty, roomMergeMessages, roomTimelineApply,
-  roomChip, roomQuotaView, roomMessageMeta, roomIsNearBottom,
+  roomChip, roomQuotaView, roomMessageMeta, roomMemberState, roomJobsSplit, roomIsNearBottom,
   roomFormInit, roomFormToggle, roomFormSetRole, roomFormError, roomFormBody, startRoomPoller,
 })`, ctx);
 const plain = (v) => JSON.parse(JSON.stringify(v));
@@ -126,6 +126,18 @@ assert.deepEqual(plain(g.roomMergeMessages([], [msg(1, 'x'), msg(1, 'x')])).leng
   assert.equal(worker.agentLabel, 'weird', '未知的 agent 類型直接顯示原字串');
   assert.equal(worker.quotaText, '—', '沒有 quota 物件也不能壞');
   assert.equal(worker.quotaStale, false);
+  assert.equal(chip.statePrimary, '執行中，活動資料未提供');
+
+  const pausedEmpty = g.roomMemberState({ status: 'idle', queue_paused: true, queue_length: 0, last_error: '舊錯誤', quota: { display_text: '5h 100%' } });
+  assert.equal(pausedEmpty.primary, '佇列已暫停');
+  assert.equal(pausedEmpty.attention, '');
+  const quotaOnly = g.roomMemberState({ status: 'idle', queue_paused: false, queue_length: 0, last_error: '', quota: { display_text: '5h 100%' } });
+  assert.equal(quotaOnly.primary, '閒置');
+  const recovered = g.roomMemberState({ status: 'idle', queue_paused: false, last_error: '' });
+  assert.equal(recovered.error, '');
+  const jobs = g.roomJobsSplit([{ id: 2, status: 'done' }, { id: 1, status: 'running' }, { id: 3, status: 'failed' }]);
+  assert.deepEqual(jobs.open.map((job) => job.id), [1]);
+  assert.deepEqual(jobs.closed.map((job) => job.id), [2, 3]);
 }
 
 // ── 額度過期標示 ──────────────────────────────────────────────────────
@@ -177,6 +189,14 @@ assert.deepEqual(plain(g.roomMergeMessages([], [msg(1, 'x'), msg(1, 'x')])).leng
   assert.equal(g.roomMessageMeta(msg(4, utc, { status: 'done' })).pending, false);
   assert.equal(user.time, localHM, '時間要轉成本地時間（今天只顯示 HH:mm）');
   assert.equal(g.roomMessageMeta(msg(5, 'garbage')).time, '');
+  const unknown = g.roomMessageMeta(msg(6, utc, { role: 'user', author: '', source_kind: 'unknown', sender: '來源未辨識', body: '真正的問題', text: '信封原文', mine: false }));
+  assert.equal(unknown.mine, false);
+  assert.equal(unknown.sender, '來源未辨識');
+  assert.equal(unknown.body, '真正的問題');
+  const agent = g.roomMessageMeta(msg(7, utc, { role: 'user', source_kind: 'agent', sender: '寄件者', source_room: '別間', mine: false }));
+  assert.equal(agent.mine, false);
+  assert.equal(agent.sender, '寄件者');
+  assert.equal(agent.sourceRoom, '別間');
 }
 
 // ── 捲動：停在底部才自動跟隨 ──────────────────────────────────────────

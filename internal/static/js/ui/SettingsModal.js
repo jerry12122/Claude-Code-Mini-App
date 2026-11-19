@@ -161,7 +161,43 @@ function GlobalInstructionSettings() {
   );
 }
 
-/** 「一般」設定頁：vscodeNoAdmin 開關即時 PUT，與外觀設定分開存。 */
+function formatQuotaPercent(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? String(n) : '';
+}
+
+// input 只改草稿。enter 不送出，只要求離開欄位；blur 才決定要不要 PUT。未完成的小數（結尾是 .）不送。
+function quotaGuardPercentEvent(type, draft, accepted) {
+  const text = String(draft);
+  if (type === 'input') return { put: false, blur: false, draft: text };
+  if (type === 'enter') return { put: false, blur: true, draft: text };
+  const trimmed = text.trim();
+  const acceptedNumber = Number(accepted);
+  const acceptedText = Number.isFinite(acceptedNumber) ? String(acceptedNumber) : '';
+  const unfinished = trimmed === '' || trimmed === '.' || trimmed === '-' || trimmed === '-.' || trimmed.endsWith('.');
+  if (unfinished) return { put: false, blur: false, draft: acceptedText, value: acceptedNumber };
+  const n = Number(trimmed);
+  if (!Number.isFinite(n)) return { put: false, blur: false, draft: acceptedText, value: acceptedNumber };
+  if (n === acceptedNumber) return { put: false, blur: false, draft: String(n), value: n };
+  return { put: true, blur: false, draft: String(n), value: n };
+}
+
+async function settleGeneralSave(previous, next, put) {
+  try {
+    return { general: await put(next), error: '' };
+  } catch (e) {
+    return { general: previous, error: (e && e.message) || '伺服器未存到' };
+  }
+}
+
+// 只改 patch 裡的欄位，其餘原樣保留。ask 由關變開要先確認；取消則不 PUT。關閉不確認。
+function generalPatch(general, patch, confirm) {
+  const turningAskOn = patch.claudeAutoAllowAsk === true && !general.claudeAutoAllowAsk;
+  if (turningAskOn && !confirm()) return { put: false, next: general };
+  return { put: true, next: { ...general, ...patch } };
+}
+
+/** 「一般」設定頁：開關即時 PUT，與外觀設定分開存。 */
 function GeneralSection() {
   const [general, setGeneral] = useState(() => ({ ...GENERAL_DEFAULTS }));
   const [loading, setLoading] = useState(true);
@@ -169,6 +205,7 @@ function GeneralSection() {
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [refreshingModels, setRefreshingModels] = useState(false);
+  const [percentDraft, setPercentDraft] = useState('');
 
   useEffect(() => {
     let alive = true;
@@ -181,20 +218,43 @@ function GeneralSection() {
     return () => { alive = false; };
   }, []);
 
-  const toggle = async (checked) => {
+  useEffect(() => {
+    setPercentDraft(formatQuotaPercent(general.quotaGuardPercent));
+  }, [general.quotaGuardPercent]);
+
+  const saveGeneral = async (next) => {
+    const previous = general;
     setError('');
     setSaving(true);
-    const next = { ...general, vscodeNoAdmin: checked };
     setGeneral(next);
-    try {
-      const saved = await putGeneralSettings(next);
-      setGeneral(saved);
-    } catch (e) {
-      setGeneral(general);
-      setError((e && e.message) || '伺服器未存到');
-    } finally {
-      setSaving(false);
-    }
+    const settled = await settleGeneralSave(previous, next, putGeneralSettings);
+    setGeneral(settled.general);
+    setError(settled.error);
+    setSaving(false);
+  };
+
+  const commitPercent = () => {
+    const decision = quotaGuardPercentEvent('blur', percentDraft, general.quotaGuardPercent);
+    setPercentDraft(decision.draft);
+    if (!decision.put || loading || saving) return;
+    return saveGeneral({ ...general, quotaGuardPercent: decision.value });
+  };
+
+  const toggle = (checked) => {
+    const decision = generalPatch(general, { vscodeNoAdmin: checked }, () => true);
+    if (!decision.put) return;
+    return saveGeneral(decision.next);
+  };
+
+  // 由關變開要先確認：這是唯一會讓 ask 規則直接放行的設定。關閉不確認。
+  const toggleAutoAllow = (checked) => {
+    const decision = generalPatch(
+      general,
+      { claudeAutoAllowAsk: checked },
+      () => window.confirm('ask 規則原本是要先問你的指令（例如刪除檔案、對外連線）。開啟後，權限模式為「跳過授權」的 Claude 會話會直接放行這些詢問，不再跳出面板。確定要開啟？'),
+    );
+    if (!decision.put) return;
+    return saveGeneral(decision.next);
   };
 
   // 瀏覽器沒有清 HTTP 快取的 API；cache:'reload' 會繞過並覆寫該 URL 的快取，之後 reload 就拿到新檔。
@@ -248,7 +308,99 @@ function GeneralSection() {
             </div>
           </div>
         </label>
-        {error ? <div className="text-xs text-red-400 mt-2">{error}</div> : null}
+      </div>
+      <div>
+        <div className="text-sm font-semibold text-ra-t1 mb-1">Claude 完全跳過授權</div>
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={!!general.claudeAutoAllowAsk}
+            disabled={loading || saving}
+            onChange={(e) => {
+              const want = e.target.checked;
+              // 受控元件：取消確認時把瀏覽器先勾上的狀態彈回，且不送 PUT。
+              if (want && !general.claudeAutoAllowAsk) e.target.checked = false;
+              toggleAutoAllow(want);
+            }}
+            className="mt-0.5 w-4 h-4 accent-violet-600 shrink-0"
+          />
+          <div className="min-w-0">
+            <div className="text-sm text-ra-t1">自動允許 ask 規則詢問</div>
+            <div className="text-[11px] text-ra-t5 mt-0.5">
+              僅作用於權限模式為「跳過授權」的 Claude 會話。開啟後，命中 ask 規則的工具呼叫會由伺服器直接允許，
+              並在該輪回覆留一行紀錄。deny 規則與 Claude 的提問不受影響。預設關閉。
+            </div>
+          </div>
+        </label>
+      </div>
+      <div>
+        <div className="text-sm font-semibold text-ra-t1 mb-1">額度用盡後自動繼續</div>
+        <label htmlFor="auto-resume-on-quota" className="flex items-start gap-3 cursor-pointer">
+          <input
+            id="auto-resume-on-quota"
+            type="checkbox"
+            checked={!!general.autoResumeOnQuota}
+            disabled={loading || saving}
+            onChange={(e) => {
+              const decision = generalPatch(general, { autoResumeOnQuota: e.target.checked }, () => true);
+              if (decision.put) saveGeneral(decision.next);
+            }}
+            className="mt-0.5 w-4 h-4 accent-violet-600 shrink-0"
+          />
+          <div className="min-w-0">
+            <div className="text-sm text-ra-t1">額度重置後自動繼續</div>
+            <div id="auto-resume-hint" className="text-[11px] text-ra-t5 mt-0.5">
+              5 小時額度重置後，伺服器會在無人看管時自動繼續執行。會話多半以跳過授權（bypassPermissions）運行，
+              開啟等於沒有人在場時仍會改檔與執行指令。預設關閉。
+            </div>
+          </div>
+        </label>
+      </div>
+      <div>
+        <div className="text-sm font-semibold text-ra-t1 mb-1">額度守門</div>
+        <label htmlFor="quota-guard-enabled" className="flex items-start gap-3 cursor-pointer">
+          <input
+            id="quota-guard-enabled"
+            type="checkbox"
+            checked={!!general.quotaGuardEnabled}
+            disabled={loading || saving}
+            onChange={(e) => {
+              const decision = generalPatch(general, { quotaGuardEnabled: e.target.checked }, () => true);
+              if (decision.put) saveGeneral(decision.next);
+            }}
+            className="mt-0.5 w-4 h-4 accent-violet-600 shrink-0"
+          />
+          <div className="min-w-0">
+            <div className="text-sm text-ra-t1">自動啟動佇列前檢查額度</div>
+          </div>
+        </label>
+        <p id="quota-guard-hint" className="text-[11px] text-ra-t5 mt-1">
+          任一有百分比的額度視窗已用達門檻時暫停佇列。直接送出與按「繼續」不受影響。守門關閉時不能改數字。
+          離開欄位或按 Enter 才儲存。
+        </p>
+        <label htmlFor="quota-guard-percent" className="block text-sm text-ra-t1 mt-3">門檻百分比</label>
+        <input
+          id="quota-guard-percent"
+          name="quotaGuardPercent"
+          type="number"
+          inputMode="decimal"
+          step="any"
+          value={percentDraft}
+          disabled={loading || saving || !general.quotaGuardEnabled}
+          aria-describedby={error ? 'quota-guard-hint quota-guard-error' : 'quota-guard-hint'}
+          aria-invalid={error ? true : undefined}
+          onChange={(e) => setPercentDraft(quotaGuardPercentEvent('input', e.target.value, general.quotaGuardPercent).draft)}
+          onBlur={commitPercent}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter' || e.repeat || e.isComposing) return;
+            const decision = quotaGuardPercentEvent('enter', percentDraft, general.quotaGuardPercent);
+            if (!decision.blur) return;
+            e.preventDefault();
+            e.currentTarget.blur();
+          }}
+          className="mt-1 w-28 px-2 py-1.5 rounded-lg text-sm bg-ra-raised text-ra-t1 border border-ra-line-strong disabled:opacity-40"
+        />
+        {error ? <div id="quota-guard-error" role="alert" className="text-xs text-red-400 mt-2">{error}</div> : null}
       </div>
       <div>
         <div className="text-sm font-semibold text-ra-t1 mb-1">模型清單</div>

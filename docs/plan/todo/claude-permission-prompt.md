@@ -78,7 +78,7 @@ runAgent(Claude, pm=bypassPermissions)
 
 ### 3.3 範圍限制（刻意最小）
 - 只對 `agent_type=claude` 且 `permission_mode=bypassPermissions` 的 run 啟用。`default` 模式維持現行「拒絕後重跑」流程，行為不變。
-- 不寫新設定開關：使用者沒設 ask 規則就不會有任何詢問，等同不啟用。
+- 另有全域開關「Claude 完全跳過授權」（預設關，見 §8）。未開啟時，使用者沒設 ask 規則就不會有任何詢問。
 - 只支援「允許一次／拒絕」，不做「允許並記住」。
 
 ## 4. 修改清單
@@ -126,3 +126,26 @@ runAgent(Claude, pm=bypassPermissions)
 - 不改 `default` 模式既有流程。
 - 不做「允許並記住」、不做規則編輯 UI。
 - 不改其他 agent（Cursor／Codex／Kiro）。
+
+## 8. 完全跳過授權（claudeAutoAllowAsk）
+
+設定頁「一般」有全域開關「Claude 完全跳過授權」，存在伺服器一般設定 `claudeAutoAllowAsk`，預設關。由關變開時先確認，文案說明 ask 規則原本要先問、開啟後會直接放行；關閉不確認。
+
+開啟後，只有權限模式為 `bypassPermissions` 的 Claude run，在命中 ask 規則並經授權通道詢問時，由後端直接回允許：不跳出面板、不把 session 改成等授權、不發 Telegram 授權通知。每次允許都在該輪回覆附一行「已自動允許 `<工具>`：`<摘要>`」，並寫 server log（session、工具名稱、同一段摘要）。Bash 的摘要是命令文字，其他工具是壓縮後的 input JSON；超過 200 字元就截斷並加上「…」。
+
+開關在每次詢問當下讀取，不用重啟，也不改已經跳出的面板。同一輪裡第一個詢問若已在等，維持等待；之後的詢問才自動允許。本輪權限模式用 run 開始時的值。讀設定失敗視為關並寫 log。回覆那一行若還沒接上，仍然允許，但 log 一定會寫。
+
+不受影響：`deny` 規則仍擋、`AskUserQuestion` 仍要人回答、`default`／`acceptEdits` 維持原來的授權流程、其他 agent 不動。
+
+風險：開啟後 ask 規則形同虛設，`rm`、`curl` 這類原本要先問的指令會直接執行。預設關、開啟要確認，每次放行都有紀錄。硬性禁止仍用 `deny` 規則。
+
+### 8.1 端到端實測（2026-11-18，臨時實例，真實 `claude -p`，haiku）
+專案層 `.claude/settings.json` 設 `ask: ["Bash(curl *)"]`、`deny: ["Bash(whoami*)"]`（沒用暫存 `CLAUDE_CONFIG_DIR`，避免複製登入憑證）；session 為 `bypassPermissions`，經 `/mcp` 與 `/settings/general` 驅動。
+
+- 開關關：`curl --version` 進入 `awaiting_permission`，有待決權限（面板）。
+- 面板等待中把開關打開：該面板維持等待，不被自動答覆；按允許後照常執行。
+- 開關開、新一輪：全程只有 `running`→`idle`，沒有面板；`curl` 照常執行（8.8.0）；回覆多一行「已自動允許 Bash：…」，server log 有 `claude ask 已自動允許` 一筆（session、tool、summary）。
+- 開關開、`AskUserQuestion`：仍進入 `awaiting_input` 並帶 `pending_question`。
+- 開關開、命中 `deny` 的 `whoami`：仍被擋，log 沒有自動允許紀錄。
+- 發現並已修：稽核行原本行尾沒換行，模型後續文字會接在同一行（見第 2 輪修正）。
+- 沒測：桌面版、Telegram、非 Bash 工具的真實呼叫、超長命令的真實截斷（單元測試已覆蓋）。

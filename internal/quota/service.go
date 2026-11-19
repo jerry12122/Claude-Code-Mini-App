@@ -141,6 +141,40 @@ func (s *Service) RefreshManual(ctx context.Context, provider string) (Snapshot,
 	return s.refresh(ctx, provider, true)
 }
 
+// UseFetch 把現有 provider 的擷取換成行程內函式。隔離的臨時程序用它避開真供應商。
+func (s *Service) UseFetch(fetch func(context.Context, string) (Snapshot, error)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	names := make([]string, 0, len(s.fetchers))
+	for name := range s.fetchers {
+		names = append(names, name)
+	}
+	for _, name := range names {
+		provider := name
+		s.fetchers[provider] = funcFetcher{provider: provider, fetch: func(ctx context.Context) (Snapshot, error) {
+			return fetch(ctx, provider)
+		}}
+	}
+}
+
+// Store 寫入快取，不向外擷取。守門讀的是這份快取。
+func (s *Service) Store(provider string, snap Snapshot) {
+	provider = normalizeProvider(provider)
+	snap.Provider = provider
+	s.mu.Lock()
+	s.cache[provider] = &cacheEntry{snap: snap, fetchedAt: time.Now()}
+	s.mu.Unlock()
+}
+
+type funcFetcher struct {
+	provider string
+	fetch    func(context.Context) (Snapshot, error)
+}
+
+func (f funcFetcher) Provider() string { return f.provider }
+
+func (f funcFetcher) Fetch(ctx context.Context) (Snapshot, error) { return f.fetch(ctx) }
+
 func (s *Service) refresh(ctx context.Context, provider string, force bool) (Snapshot, error) {
 	f, ok := s.fetchers[provider]
 	if !ok {

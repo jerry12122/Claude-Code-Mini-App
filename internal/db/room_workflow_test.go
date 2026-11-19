@@ -109,9 +109,11 @@ func TestRoomHandoffPreservesMemoAttachmentsAndReports(t *testing.T) {
 	must(d.AcceptRoomInput(room.ID, oldPM.ID, "message", "", []string{file.ID}))
 	members[0].Role = RoomRoleWorker
 	members[1].Role = RoomRolePM
+	must(d.UpdateSessionStatus(oldPM.ID, SessionStatusRunning))
 	if err := d.UpdateRoom(room.ID, nil, &members, oldPM.ID); !errors.Is(err, ErrRoomHandoffBusy) {
-		t.Fatalf("expected pending attachment to block handoff, got %v", err)
+		t.Fatalf("expected running PM to block handoff, got %v", err)
 	}
+	must(d.UpdateSessionStatus(oldPM.ID, SessionStatusIdle))
 	q, err := d.ListQueuedMessages(oldPM.ID)
 	must(err)
 	_, err = d.PromoteQueuedMessage(oldPM.ID, q[0])
@@ -145,14 +147,63 @@ func TestRoomHandoffPreservesMemoAttachmentsAndReports(t *testing.T) {
 	must(err)
 	page, err := d.RoomTimeline(room.ID, nil, 20)
 	must(err)
-	if len(page.Items) != 5 {
+	if len(page.Items) != 6 || page.Items[1].Sender != "交接" || page.Items[1].SourceKind != "handoff" {
 		t.Fatalf("unexpected timeline: %+v", page.Items)
 	}
-	report, request, oldReply, attachment := page.Items[0], page.Items[2], page.Items[3], page.Items[4]
+	report, request, oldReply, attachment := page.Items[0], page.Items[3], page.Items[4], page.Items[5]
 	if report.Sender != "前端" || report.Recipient != "新 PM" || request.Sender != "舊 PM" ||
 		request.Recipient != "前端" || oldReply.Recipient != "工作室" || !attachment.Mine || len(attachment.Attachments) != 1 {
 		t.Fatalf("wrong routes or missing attachment: %+v", page.Items)
 	}
+}
+
+func TestRoomHandoffFromQuotaPausedPM(t *testing.T) {
+	d, roomID, oldPM, newPM := roomWithWorker(t)
+	outside := roomSession(t, d, "外部", "codex")
+	requireRoomTestOK(t, d.AddAttachment(&Attachment{ID: "handoff-file", SessionID: oldPM,
+		Name: "memo.txt", StorageName: "memo.txt", MimeType: "text/plain", Size: 4}))
+	requireRoomTestOK(t, d.AddAttachment(&Attachment{ID: "private-file", SessionID: oldPM,
+		Name: "private.txt", StorageName: "private.txt", MimeType: "text/plain", Size: 4}))
+	requireRoomTestOK(t, d.AcceptRoomInput(roomID, oldPM, "pending-input", "請接手", []string{"handoff-file"}))
+	_, err := d.EnqueueMessage(oldPM, "私人訊息", "")
+	requireRoomTestOK(t, err)
+	_, err = d.EnqueueMessage(oldPM, "執行者回報", "room-report:"+roomID)
+	requireRoomTestOK(t, err)
+	requireRoomTestOK(t, d.SetQueuePaused(oldPM, true))
+	members := []RoomMember{{SessionID: oldPM, Role: RoomRoleWorker}, {SessionID: newPM, Role: RoomRolePM}}
+	requireRoomTestOK(t, d.UpdateRoom(roomID, nil, &members, oldPM))
+	// 重送同一則訊息不應在交接後重新入列。
+	requireRoomTestOK(t, d.AcceptRoomInput(roomID, newPM, "pending-input", "請接手", []string{"handoff-file"}))
+	queue, err := d.ListQueuedMessages(newPM)
+	requireRoomTestOK(t, err)
+	if len(queue) != 2 || queue[0].Content != "請接手" || len(queue[0].Attachments) != 1 || queue[1].Content != "執行者回報" {
+		t.Fatalf("交接遺失訊息或附件：%+v", queue)
+	}
+	_, err = d.PromoteQueuedMessage(newPM, queue[0])
+	requireRoomTestOK(t, err)
+	a, err := d.GetAttachment(newPM, "handoff-file")
+	requireRoomTestOK(t, err)
+	if a.SessionID != oldPM {
+		t.Fatal("附件的原始儲存位置被改動")
+	}
+	if _, err := d.GetAttachment(newPM, "private-file"); err == nil {
+		t.Fatal("新 PM 不應取得舊 PM 的私人附件")
+	}
+	if _, err := d.GetAttachment(outside.ID, "handoff-file"); err == nil {
+		t.Fatal("非交接對象不應取得附件")
+	}
+	left, err := d.ListQueuedMessages(oldPM)
+	requireRoomTestOK(t, err)
+	oldPaused, err := d.QueuePaused(oldPM)
+	requireRoomTestOK(t, err)
+	newPaused, err := d.QueuePaused(newPM)
+	requireRoomTestOK(t, err)
+	if len(left) != 1 || left[0].Content != "私人訊息" || !oldPaused || newPaused {
+		t.Fatal("交接不應帶走私人訊息或複製舊 PM 的暫停狀態")
+	}
+	requireRoomTestOK(t, d.DeleteSession(oldPM))
+	_, err = d.GetAttachment(newPM, "handoff-file")
+	requireRoomTestOK(t, err)
 }
 
 func TestRoomJobRepliesStayInAssignedRoom(t *testing.T) {

@@ -37,6 +37,30 @@ type roomsEnv struct {
 	quota *fakeQuota
 }
 
+func TestRoomHandoffWithExhaustedQuota(t *testing.T) {
+	e := newRoomsEnv(t)
+	oldPM, nextPM := e.session("沒額度的 PM", "claude"), e.session("接手的 PM", "codex")
+	rid := e.create("交接", member{"session_id": oldPM.ID, "role": "pm"}, member{"session_id": nextPM.ID, "role": "worker"})
+	e.quota.snaps["claude"] = quota.Snapshot{Provider: "claude", DisplayText: "5h 100%", UpdatedAt: time.Now()}
+	if err := e.db.AcceptRoomInput(rid, oldPM.ID, "pending", "額度恢復前請接手", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.db.SetQueuePaused(oldPM.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	status, body := e.do("PUT", "/rooms/"+rid, map[string]any{
+		"previous_pm_id": oldPM.ID,
+		"members":        []member{{"session_id": oldPM.ID, "role": "worker"}, {"session_id": nextPM.ID, "role": "pm"}},
+	})
+	if status != 200 || decode(t, body)["pm_id"] != nextPM.ID {
+		t.Fatalf("額度用盡不應阻止交接：%d %s", status, body)
+	}
+	queue, err := e.db.ListQueuedMessages(nextPM.ID)
+	if err != nil || len(queue) != 1 || queue[0].Content != "額度恢復前請接手" {
+		t.Fatalf("待處理訊息未移交：%+v %v", queue, err)
+	}
+}
+
 func newRoomsEnv(t *testing.T) *roomsEnv {
 	t.Helper()
 	database := testDB(t)

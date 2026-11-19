@@ -2,7 +2,7 @@
  * ChatView 的 WebSocket 生命週期 + 串流解析 + 訊息／設定狀態。
  * 從 ChatView.js 抽出（原本塞在元件裡的 330 行 init effect）。
  */
-function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelect, guest = null, onHandoffChange, isFocused = true, scrollRef = null }) {
+function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelect, guest = null, onHandoffChange, isFocused = true, scrollRef = null, syncMessages = true }) {
   // 分享訪客：{ nickname, role, mode, ... }；null＝擁有者。snapshot 模式只讀歷史、不連 WS。
   const isGuest = !!guest;
   const guestSnapshot = isGuest && guest.mode === 'snapshot';
@@ -50,6 +50,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
   /** 執行中先送出、等待前一輪完成的訊息（後端持久化，sync / queue_update 同步） */
   const [queue, setQueue] = useState([]);
   const [queuePaused, setQueuePaused] = useState(false);
+  const [quotaResume, setQuotaResume] = useState(() => emptyQuotaResume());
   /** status 已 IDLE 但後端任務程序仍活著（等喚醒中）：後端視為忙碌，需顯示中斷鈕 */
   const [lingering, setLingering] = useState(false);
   const onHandoffChangeRef = useRef(onHandoffChange);
@@ -97,6 +98,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
     setShellRequest(null);
     setQueue([]);
     setQueuePaused(false);
+    setQuotaResume(emptyQuotaResume());
     setLingering(false);
     setShellPendingCmd(null);
   }, [session.id]);
@@ -242,7 +244,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
       if (!isCurrent()) return;
       clearReconnectTimer();
       wsStarted = true;
-      const ws = new WebSocket(wsURL(session.id));
+      const ws = new WebSocket(wsURL(session.id, { syncMessages }));
       ws._sessionId = session.id;
       ws._gen = effectGen;
       wsRef.current = ws;
@@ -373,6 +375,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
           if (msg.model) setSessionModel(msg.model);
           setQueue(msg.queue || []);
           setQueuePaused(!!msg.queue_paused);
+          setQuotaResume((prev) => reduceQuotaResume(prev, msg));
           setLingering(!!msg.lingering);
           return;
         }
@@ -385,6 +388,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
         if (msg.type === 'queue_update') {
           setQueue(msg.queue || []);
           setQueuePaused(!!msg.queue_paused);
+          setQuotaResume((prev) => reduceQuotaResume(prev, msg));
           return;
         }
 
@@ -888,7 +892,7 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
     sessionModel,
     liveActivity,
     runStartedAt,
-    queue, queuePaused, lingering,
+    queue, queuePaused, quotaResume, lingering,
     send,
     submitInput,
     flushPendingModes,

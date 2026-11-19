@@ -65,13 +65,29 @@
   <link id="hljs-theme-dark" rel="stylesheet" href="./js/vendor/github-dark.min.css" />
   <link id="hljs-theme-light" rel="stylesheet" href="./js/vendor/github.min.css" disabled />
   <style>
-    .room-screen { container-type: inline-size; }
+    .room-screen { container-type: inline-size; display: flex; flex-direction: column; height: 100%; max-height: 100%; min-height: 0; min-width: 0; }
+    .ra-session-card.room-list-card { padding: 0; border-color: oklch(var(--ra-line)); }
+    .room-list-card button.room-list-menu { height: auto; min-height: 44px; }
+    .room-list-card button.room-list-menu::after { content: none; }
     .room-header, .room-timeline, .room-composer { padding-inline: 0.875rem; }
-    .room-header { padding-top: calc(0.5rem + env(safe-area-inset-top) + var(--tg-content-safe-top)); }
-    .room-thread { display: flex; }
-    .room-board { display: none; }
-    .room-workspace[data-board-open="true"] .room-board { display: flex; flex: 1; }
-    .room-workspace[data-board-open="true"] .room-thread { display: none; }
+    .room-header, .room-composer, .room-board { background: oklch(var(--ra-card)); }
+    .room-header { flex: 0 0 auto; min-width: 0; padding-top: calc(0.5rem + env(safe-area-inset-top) + var(--tg-content-safe-top)); }
+    .room-timeline { background: oklch(var(--ra-bg) / 0.96); }
+    .room-read:not(.bubble-user) { background: oklch(var(--ra-card) / 0.96); border-radius: 12px; }
+    .room-workspace { position: relative; flex: 1 1 0; height: 0; min-height: 0; min-width: 0; }
+    .room-thread { display: flex; flex-direction: column; height: 100%; max-height: 100%; min-width: 0; min-height: 0; }
+    .room-thread > .relative { flex: 1 1 0; height: 0; min-height: 0; min-width: 0; }
+    .room-board { display: none; min-width: 0; min-height: 0; overscroll-behavior: contain; }
+    .room-timeline { position: relative; height: 100%; max-height: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+    .room-members-full, .room-members-compact { min-width: 0; max-width: 100%; }
+    .room-screen .bubble-user { background: oklch(0.4 0.13 275); color: white; }
+    .room-members-compact { display: flex; }
+    .room-members-compact .room-member-chip { flex: 1 1 0; min-width: 0; }
+    .room-members-full { display: none; }
+    .room-workspace[data-board-open="true"] .room-board { display: flex; flex: 1 1 auto; }
+    .room-workspace[data-board-open="true"] .room-thread {
+      visibility: hidden; position: absolute; inset: 0; pointer-events: none;
+    }
     .room-wrap { min-inline-size: 0; overflow-wrap: anywhere; }
     .room-composer { padding-bottom: calc(0.625rem + var(--ra-safe-bottom, env(safe-area-inset-bottom))); }
     .room-composer .ra-cmd-bar { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; gap: 0.25rem; align-items: end; padding: 4px; }
@@ -79,23 +95,41 @@
     .room-send { background: var(--ra-accent); }
     .room-file-input:focus-visible + .room-file-label { outline: 2px solid currentColor; outline-offset: 2px; }
     .room-file-input:disabled + .room-file-label { cursor: default; opacity: .5; }
-    .room-message { max-inline-size: 88%; }
+    .room-message { max-inline-size: min(88%, 72ch); }
     .room-message pre, .room-message .table-wrap { max-inline-size: 100%; }
     .room-job-status[data-tone="done"] { color: oklch(var(--ra-ok)); background: oklch(var(--ra-ok) / 0.12); }
     .room-job-status[data-tone="warn"] { color: oklch(var(--ra-warn)); background: oklch(var(--ra-warn) / 0.12); }
     @container (min-width: 640px) {
       .room-header, .room-timeline, .room-composer { padding-inline: 1.5rem; }
     }
-    @container (min-width: 800px) {
-      .room-message { max-inline-size: min(82%, 42rem); }
+    @container (min-width: 960px) {
+      .room-members-compact { display: none; }
+      .room-members-full { display: flex; }
+      .room-message { max-inline-size: min(82%, 72ch); }
       .room-screen .room-board-toggle { display: none; }
+      .room-screen .room-workspace {
+        display: grid;
+        flex: 1 1 0;
+        height: 0;
+        min-height: 0;
+        grid-template-columns: minmax(0, 1fr) clamp(17.5rem, 22cqi, 21.25rem);
+        grid-template-rows: minmax(0, 1fr);
+      }
+      .room-screen .room-thread,
+      .room-screen .room-board {
+        min-width: 0;
+        min-height: 0;
+        max-height: 100%;
+        overflow: auto;
+      }
       .room-workspace .room-board,
       .room-workspace[data-board-open="true"] .room-board {
         display: flex;
-        flex: 0 0 clamp(16rem, 24cqi, 20rem);
         border-inline-start: 1px solid oklch(var(--ra-line-soft));
       }
-      .room-workspace[data-board-open="true"] .room-thread { display: flex; }
+      .room-workspace[data-board-open="true"] .room-thread {
+        visibility: visible; position: static; pointer-events: auto;
+      }
     }
     body :is(button, a[href], input, select, summary, [tabindex]):focus-visible {
       outline: 2px solid oklch(var(--ra-accent-text));
@@ -676,6 +710,7 @@
 <script type="text/babel" data-presets="react-classic" src="./js/ui/QuickSwitcher.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/hooks/tabGroups.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/hooks/telegramTimeline.js"></script>
+<script type="text/babel" data-presets="react-classic" src="./js/hooks/quotaResumeBanner.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/hooks/useChatSocket.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/hooks/useChatComposer.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/hooks/useNewSessionForm.js"></script>
@@ -685,6 +720,7 @@
 <script type="text/babel" data-presets="react-classic" src="./js/chat/ForwardModal.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/session/FileBrowserModal.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/session/RoomMessageBubble.js"></script>
+<script type="text/babel" data-presets="react-classic" src="./js/chat/SessionActionCards.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/session/RoomControls.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/session/RoomView.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/session/RoomFormModal.js"></script>
@@ -699,6 +735,7 @@
 <script src="./js/chat/MermaidBlock.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/chat/VirtualMessages.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/chat/ComposerTools.js"></script>
+<script type="text/babel" data-presets="react-classic" src="./js/chat/QuotaResumeBanner.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/chat/ChatView.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/setup/setupForm.js"></script>
 <script type="text/babel" data-presets="react-classic" src="./js/setup/SetupWizard.js"></script>

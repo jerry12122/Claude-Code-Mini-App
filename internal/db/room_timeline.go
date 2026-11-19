@@ -14,21 +14,27 @@ type RoomCursor struct {
 }
 
 type RoomTimelineItem struct {
-	MessageID     int64
-	SessionID     string
-	SessionName   string
-	MemberRole    string
-	AgentType     string
-	Role          string
-	Author        string
-	Sender        string
-	Recipient     string
-	Mine          bool
-	Attachments   []Attachment
-	attachmentIDs []string
-	Content       string
-	Status        string
-	CreatedAt     string
+	MessageID       int64
+	SessionID       string
+	SessionName     string
+	MemberRole      string
+	AgentType       string
+	Role            string
+	Author          string
+	Sender          string
+	Recipient       string
+	Mine            bool
+	SourceKind      string
+	SourceSessionID string
+	SourceName      string
+	SourceRoom      string
+	Body            string
+	Transfer        string
+	Attachments     []Attachment
+	attachmentIDs   []string
+	Content         string
+	Status          string
+	CreatedAt       string
 }
 
 type RoomTimelinePage struct {
@@ -59,7 +65,11 @@ func (db *DB) RoomTimeline(roomID string, before *RoomCursor, limit int) (*RoomT
 
 	q := `SELECT m.id, m.session_id, s.name, rm.role, s.agent_type, m.role, m.author, m.content, m.status,
 		m.created_at, m.attachment_ids, COALESCE(job.room_id, ''), COALESCE(pm.name, ''), COALESCE(worker.name, ''),
-		COALESCE(input.author, '')
+		COALESCE(input.author, ''), COALESCE(m.source_session_id, ''), COALESCE(src.name, ''),
+		COALESCE((SELECT r.name FROM room_members other JOIN rooms r ON r.id = other.room_id
+			WHERE other.session_id = m.source_session_id AND m.source_session_id != ''
+			AND NOT EXISTS (SELECT 1 FROM room_members here WHERE here.room_id = rm.room_id AND here.session_id = m.source_session_id)
+			ORDER BY r.name LIMIT 1), '')
 		FROM room_members rm
 		JOIN sessions s ON s.id = rm.session_id
 		JOIN messages m ON m.session_id = rm.session_id
@@ -74,6 +84,7 @@ func (db *DB) RoomTimeline(roomID string, before *RoomCursor, limit int) (*RoomT
 		END
 		LEFT JOIN sessions pm ON pm.id = job.pm_id
 		LEFT JOIN sessions worker ON worker.id = job.worker_id
+		LEFT JOIN sessions src ON src.id = m.source_session_id
 		WHERE rm.room_id = ?
 		  AND m.role IN ('user', 'claude', 'system')
 		  AND (m.status = 'pending' OR TRIM(COALESCE(m.content, '')) != '' OR m.attachment_ids != '[]')
@@ -103,7 +114,8 @@ func (db *DB) RoomTimeline(roomID string, before *RoomCursor, limit int) (*RoomT
 		var it RoomTimelineItem
 		var attachmentJSON, jobRoom, pmName, workerName, inputAuthor string
 		if err := rows.Scan(&it.MessageID, &it.SessionID, &it.SessionName, &it.MemberRole, &it.AgentType,
-			&it.Role, &it.Author, &it.Content, &it.Status, &it.CreatedAt, &attachmentJSON, &jobRoom, &pmName, &workerName, &inputAuthor); err != nil {
+			&it.Role, &it.Author, &it.Content, &it.Status, &it.CreatedAt, &attachmentJSON, &jobRoom, &pmName, &workerName, &inputAuthor,
+			&it.SourceSessionID, &it.SourceName, &it.SourceRoom); err != nil {
 			return nil, err
 		}
 		it.attachmentIDs, err = decodeAttachmentIDs(attachmentJSON)
@@ -146,29 +158,60 @@ func (db *DB) RoomTimeline(roomID string, before *RoomCursor, limit int) (*RoomT
 }
 
 func (it *RoomTimelineItem) setRoute(pmName, workerName string, sameRoom bool, inputAuthor string) {
+	body, transfer, envelope := consultDisplay(it.Content)
+	if envelope {
+		it.Body = body
+		it.Transfer = transfer
+	}
 	switch it.Role {
 	case "system":
+		if strings.HasPrefix(it.Author, "room-handoff:") {
+			it.Sender = "交接"
+			it.SourceKind = "handoff"
+			return
+		}
 		it.Sender = "系統"
+		it.SourceKind = "system"
 	case "user":
 		it.Recipient = it.SessionName
-		it.Mine = it.Author == "" || strings.HasPrefix(it.Author, RoomUserAuthorPrefix)
 		switch {
-		case it.Mine:
-			it.Sender = "你"
+		case it.SourceSessionID != "":
+			it.Mine = false
+			it.SourceKind = "agent"
+			if it.SourceName != "" {
+				it.Sender = it.SourceName
+			} else {
+				it.Sender = "來源未辨識"
+				it.SourceRoom = ""
+			}
 		case strings.HasPrefix(it.Author, "room-job:"):
 			it.Sender = "PM"
 			if sameRoom && pmName != "" {
 				it.Sender = pmName
 			}
+			it.SourceKind = "job"
 		case strings.HasPrefix(it.Author, "room-report:"):
 			it.Sender = "執行者"
 			if sameRoom && workerName != "" {
 				it.Sender = workerName
 			}
+			it.SourceKind = "report"
+		case it.Author == "" && envelope:
+			it.Mine = false
+			it.Sender = "來源未辨識"
+			it.SourceKind = "unknown"
+			it.SourceSessionID = ""
+			it.SourceRoom = ""
+		case it.Author == "" || strings.HasPrefix(it.Author, RoomUserAuthorPrefix):
+			it.Mine = true
+			it.Sender = "你"
+			it.SourceKind = "user"
 		default:
 			it.Sender = it.Author
+			it.SourceKind = "user"
 		}
 	default:
+		it.SourceKind = "assistant"
 		it.Sender = it.SessionName
 		if it.Author != "" {
 			it.Sender = it.Author
@@ -177,4 +220,33 @@ func (it *RoomTimelineItem) setRoute(pmName, workerName string, sameRoom bool, i
 			it.Recipient = "工作室"
 		}
 	}
+}
+
+// consultDisplay 只把伺服器信封的原文拆成正文與傳遞資訊。解析結果不能當作身分。
+func consultDisplay(content string) (body, transfer string, ok bool) {
+	const lead = "來自 Mini-App session"
+	if !strings.HasPrefix(content, lead) {
+		return "", "", false
+	}
+	hop := strings.Index(content, "\nhop:")
+	if hop < 0 || !strings.Contains(content[:hop], "from_session_id:") {
+		return "", "", false
+	}
+	rest := content[hop:]
+	blank := strings.Index(rest, "\n\n")
+	if blank < 0 {
+		return "", "", false
+	}
+	tail := rest[blank+2:]
+	mark := strings.Index(tail, "\n\n--\n")
+	if mark < 0 {
+		return "", "", false
+	}
+	body = strings.TrimSpace(tail[:mark])
+	if body == "" {
+		return "", "", false
+	}
+	header := strings.TrimSpace(content[:hop+blank])
+	footer := strings.TrimSpace(tail[mark+len("\n\n--\n"):])
+	return body, header + "\n\n" + footer, true
 }

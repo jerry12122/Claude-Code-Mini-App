@@ -265,11 +265,17 @@ async function putAppearance(appearance) {
 }
 
 /**
- * 一般設定（Settings 彈窗 → 一般頁）：目前只有 vscodeNoAdmin 開關。
+ * 一般設定（Settings 彈窗 → 一般頁）。
  * 不做 localStorage 快取（跟 appearance 不同，這是影響伺服器端行為的設定，
  * 每次開設定頁直接打 GET /settings/general 即可，資料量小、不需離線快取）。
  */
-const GENERAL_DEFAULTS = { vscodeNoAdmin: false };
+const GENERAL_DEFAULTS = {
+  vscodeNoAdmin: false,
+  claudeAutoAllowAsk: false,
+  autoResumeOnQuota: false,
+  quotaGuardEnabled: true,
+  quotaGuardPercent: 90,
+};
 
 async function getGeneralSettings() {
   try {
@@ -287,7 +293,13 @@ async function putGeneralSettings(general) {
   const res = await apiFetch('/settings/general', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ vscodeNoAdmin: !!general.vscodeNoAdmin }),
+    body: JSON.stringify({
+      vscodeNoAdmin: !!general.vscodeNoAdmin,
+      claudeAutoAllowAsk: !!general.claudeAutoAllowAsk,
+      autoResumeOnQuota: !!general.autoResumeOnQuota,
+      quotaGuardEnabled: !!general.quotaGuardEnabled,
+      quotaGuardPercent: Number(general.quotaGuardPercent),
+    }),
   });
   if (!res.ok) {
     let msg = '伺服器未存到';
@@ -581,7 +593,10 @@ function socketPayloadError(obj) {
   if (json.length * 3 <= socketMessageLimit || new TextEncoder().encode(json).byteLength <= socketMessageLimit) return '';
   return `訊息超過 ${Math.round(socketMessageLimit / 1024 / 1024)} MiB，請分段或改用附件；草稿已保留`;
 }
-const wsURL = (sessionId, { historyLimit = 100 } = {}) => wsBaseURL(`/sessions/${sessionId}/ws?history_limit=${historyLimit}`);
+const wsURL = (sessionId, { historyLimit = 100, syncMessages = true } = {}) => {
+  const query = syncMessages ? `history_limit=${historyLimit}` : 'sync_messages=0';
+  return wsBaseURL(`/sessions/${sessionId}/ws?${query}`);
+};
 /** 全域事件頻道：session 列表有變動時伺服器會推 sessions_changed */
 const eventsWsURL = () => wsBaseURL('/events');
 

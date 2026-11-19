@@ -382,7 +382,7 @@ func (d *deps) sendMessage(_ context.Context, _ *gomcp.CallToolRequest, in sendM
 	if err != nil {
 		return nil, startedOut{}, err
 	}
-	if err := d.reg.SendMessage(in.SessionID, text); err != nil {
+	if err := d.reg.SendFrom(in.SessionID, text, strings.TrimSpace(in.FromSessionID)); err != nil {
 		return nil, startedOut{}, err
 	}
 	return nil, startedOut{Status: "started"}, nil
@@ -461,7 +461,7 @@ func (d *deps) askSession(ctx context.Context, _ *gomcp.CallToolRequest, in askS
 		return nil, askSessionOut{}, err
 	}
 	sec := clampLimit(in.TimeoutSec, defaultAskTimeoutSec, maxAskTimeoutSec)
-	res, err := d.reg.Ask(ctx, in.SessionID, text, time.Duration(sec)*time.Second)
+	res, err := d.reg.AskFrom(ctx, in.SessionID, text, strings.TrimSpace(in.FromSessionID), time.Duration(sec)*time.Second)
 	if err != nil {
 		return nil, askSessionOut{}, err
 	}

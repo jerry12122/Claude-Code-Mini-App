@@ -269,6 +269,25 @@ func (db *DB) RoomSessionsToWake() ([]string, error) {
 	return ids, rows.Err()
 }
 
+// RoomAttention 只依 session 狀態與未解授權欄位判斷，不讀錯誤文字。
+func RoomAttention(status, shellPending, pendingDenials string) string {
+	switch status {
+	case SessionStatusAwaitingConfirm:
+		return "confirm"
+	case SessionStatusAwaitingInput:
+		return "input"
+	case SessionStatusAwaitingShellConfirm:
+		return "shell"
+	}
+	if strings.TrimSpace(pendingDenials) != "" {
+		return "confirm"
+	}
+	if strings.TrimSpace(shellPending) != "" {
+		return "shell"
+	}
+	return ""
+}
+
 func RoomMessageAuthor(author string) string {
 	switch {
 	case strings.HasPrefix(author, "room-job:"):
@@ -277,6 +296,8 @@ func RoomMessageAuthor(author string) string {
 		return "執行者回報"
 	case strings.HasPrefix(author, RoomUserAuthorPrefix):
 		return "使用者 → PM"
+	case strings.HasPrefix(author, "room-handoff:"):
+		return "交接"
 	default:
 		return author
 	}

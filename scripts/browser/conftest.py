@@ -98,6 +98,7 @@ def login(page, app):
         page.goto(app["url"])
         page.get_by_role("textbox", name="密碼").fill(app["password"])
         page.get_by_role("button", name="進入", exact=True).click()
+        page.get_by_role("button", name="建立新 Session", exact=True).wait_for(state="visible")
     return enter
 
 

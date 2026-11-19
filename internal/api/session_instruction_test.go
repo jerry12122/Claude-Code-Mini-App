@@ -18,7 +18,7 @@ func TestGlobalInstructionSettingsAndCreation(t *testing.T) {
 	}
 	defer database.Close()
 	app := fiber.New()
-	settings := NewSettingsHandler(database)
+	settings := NewSettingsHandler(database, 90)
 	app.Get("/settings/global-instruction", settings.GetGlobalInstruction)
 	app.Put("/settings/global-instruction", settings.PutGlobalInstruction)
 	sessions := NewSessionHandler(database)

@@ -31,11 +31,28 @@ type RoomMember struct {
 }
 
 // RoomMemberInfo 是讀出用的成員，帶所屬 session 的名稱、agent 類型與狀態。
+// 佇列與錯誤是 session 上的可靠欄位；額度不在這裡，因為它屬於 provider 帳戶快取。
 type RoomMemberInfo struct {
 	RoomMember
-	SessionName string `json:"session_name"`
-	AgentType   string `json:"agent_type"`
-	Status      string `json:"status"`
+	SessionName    string `json:"session_name"`
+	AgentType      string `json:"agent_type"`
+	Status         string `json:"status"`
+	QueuePaused    bool   `json:"queue_paused"`
+	QueueLength    int    `json:"queue_length"`
+	LastError      string `json:"last_error,omitempty"`
+	LastErrorAt    string `json:"last_error_at,omitempty"`
+	ShellPending   string `json:"-"`
+	PendingDenials string `json:"-"`
+}
+
+// RoomHandoffPreview 是交接前可顯示的現任 PM 狀態。暫停與私人佇列不會被這份預覽改寫。
+type RoomHandoffPreview struct {
+	Name    string
+	Inputs  int
+	Reports int
+	Queue   int
+	Busy    bool
+	Paused  bool
 }
 
 type Room struct {
@@ -190,20 +207,108 @@ func replaceRoomMembers(tx *sql.Tx, roomID string, members []RoomMember) error {
 			return ErrRoomPM
 		}
 		var busy bool
-		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM sessions WHERE id = ? AND status != 'idle')
-			OR EXISTS(SELECT 1 FROM queued_messages WHERE session_id = ? AND author = ?)`,
-			oldPM, oldPM, RoomUserAuthorPrefix+roomID).Scan(&busy); err != nil {
+		if err := tx.QueryRow(`SELECT status != 'idle' OR TRIM(shell_pending) != '' OR TRIM(pending_denials) != '' FROM sessions WHERE id = ?`, oldPM).Scan(&busy); err != nil {
 			return err
 		}
 		if busy {
 			return ErrRoomHandoffBusy
 		}
-		if _, err := tx.Exec(`UPDATE queued_messages SET session_id = ? WHERE session_id = ? AND author = ?`,
-			newPM, oldPM, "room-report:"+roomID); err != nil {
+		if err := recordRoomHandoff(tx, roomID, oldPM, newPM); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// 只移交這個工作室尚未處理的輸入；不帶走舊 PM 的私人佇列、暫停狀態或授權。
+func handoffRoomInputs(tx *sql.Tx, roomID, oldPM, newPM string) error {
+	author := RoomUserAuthorPrefix + roomID
+	// 附件保留原本的儲存位置與舊訊息連結，只授予新 PM 使用這批附件的權限。
+	if _, err := tx.Exec(`INSERT INTO attachment_access (session_id, attachment_id)
+		SELECT DISTINCT ?, a.id FROM queued_messages q, json_each(q.attachment_ids) j
+		JOIN attachments a ON a.id = j.value
+		WHERE q.session_id = ? AND q.author = ? AND (a.session_id = ? OR EXISTS
+		(SELECT 1 FROM attachment_access g WHERE g.session_id = ? AND g.attachment_id = a.id))
+		ON CONFLICT DO NOTHING`, newPM, oldPM, author, oldPM, oldPM); err != nil {
+		return err
+	}
+	var conflict bool
+	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM input_receipts old JOIN input_receipts next
+		ON next.session_id = ? AND next.actor = old.actor AND next.request_id = old.request_id
+		WHERE old.session_id = ? AND old.actor = ? AND next.digest != old.digest)`, newPM, oldPM, author).Scan(&conflict); err != nil {
+		return err
+	}
+	if conflict {
+		return ErrInputConflict
+	}
+	if _, err := tx.Exec(`INSERT INTO input_receipts (session_id, actor, request_id, digest)
+		SELECT ?, actor, request_id, digest FROM input_receipts WHERE session_id = ? AND actor = ?
+		ON CONFLICT DO NOTHING`, newPM, oldPM, author); err != nil {
+		return err
+	}
+	_, err := tx.Exec(`UPDATE queued_messages SET session_id = ? WHERE session_id = ? AND author IN (?, ?)`,
+		newPM, oldPM, author, "room-report:"+roomID)
+	return err
+}
+
+// recordRoomHandoff 先數要移交的群聊項目，再移動佇列，並留下一則系統交接紀錄。
+// 新 PM 的暫停與私人佇列不在這次交易裡改動。
+func recordRoomHandoff(tx *sql.Tx, roomID, oldPM, newPM string) error {
+	inputs, reports, err := roomTransferCounts(tx, roomID, oldPM)
+	if err != nil {
+		return err
+	}
+	if err := handoffRoomInputs(tx, roomID, oldPM, newPM); err != nil {
+		return err
+	}
+	var oldName, newName string
+	if err := tx.QueryRow(`SELECT COALESCE(name, '') FROM sessions WHERE id = ?`, oldPM).Scan(&oldName); err != nil {
+		return err
+	}
+	if err := tx.QueryRow(`SELECT COALESCE(name, '') FROM sessions WHERE id = ?`, newPM).Scan(&newName); err != nil {
+		return err
+	}
+	if oldName == "" {
+		oldName = "原 PM"
+	}
+	if newName == "" {
+		newName = "新 PM"
+	}
+	text := fmt.Sprintf("PM 由「%s」交接給「%s」。移交群聊輸入 %d 則、回報 %d 則。新 PM 自己的暫停與私人佇列沒有改動。", oldName, newName, inputs, reports)
+	_, err = tx.Exec(`INSERT INTO messages (session_id, role, content, status, author) VALUES (?, 'system', ?, 'done', ?)`,
+		newPM, text, "room-handoff:"+roomID)
+	return err
+}
+
+func roomTransferCounts(tx *sql.Tx, roomID, sessionID string) (inputs, reports int, err error) {
+	err = tx.QueryRow(`SELECT
+		COALESCE(SUM(CASE WHEN author = ? THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN author = ? THEN 1 ELSE 0 END), 0)
+		FROM queued_messages WHERE session_id = ?`,
+		RoomUserAuthorPrefix+roomID, "room-report:"+roomID, sessionID).Scan(&inputs, &reports)
+	return inputs, reports, err
+}
+
+// RoomHandoffPreview 讀現任 PM 的移交數量與是否能交接。不寫入、不解除暫停。
+func (db *DB) RoomHandoffPreview(roomID, pmID string) (RoomHandoffPreview, error) {
+	var out RoomHandoffPreview
+	var paused, busy int
+	err := db.QueryRow(`SELECT COALESCE(name, ''), queue_paused,
+		CASE WHEN status != 'idle' OR TRIM(shell_pending) != '' OR TRIM(pending_denials) != '' THEN 1 ELSE 0 END,
+		(SELECT COUNT(*) FROM queued_messages WHERE session_id = sessions.id)
+		FROM sessions WHERE id = ?`, pmID).Scan(&out.Name, &paused, &busy, &out.Queue)
+	if err != nil {
+		return out, err
+	}
+	out.Paused = paused != 0
+	out.Busy = busy != 0
+	tx, err := db.Begin()
+	if err != nil {
+		return out, err
+	}
+	defer tx.Rollback()
+	out.Inputs, out.Reports, err = roomTransferCounts(tx, roomID, pmID)
+	return out, err
 }
 
 func roomMemberPM(tx *sql.Tx, roomID string) (string, error) {
@@ -276,7 +381,10 @@ func (db *DB) GetRoom(id string) (*Room, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := db.Query(`SELECT rm.session_id, rm.role, rm.position, s.name, s.agent_type, s.status
+	rows, err := db.Query(`SELECT rm.session_id, rm.role, rm.position, s.name, s.agent_type, s.status,
+		s.queue_paused, COALESCE(s.last_error_text, ''), COALESCE(s.last_error_at, ''),
+		(SELECT COUNT(*) FROM queued_messages q WHERE q.session_id = s.id),
+		COALESCE(s.shell_pending, ''), COALESCE(s.pending_denials, '')
 		FROM room_members rm JOIN sessions s ON s.id = rm.session_id
 		WHERE rm.room_id = ? ORDER BY rm.position, rm.session_id`, id)
 	if err != nil {
@@ -286,9 +394,12 @@ func (db *DB) GetRoom(id string) (*Room, error) {
 	r.Members = []RoomMemberInfo{}
 	for rows.Next() {
 		var m RoomMemberInfo
-		if err := rows.Scan(&m.SessionID, &m.Role, &m.Position, &m.SessionName, &m.AgentType, &m.Status); err != nil {
+		var paused int
+		if err := rows.Scan(&m.SessionID, &m.Role, &m.Position, &m.SessionName, &m.AgentType, &m.Status,
+			&paused, &m.LastError, &m.LastErrorAt, &m.QueueLength, &m.ShellPending, &m.PendingDenials); err != nil {
 			return nil, err
 		}
+		m.QueuePaused = paused != 0
 		r.Members = append(r.Members, m)
 	}
 	return &r, rows.Err()

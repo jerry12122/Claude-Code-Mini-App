@@ -26,6 +26,9 @@ type fakeRunner struct{}
 func (fakeRunner) Name() string { return "fakeq" }
 
 func (fakeRunner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventCallback) error {
+	if strings.HasPrefix(opts.Prompt, "quota-fail") {
+		return errors.New("disk full")
+	}
 	if strings.HasPrefix(opts.Prompt, "block") {
 		select {
 		case err := <-fakeGate:

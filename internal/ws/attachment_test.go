@@ -127,3 +127,43 @@ func TestAttachmentInputQueueAndSync(t *testing.T) {
 	write(clientMsg{Type: "input", RequestID: "missing-now", AttachmentIDs: []string{"file"}})
 	waitEvent("input_rejected", "missing-now")
 }
+
+func TestRoomHandoffAttachmentPrompt(t *testing.T) {
+	database, _ := startTestServer(t)
+	originalWorkspace := media.WorkspaceDir
+	media.WorkspaceDir = t.TempDir()
+	t.Cleanup(func() { media.WorkspaceDir = originalWorkspace })
+	oldPM, err := database.CreateSession("old", "", t.TempDir(), "default", "claude", nil, "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextPM, err := database.CreateSession("next", "", t.TempDir(), "default", "codex", nil, "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	room, err := database.CreateRoom("handoff", []db.RoomMember{{SessionID: oldPM.ID, Role: db.RoomRolePM}, {SessionID: nextPM.ID, Role: db.RoomRoleWorker}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := media.SaveUpload(oldPM.ID, "handoff.txt", strings.NewReader("接手內容"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.AddAttachment(&db.Attachment{ID: "handoff", SessionID: oldPM.ID, Name: "handoff.txt", StorageName: filepath.Base(path)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.AcceptRoomInput(room.ID, oldPM.ID, "pending", "請讀附件", []string{"handoff"}); err != nil {
+		t.Fatal(err)
+	}
+	members := []db.RoomMember{{SessionID: oldPM.ID, Role: db.RoomRoleWorker}, {SessionID: nextPM.ID, Role: db.RoomRolePM}}
+	if err := database.UpdateRoom(room.ID, nil, &members, oldPM.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.DeleteSession(oldPM.ID); err != nil {
+		t.Fatal(err)
+	}
+	prompt, err := attachmentPrompt(database, nextPM.ID, "請讀附件", []string{"handoff"})
+	if err != nil || !strings.Contains(prompt, path) || !strings.Contains(prompt, "請讀附件") {
+		t.Fatalf("交接後附件路徑不可讀：%s %v", prompt, err)
+	}
+}

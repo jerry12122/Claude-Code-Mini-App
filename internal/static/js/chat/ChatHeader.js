@@ -193,8 +193,8 @@ function ChatSessionHeader({
       <div className="ra-chat-header-desktop hidden lg:block px-7 pt-1 pb-3">
         <div className="flex items-center justify-between gap-x-4 gap-y-2 flex-wrap">
           {/* ponytail: 標題直接顯示，完整名稱與路徑用原生 title，避免展開重複資訊。 */}
-          <div className="flex flex-1 items-center gap-2 min-w-0">
-            <h2 className="min-w-0 truncate text-base font-bold text-ra-t1" title={session.name || '未命名'}>{session.name || '未命名'}</h2>
+          <div className="flex flex-1 flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+            <h2 className="min-w-[7rem] max-w-full truncate text-base font-bold text-ra-t1" title={session.name || '未命名'}>{session.name || '未命名'}</h2>
             <SessionStateChip state={state} className="shrink-0" />
             {gitBadge}
             {isGuest && <GuestRoleChip guest={guest} />}

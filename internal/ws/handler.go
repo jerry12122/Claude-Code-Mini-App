@@ -90,16 +90,18 @@ const (
 var lingerNoticeDelay = 3 * time.Second // var：測試縮短用
 
 type clientMsg struct {
-	Answers       []questionAnswer `json:"answers,omitempty"`
-	RequestID     string           `json:"request_id,omitempty"`
-	AttachmentIDs []string         `json:"attachment_ids,omitempty"`
-	Type          string           `json:"type"`
-	Data          string           `json:"data,omitempty"`
-	Tools         []string         `json:"tools,omitempty"`
-	Mode          string           `json:"mode,omitempty"`
-	Model         string           `json:"model,omitempty"`
-	Effort        string           `json:"effort,omitempty"`
-	ID            int64            `json:"id,omitempty"` // queue_remove 的目標
+	Answers         []questionAnswer `json:"answers,omitempty"`
+	RequestID       string           `json:"request_id,omitempty"`
+	AttachmentIDs   []string         `json:"attachment_ids,omitempty"`
+	Type            string           `json:"type"`
+	Data            string           `json:"data,omitempty"`
+	Tools           []string         `json:"tools,omitempty"`
+	Mode            string           `json:"mode,omitempty"`
+	Model           string           `json:"model,omitempty"`
+	Effort          string           `json:"effort,omitempty"`
+	ID              int64            `json:"id,omitempty"`         // queue_remove 的目標
+	Generation      int64            `json:"generation,omitempty"` // 僅內部 quota_resume 攜帶，用來對上這一次的世代
+	SourceSessionID string           `json:"source_session_id,omitempty"`
 }
 
 type serverMsg struct {
@@ -131,10 +133,14 @@ type serverMsg struct {
 	Model        *model.Payload     `json:"model,omitempty"`
 	Queue        []db.QueuedMessage `json:"queue,omitempty"`
 	QueuePaused  bool               `json:"queue_paused,omitempty"`
-	Lingering    bool               `json:"lingering,omitempty"` // type=sync：status 已 IDLE 但任務程序仍活著（等喚醒中）
-	Author       string             `json:"author,omitempty"`    // 說話者暱稱；空字串＝擁有者。presence 事件中為事件主角
-	Online       []string           `json:"online,omitempty"`    // presence：目前在線名單
-	Handoff      *manualHandoffInfo `json:"handoff,omitempty"`   // type=handoff_available：自動交接未成功時的手動接手資訊
+	// sync 與 queue_update 才帶這兩欄。指標讓 none 也能送出空的時間，清掉畫面舊狀態。
+	QuotaResumeState *string            `json:"quota_resume_state,omitempty"`
+	QuotaResumeAt    *string            `json:"quota_resume_at,omitempty"`
+	Started          *bool              `json:"started,omitempty"`   // type=quota_resumed：內部喚醒後是否已有任務在跑
+	Lingering        bool               `json:"lingering,omitempty"` // type=sync：status 已 IDLE 但任務程序仍活著（等喚醒中）
+	Author           string             `json:"author,omitempty"`    // 說話者暱稱；空字串＝擁有者。presence 事件中為事件主角
+	Online           []string           `json:"online,omitempty"`    // presence：目前在線名單
+	Handoff          *manualHandoffInfo `json:"handoff,omitempty"`   // type=handoff_available：自動交接未成功時的手動接手資訊
 
 	HistoryHasMore  bool `json:"history_has_more,omitempty"`
 	MaxMessageBytes int  `json:"max_message_bytes,omitempty"`
@@ -174,6 +180,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 		sessionID := c.Params("id")
 		tgUserID, _ := c.Locals("tg_id").(int64)
 		roomWake, _ := c.Locals("room_wake").(bool)
+		mcpAgent, _ := c.Locals("mcp_agent").(bool)
 
 		// 訪客身分由 authMiddleware 寫入 Locals；擁有者沒有這些值。訪客一律沒有 tg_id，不觸發 Telegram 通知。
 		shareID, _ := c.Locals("share_id").(int64)
@@ -275,7 +282,9 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 		}
 
 		historyLimit, err := strconv.Atoi(c.Query("history_limit", "0"))
-		if err != nil || historyLimit < 0 || historyLimit > 200 {
+		if c.Query("sync_messages") == "0" {
+			historyLimit = -1
+		} else if err != nil || historyLimit < 0 || historyLimit > 200 {
 			c.Close()
 			return
 		}
@@ -305,6 +314,12 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 		syncMsg.MaxMessageBytes, _ = c.Locals("max_message_bytes").(int)
 		syncMsg.Model = sessionModelPayload(sess)
 		syncMsg.Queue, syncMsg.QueuePaused = loadQueueState(database, sessionID)
+		if state, at, _, err := database.GetQuotaResume(sessionID); err != nil {
+			slog.Info(fmt.Sprintf("[ws] quota resume sync: %v", err))
+		} else {
+			syncMsg.QuotaResumeState = stringPtr(state)
+			syncMsg.QuotaResumeAt = stringPtr(at)
+		}
 		syncMsg.Lingering = syncData.UIState == StateIdle && taskIsActive(sessionID)
 		send(syncMsg.withTaskTiming(sessionID))
 		announcePresence(sessionID, "join", entry.displayName(), isGuest)
@@ -465,9 +480,14 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 
 		// drainIfIdle 於 runAgent 之後賦值；先宣告讓任務 goroutine 收尾時可呼叫。
 		var drainIfIdle func()
+		var resumeLaunched bool
 		broadcastQueue := func() {
-			q, paused := loadQueueState(database, sessionID)
-			broadcast(serverMsg{Type: "queue_update", Queue: q, QueuePaused: paused})
+			msg, err := queueUpdate(database, sessionID)
+			if err != nil {
+				slog.Info(fmt.Sprintf("[ws] queue update: %v", err))
+				return
+			}
+			broadcast(msg)
 		}
 		pauseQueue := func() {
 			if err := database.PauseQueueIfPending(sessionID); err != nil {
@@ -653,6 +673,12 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				}
 			}
 
+			owned, generation, observed := false, int64(0), int64(-1)
+			if o, held, seen, snapErr := database.SnapshotQuotaResume(sessionID); snapErr != nil {
+				slog.Info(fmt.Sprintf("[ws] quota resume snapshot: %v", snapErr))
+			} else {
+				owned, generation, observed = o, held, seen
+			}
 			runner, err := agent.NewRunner(agentType)
 			if err != nil {
 				slog.Info(fmt.Sprintf("[ws] NewRunner %s: %v", agentType, err))
@@ -663,6 +689,9 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				broadcast(serverMsg{Type: "error", Content: err.Error()})
 				broadcast(serverMsg{Type: "status", Value: idleUIStatus(database, sessionID)})
 				recordSessionFailure(database, sessionID, err.Error())
+				if relErr := releaseQuotaResumeRun(database, sessionID, owned, generation); relErr != nil {
+					slog.Info(fmt.Sprintf("[ws] quota resume release: %v", relErr))
+				}
 				pauseQueue()
 				notifyTaskAsync(botToken, tgUserID, notifyCfg, tg.TaskAlert{
 					SessionName: sess.Name,
@@ -674,9 +703,11 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				return
 			}
 			slog.Info(fmt.Sprintf("[ws] start %s.Run agentSessionID=%q mode=%s msgID=%d", runner.Name(), opts.SessionID, pm, msgID))
+			resumeLaunched = true
 
 			// All Claude modes use the prompt bridge for both permissions and AskUserQuestion.
 			var permAsker *claudeAsker
+			var askAudit *claudeAskAudit
 			permCleanup := func() {}
 			if isClaude {
 				if _, _, ok := claudePermMCP(); ok {
@@ -715,7 +746,18 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 								return nil, rctx.Err()
 							}
 						}
-						a, unreg := registerClaudeAsker(sessionID, ctx, askUser, askQuestion)
+						askAudit = newClaudeAskAudit(sessionID)
+						autoAllow := func() bool {
+							// 權限模式用本輪的 pm，不中途重讀；開關每次詢問才讀。
+							return claudeAutoAllow(pm, func() (bool, error) {
+								gs, err := database.GetGeneralSettings()
+								if err != nil {
+									return false, err
+								}
+								return gs.ClaudeAutoAllowAsk, nil
+							})
+						}
+						a, unreg := registerClaudeAsker(sessionID, ctx, askUser, askQuestion, autoAllow, askAudit.record)
 						permAsker = a
 						extra[agent.ArgPermPromptConfig] = cfgPath
 						permCleanup = func() { unreg(); rmCfg() }
@@ -746,19 +788,22 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 				runEnded := false
 
 				// appendNotice：把說明寫進本則回覆（落 DB＋即時廣播）。尚未開始串流時先補 streaming 狀態，
-				// 前端的 delta 只會接在最後一則訊息上。
-				streamed := false
+				// 前端的 delta 只會接在最後一則訊息上。自動允許的稽核可能從 MCP goroutine 呼叫，所以用 atomic。
+				var streamed atomic.Bool
 				appendNotice := func(text string) {
 					if text == "" {
 						return
 					}
-					if !streamed {
-						streamed = true
+					if streamed.CompareAndSwap(false, true) {
 						broadcast(serverMsg{Type: "status", Value: StateStreaming})
 					}
 					if err := errors.Join(content.Append(text, serverMsg{Type: "delta", Content: text}), content.Flush()); err != nil {
 						slog.Info(fmt.Sprintf("[ws] AppendMessageContent (notice): %v", err))
 					}
+				}
+				// 晚於授權通道註冊才綁定；尚未綁定時稽核只寫 log，允許行為不丟。
+				if askAudit != nil {
+					askAudit.bindNotice(appendNotice)
 				}
 
 				// 收尾決定佇列走向。等授權時不動佇列；成功才續跑；失敗／中斷暫停，避免錯誤連鎖。
@@ -768,9 +813,22 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 					case permDenied:
 					case succeeded && !runFailed && !cancelled:
 						clearSessionFailure(database, sessionID)
+						if err := releaseQuotaResumeRun(database, sessionID, owned, generation); err != nil {
+							slog.Info(fmt.Sprintf("[ws] quota resume release: %v", err))
+						}
 						taskEnd(sessionID, msgID)
 						drainIfIdle()
 					default:
+						refreshQuota := ho.quotaResumeRefresh
+						if refreshQuota == nil && quotaSvc != nil {
+							refreshQuota = quotaSvc.RefreshAfterRun
+						}
+						if err := finishHeldQuotaResume(database, sessionID, agentType, userMsgID, runFailed || !succeeded, cancelled, permDenied, refreshQuota, time.Now(), generation, observed); err != nil {
+							slog.Info(fmt.Sprintf("[ws] quota resume arm: %v", err))
+						}
+						if err := releaseQuotaResumeRun(database, sessionID, owned, generation); err != nil {
+							slog.Info(fmt.Sprintf("[ws] quota resume release: %v", err))
+						}
 						pauseQueue()
 					}
 				}()
@@ -815,7 +873,7 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 					}
 					switch e.Type {
 					case agent.EventStreamStart:
-						streamed = true
+						streamed.Store(true)
 						broadcast(serverMsg{Type: "status", Value: StateStreaming})
 
 					case agent.EventThinking:
@@ -1105,6 +1163,8 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 			var m *db.Message
 			if queued != nil {
 				m, err = database.PromoteQueuedMessage(sessionID, *queued)
+			} else if input.SourceSessionID != "" {
+				m, err = database.AddUserMessageFromSession(sessionID, input.Data, who, input.SourceSessionID, input.AttachmentIDs)
 			} else {
 				m, err = database.AddUserMessageWithAttachments(sessionID, input.Data, who, input.AttachmentIDs)
 			}
@@ -1126,10 +1186,15 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 		dispatcher := &sessionDispatcher{
 			database: database, sessionID: sessionID, actor: actor, author: author,
 			start: startInput, reply: send, broadcastQueue: broadcastQueue, broadcast: broadcast,
-			quotaGuard: quotaGuardFor(quotaSvc, agentType, ho.quotaGuardPercent),
+			quotaGuard: quotaGuardFor(quotaSvc, agentType, ho.quotaGuardPercent, ho.quotaGuardSettings),
 		}
 		drainIfIdle = dispatcher.Drain
 		resumeQueue := dispatcher.Resume
+		resumeForQuota := func() bool {
+			resumeLaunched = false
+			dispatcher.ResumeAutomatic()
+			return resumeLaunched
+		}
 
 		startShellGoroutine := func(line string, absDir string) {
 			release, err := admitWork()
@@ -1414,13 +1479,45 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 					dispatcher.Drain()
 					send(serverMsg{Type: "room_drained"})
 				}
+			case "quota_resume":
+				if !roomWake {
+					break
+				}
+				started := false
+				if quotaResumeGenerationHeld(database, sessionID, msg.Generation) {
+					started = resumeForQuota()
+				}
+				send(serverMsg{Type: "quota_resumed", Started: &started})
+			case "quota_resume_cancel":
+				if isGuest {
+					send(serverMsg{Type: "error", Content: "只有擁有者可以取消自動繼續"})
+					continue
+				}
+				if err := database.CancelQuotaResume(sessionID); err != nil {
+					send(serverMsg{Type: "error", Content: err.Error()})
+					continue
+				}
+				msg, err := queueUpdate(database, sessionID)
+				if err != nil {
+					send(serverMsg{Type: "error", Content: err.Error()})
+					continue
+				}
+				broadcast(msg)
 			case "input":
 				slog.Info(fmt.Sprintf("[ws] input len=%d", len(msg.Data)))
+				if !mcpAgent || isGuest || msg.SourceSessionID == sessionID {
+					msg.SourceSessionID = ""
+				} else if msg.SourceSessionID != "" {
+					if _, err := database.GetSession(msg.SourceSessionID); err != nil {
+						msg.SourceSessionID = ""
+					}
+				}
 				dispatcher.Dispatch(msg)
 
 			case "queue_remove":
 				if err := RemoveQueuedMessage(database, sessionID, msg.ID); err != nil {
 					slog.Info(fmt.Sprintf("[ws] DeleteQueuedMessage: %v", err))
+					send(serverMsg{Type: "error", Content: err.Error()})
 				}
 
 			case "queue_resume":
@@ -1657,6 +1754,8 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 					clearShellPending(database, sessionID)
 					if err := database.ClearQueuedMessages(sessionID); err != nil {
 						slog.Info(fmt.Sprintf("[ws] ClearQueuedMessages: %v", err))
+						send(serverMsg{Type: "error", Content: err.Error()})
+						return
 					}
 					broadcastQueue()
 					if err := database.UpdateSessionStatus(sessionID, db.SessionStatusIdle); err != nil {

@@ -26,10 +26,11 @@ import (
 const roomWakeHeader = "X-Miniapp-Room-Wake"
 
 type roomRuntime struct {
-	db        *db.DB
-	address   string
-	wakeToken string
-	toolKey   string
+	db           *db.DB
+	address      string
+	wakeToken    string
+	toolKey      string
+	quotaRefresh func(context.Context, string) (quota.Snapshot, error)
 }
 
 func newRoomRuntime(database *db.DB, port int) roomRuntime {
@@ -57,9 +58,15 @@ func (r roomRuntime) listen(ctx context.Context, app *fiber.App, ln net.Listener
 		defer close(done)
 		r.watch(watchCtx)
 	}()
+	quotaDone := make(chan struct{})
+	go func() {
+		defer close(quotaDone)
+		r.watchQuota(watchCtx)
+	}()
 	defer func() {
 		stop()
 		<-done
+		<-quotaDone
 	}()
 	return app.Listener(ln)
 }

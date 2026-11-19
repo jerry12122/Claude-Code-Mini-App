@@ -75,7 +75,9 @@ func buildSyncPayload(database *db.DB, sessionID string, limits ...int) (SyncPay
 		limit = limits[0]
 	}
 	hasMore := false
-	if sess.AgentType == agent.TypeTelegram {
+	if limit < 0 {
+		msgs = []*db.Message{}
+	} else if sess.AgentType == agent.TypeTelegram {
 		// 歷史改由 HTTP 直通 getHistory。sync 只帶目前 scope，不從資料庫帶訊息。
 		if telegramScopeFn != nil {
 			if acct, peer, ok := telegramScopeFn(sessionID); ok {
@@ -128,6 +130,31 @@ func idleUIStatus(database *db.DB, sessionID string) string {
 	return StateIdle
 }
 
+func stringPtr(v string) *string { return &v }
+
+// queueUpdate 從資料庫組出 queue_update。狀態與時間跟佇列同一份讀取，讀取失敗不組空的成功訊息。
+func queueUpdate(database *db.DB, sessionID string) (serverMsg, error) {
+	q, err := database.ListQueuedMessages(sessionID)
+	if err != nil {
+		return serverMsg{}, err
+	}
+	paused, err := database.QueuePaused(sessionID)
+	if err != nil {
+		return serverMsg{}, err
+	}
+	state, at, _, err := database.GetQuotaResume(sessionID)
+	if err != nil {
+		return serverMsg{}, err
+	}
+	return serverMsg{
+		Type:             "queue_update",
+		Queue:            q,
+		QueuePaused:      paused,
+		QuotaResumeState: stringPtr(state),
+		QuotaResumeAt:    stringPtr(at),
+	}, nil
+}
+
 // loadQueueState 讀出佇列與暫停旗標；讀取失敗只記 log，回空佇列讓 UI 照常運作。
 func loadQueueState(database *db.DB, sessionID string) ([]db.QueuedMessage, bool) {
 	q, err := database.ListQueuedMessages(sessionID)
@@ -145,18 +172,14 @@ func RemoveQueuedMessage(database *db.DB, sessionID string, id int64) error {
 	dl := dispatchLock(sessionID)
 	dl.Lock()
 	defer dl.Unlock()
-	if err := database.DeleteQueuedMessage(sessionID, id); err != nil {
+	if err := database.DeleteQueuedMessageCancelQuota(sessionID, id); err != nil {
 		return err
 	}
-	q, err := database.ListQueuedMessages(sessionID)
+	msg, err := queueUpdate(database, sessionID)
 	if err != nil {
 		return err
 	}
-	paused, err := database.QueuePaused(sessionID)
-	if err != nil {
-		return err
-	}
-	hub.Broadcast(sessionID, serverMsg{Type: "queue_update", Queue: q, QueuePaused: paused})
+	hub.Broadcast(sessionID, msg)
 	return nil
 }
 

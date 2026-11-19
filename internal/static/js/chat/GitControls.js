@@ -49,7 +49,7 @@ function GitControls({ session, state, git }) {
 
   if (status?.is_repo === false) return null;
   return (
-    <div className="inline-flex min-w-0 flex-wrap items-center gap-1.5" aria-busy={!!action}>
+    <div className="inline-flex max-w-full shrink-0 flex-wrap items-center gap-1.5" aria-busy={!!action}>
       <button ref={branchTriggerRef} type="button" popovertarget={`${popoverId}-branch`} aria-label="切換分支" aria-expanded={branchOpen}
         disabled={disabled || loading} title={reason || `切換分支：${current}`}
         className="ra-git-trigger inline-flex min-h-6 min-w-6 items-center rounded-md hover:brightness-125 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ra-t3 disabled:opacity-50">

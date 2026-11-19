@@ -104,6 +104,11 @@ func (db *DB) migrate() error {
 			created_at TEXT NOT NULL DEFAULT (datetime('now'))
 		);
 		CREATE INDEX IF NOT EXISTS idx_attachments_session ON attachments (session_id);
+		CREATE TABLE IF NOT EXISTS attachment_access (
+			session_id TEXT NOT NULL,
+			attachment_id TEXT NOT NULL,
+			PRIMARY KEY (session_id, attachment_id)
+		);
 		CREATE TABLE IF NOT EXISTS shares (
 			id              INTEGER PRIMARY KEY AUTOINCREMENT,
 			session_id      TEXT    NOT NULL,
@@ -192,6 +197,15 @@ func (db *DB) migrate() error {
 	// author：訊息說話者。空字串＝擁有者（含舊資料），訪客為其暱稱。
 	tryAlter(`ALTER TABLE messages ADD COLUMN author TEXT NOT NULL DEFAULT ''`)
 	tryAlter(`ALTER TABLE queued_messages ADD COLUMN author TEXT NOT NULL DEFAULT ''`)
+	// source_session_id：伺服器已驗證的跨 session 來源。空字串代表沒有這份紀錄；不能由訊息本文推回。
+	tryAlter(`ALTER TABLE messages ADD COLUMN source_session_id TEXT NOT NULL DEFAULT ''`)
+	tryAlter(`ALTER TABLE queued_messages ADD COLUMN source_session_id TEXT NOT NULL DEFAULT ''`)
+	// quota_resume_*：5 小時額度用盡後的自動復原狀態（none／waiting／resuming／exhausted）。
+	tryAlter(`ALTER TABLE sessions ADD COLUMN quota_resume_state TEXT NOT NULL DEFAULT 'none'`)
+	tryAlter(`ALTER TABLE sessions ADD COLUMN quota_resume_at TEXT NOT NULL DEFAULT ''`)
+	tryAlter(`ALTER TABLE sessions ADD COLUMN quota_resume_attempts INTEGER NOT NULL DEFAULT 0`)
+	// quota_resume_generation：waiting→resuming、取消與關閉開關都加 1，不歸零、不重用。舊的收尾只能比對自己的世代。
+	tryAlter(`ALTER TABLE sessions ADD COLUMN quota_resume_generation INTEGER NOT NULL DEFAULT 0`)
 
 	// 既有 session 的 work_dir 補進目錄清單
 	if err := db.seedWorkDirsFromSessions(); err != nil {

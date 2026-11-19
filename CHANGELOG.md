@@ -4,6 +4,11 @@
 
 發版流程：更新 `VERSION`、`internal/version/version.go`、README 版本徽章與本檔 → commit → 打 `vX.Y.Z` tag 並 push，GitHub Actions 會自動建置並發佈 Release（說明文字取自本檔對應段落）。Release 說明依序為：更新內容 → 下載 → 桌面版更新方法 → 首次設定。
 
+## [Unreleased]
+
+### 新增
+- 設定新增「Claude 完全跳過授權」（預設關，開啟需確認）：權限模式為跳過授權的 Claude 會話遇到 ask 規則時，由伺服器直接允許，並在該輪回覆與伺服器日誌留下工具名稱與指令摘要
+
 ## [0.21.1] - 2026-11-18
 
 ### 新增

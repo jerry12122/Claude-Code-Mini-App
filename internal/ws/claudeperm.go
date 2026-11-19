@@ -1,9 +1,11 @@
 package ws
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"sync"
@@ -93,6 +95,8 @@ type claudeAsker struct {
 	runCtx      context.Context
 	askQuestion func(context.Context, json.RawMessage) (json.RawMessage, error)
 	askUser     func(ctx context.Context, tools any) bool
+	autoAllow   func() bool
+	audit       func(toolName, summary string)
 	sem         chan struct{} // 容量 1：同 session 一次只問一題（pendingPerms 每個 session 只有一格）
 
 	mu       sync.Mutex
@@ -102,10 +106,14 @@ type claudeAsker struct {
 var claudeAskers sync.Map // sessionID → *claudeAsker
 
 // registerClaudeAsker 登記本 run 的授權通道；runCtx 取消（使用者中斷）時正在等待的詢問一併解除。
-func registerClaudeAsker(sessionID string, runCtx context.Context, askUser func(context.Context, any) bool, askQuestion func(context.Context, json.RawMessage) (json.RawMessage, error)) (a *claudeAsker, unregister func()) {
+// autoAllow 在每次詢問時呼叫，為真則不取得信號量、不呼叫 askUser，直接回允許。
+// audit 在自動允許時呼叫；可為 nil（仍允許）。askUser／askQuestion 的 nil 與過去相同。
+func registerClaudeAsker(sessionID string, runCtx context.Context, askUser func(context.Context, any) bool, askQuestion func(context.Context, json.RawMessage) (json.RawMessage, error), autoAllow func() bool, audit func(toolName, summary string)) (a *claudeAsker, unregister func()) {
 	a = &claudeAsker{
 		runCtx:      runCtx,
 		askQuestion: askQuestion,
+		autoAllow:   autoAllow,
+		audit:       audit,
 		askUser: func(ctx context.Context, tools any) bool {
 			c, cancel := context.WithCancel(ctx)
 			defer cancel()
@@ -130,6 +138,13 @@ func AskClaudePermission(ctx context.Context, sessionID, toolName string, input 
 }
 
 func (a *claudeAsker) ask(ctx context.Context, toolName string, input json.RawMessage, toolUseID string) (bool, string) {
+	// 早於信號量與 askUser：不登記待決權限、不改 session 狀態、不廣播、不發通知。
+	if a.autoAllow != nil && a.autoAllow() {
+		if a.audit != nil {
+			a.audit(toolName, claudeAskSummary(toolName, input))
+		}
+		return true, ""
+	}
 	select {
 	case a.sem <- struct{}{}:
 		defer func() { <-a.sem }()
@@ -167,4 +182,89 @@ func (a *claudeAsker) dropAnswered(ds []agent.PermissionDenial) []agent.Permissi
 		out = append(out, d)
 	}
 	return out
+}
+
+const claudeAskSummaryMax = 200
+
+// claudeAutoAllow 判斷這次詢問要不要直接允許。pm 是 run 建立時的權限模式，不中途重讀。
+// 只有 bypassPermissions 會讀設定；讀取失敗視為關並寫 log。
+func claudeAutoAllow(pm string, read func() (bool, error)) bool {
+	if pm != "bypassPermissions" {
+		return false
+	}
+	if read == nil {
+		slog.Warn("[ws] 讀取 claudeAutoAllowAsk 失敗，改走詢問", "err", "未提供讀取函式")
+		return false
+	}
+	on, err := read()
+	if err != nil {
+		slog.Warn("[ws] 讀取 claudeAutoAllowAsk 失敗，改走詢問", "err", err)
+		return false
+	}
+	return on
+}
+
+// claudeAskSummary：Bash 取 command，其他工具取壓縮後的 input JSON，超過 200 字元加省略標記。
+func claudeAskSummary(toolName string, input json.RawMessage) string {
+	text := compactJSON(input)
+	if toolName == "Bash" {
+		var body struct {
+			Command *string `json:"command"`
+		}
+		if json.Unmarshal(input, &body) == nil && body.Command != nil {
+			text = *body.Command
+		}
+	}
+	return truncateRunes(text, claudeAskSummaryMax)
+}
+
+func compactJSON(input json.RawMessage) string {
+	if len(bytes.TrimSpace(input)) == 0 {
+		return ""
+	}
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, input); err != nil {
+		return string(input)
+	}
+	return buf.String()
+}
+
+func claudeAskAuditLine(toolName, summary string) string {
+	// 與 blockedNotice 相同：前面空一行。行尾再空一行，後續模型文字才會另起一段。
+	return "\n\n已自動允許 " + toolName + "：" + summary + "\n\n"
+}
+
+// claudeAskAudit 每次自動允許寫 server log，並在回覆附加函式就緒後附上一行說明。
+// 附加函式由 run goroutine 晚綁定；尚未綁定或附加失敗時仍允許，log 一定要寫。
+type claudeAskAudit struct {
+	sessionID string
+	mu        sync.Mutex
+	notice    func(line string)
+}
+
+func newClaudeAskAudit(sessionID string) *claudeAskAudit {
+	return &claudeAskAudit{sessionID: sessionID}
+}
+
+func (a *claudeAskAudit) bindNotice(notice func(string)) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	a.notice = notice
+	a.mu.Unlock()
+}
+
+func (a *claudeAskAudit) record(toolName, summary string) {
+	if a == nil {
+		return
+	}
+	slog.Info("[ws] claude ask 已自動允許", "session", a.sessionID, "tool", toolName, "summary", summary)
+	a.mu.Lock()
+	notice := a.notice
+	a.mu.Unlock()
+	if notice == nil {
+		return
+	}
+	notice(claudeAskAuditLine(toolName, summary))
 }

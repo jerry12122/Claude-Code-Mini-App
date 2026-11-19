@@ -153,7 +153,12 @@ func (db *DB) DeleteSession(id string) error {
 	if err := db.ClearQueuedMessages(id); err != nil {
 		return err
 	}
-	if _, err := db.Exec(`DELETE FROM attachments WHERE session_id = ?`, id); err != nil {
+	if _, err := db.Exec(`DELETE FROM attachment_access WHERE session_id = ?`, id); err != nil {
+		return err
+	}
+	// 交接中的附件仍由新 PM 使用，保留原始 metadata 與檔案位置。
+	if _, err := db.Exec(`DELETE FROM attachments WHERE session_id = ? AND NOT EXISTS
+		(SELECT 1 FROM attachment_access WHERE attachment_id = attachments.id)`, id); err != nil {
 		return err
 	}
 	// session 刪除後退出所屬工作室，工作室本身保留。

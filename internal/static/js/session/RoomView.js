@@ -2,18 +2,17 @@
  *  捲動規則：停在底部 → 新訊息自動捲到底；往上看歷史 → 不被拉走，改顯示「有新訊息」按鈕；
  *  捲到頂 → 用 next_cursor 載入更早一頁，並補償高度差讓視線停在原位。 */
 
-function RoomMemberChip({ member, onOpen }) {
+function RoomMemberChip({ member, onOpen, compact = false }) {
   const chip = roomChip(member);
-  const dotClass = sessionStatusDotClass({ status: chip.status });
-  const statusLabel = sessionStatusLabel({ status: chip.status }) || '閒置';
-  const label = `${chip.name}，${chip.agentLabel}，${chip.roleLabel}，${statusLabel}，額度 ${chip.quotaText}${chip.quotaStale ? '（已過期）' : ''}。進入此 session`;
+  const dotClass = chip.attention || chip.queuePaused ? 'ra-status-dot bg-amber-400' : (sessionStatusDotClass({ status: chip.status }) || 'ra-status-dot bg-ra-t5');
+  const label = `${chip.name}，${chip.agentLabel}，${chip.roleLabel}，${chip.statePrimary}。進入此 session`;
   return (
     <button
       type="button"
       onClick={() => onOpen(chip.sessionId)}
       aria-label={label}
-      title={chip.quotaTitle}
-      className="flex min-h-11 shrink-0 max-w-[220px] items-center gap-2 rounded-lg border border-ra-line-soft bg-ra-card px-2.5 py-1.5 text-left hover:bg-ra-raised"
+      title={chip.lastError || chip.quotaTitle}
+      className="room-member-chip flex min-h-11 shrink-0 max-w-[16rem] items-center gap-2 rounded-lg border border-ra-line-soft bg-ra-card px-2.5 py-1.5 text-left hover:bg-ra-raised"
     >
       <span className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${getAgentBadgeClass(chip.agentType)}`} aria-hidden="true">
         <AgentBadgeIcon agentType={chip.agentType} />
@@ -21,20 +20,23 @@ function RoomMemberChip({ member, onOpen }) {
       <span className="flex min-w-0 flex-col leading-tight">
         <span className="flex min-w-0 items-center gap-1">
           <span className="min-w-0 truncate text-sm font-semibold text-ra-t1">{chip.name}</span>
-          {chip.role === 'pm' ? <span className="shrink-0 rounded bg-ra-raised px-1.5 text-[10px] font-semibold text-ra-t2">PM</span> : null}
+          {chip.role === 'pm' ? <span className="shrink-0 rounded bg-ra-raised px-1.5 text-[10px] font-semibold text-ra-t2">現任 PM</span> : null}
         </span>
-        {chip.quotaText !== '—' ? <span className={`truncate text-[10px] ${chip.quotaStale ? 'text-amber-400' : 'text-ra-t4'}`}>
+        <span className="truncate text-[11px] text-ra-t2">{chip.statePrimary}</span>
+        {!compact && chip.stateExtra ? <span className="truncate text-[10px] text-ra-t4">{chip.stateExtra}</span> : null}
+        {!compact && chip.quotaText !== '—' ? <span className={`truncate text-[10px] ${chip.quotaStale ? 'text-amber-400' : 'text-ra-t4'}`}>
           {chip.quotaStale ? <s>{chip.quotaText}</s> : chip.quotaText}
-          {chip.quotaStale ? <span className="ml-1 no-underline">已過期</span> : null}
+          {chip.quotaStale ? <span className="ml-1 no-underline">額度資料已過期</span> : null}
         </span> : null}
+        {!compact && chip.lastError ? <span className="truncate text-[10px] text-ra-t4">有錯誤紀錄</span> : null}
       </span>
-      <span className={dotClass || 'ra-status-dot bg-ra-t5'} aria-hidden="true" />
+      <span className={dotClass} aria-hidden="true" />
     </button>
   );
 }
 
 function RoomView({ roomId, onClose, onOpenSession }) {
-  const { room, error: roomError, notFound: roomGone } = useRoomDetail(roomId);
+  const { room, error: roomError, notFound: roomGone, stale: roomStale } = useRoomDetail(roomId);
   const { state, error: tlError, notFound: tlGone, loadingOlder, loadOlder, refresh } = useRoomTimeline(roomId);
   const scrollRef = useRef(null);
   const contentRef = useRef(null);
@@ -44,6 +46,7 @@ function RoomView({ roomId, onClose, onOpenSession }) {
   const lastIdRef = useRef(null);
   const [showJump, setShowJump] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
+  const [boardTab, setBoardTab] = useState('jobs');
   const [lightboxSrc, setLightboxSrc] = useState('');
   const messages = state.messages;
   const gone = roomGone || tlGone;
@@ -107,31 +110,71 @@ function RoomView({ roomId, onClose, onOpenSession }) {
     return () => ro.disconnect();
   }, []);
 
-  const members = room && Array.isArray(room.members) ? room.members : [];
+  const members = (room && Array.isArray(room.members) ? [...room.members] : [])
+    .sort((a, b) => Number(b.session_id === room.pm_id) - Number(a.session_id === room.pm_id) || a.position - b.position);
   const pm = members.find((member) => member.session_id === room?.pm_id);
+  const pending = members.filter((member) => member.attention);
   const err = roomError || tlError;
+  const pendingFocus = useRef(null);
+  const focusPending = (sessionId) => {
+    const el = document.getElementById('room-action-' + sessionId);
+    if (!el) return;
+    stickRef.current = false;
+    el.scrollIntoView({ block: 'center' });
+    el.focus();
+  };
+  const openPending = () => {
+    const first = pending[0];
+    if (!first) return;
+    const thread = document.querySelector('.room-screen .room-thread');
+    const covered = thread && getComputedStyle(thread).visibility === 'hidden';
+    if (covered) {
+      pendingFocus.current = first.session_id;
+      setBoardOpen(false);
+      return;
+    }
+    focusPending(first.session_id);
+  };
+  useEffect(() => {
+    const sessionId = pendingFocus.current;
+    if (!sessionId || boardOpen) return;
+    pendingFocus.current = null;
+    focusPending(sessionId);
+  }, [boardOpen, pending]);
 
   return (
-    <section className="room-screen flex h-app min-w-0 flex-col bg-ra-bg" aria-label={room ? `工作室 ${room.name}` : '工作室'}>
+    <section className="room-screen flex h-full min-h-0 min-w-0 flex-col bg-ra-bg" aria-label={room ? `工作室 ${room.name}` : '工作室'}>
       <header className="room-header shrink-0 border-b border-ra-line-soft pb-2">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={onClose} aria-label="關閉工作室" title="關閉工作室"
             className="-ml-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-ra-t3 hover:bg-ra-raised">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
           </button>
-          <h1 className="min-w-0 flex-1 truncate text-base font-bold text-ra-t1" title={room?.name}>{room ? room.name : '工作室'}</h1>
+          <h1 className="min-w-0 flex-1 truncate text-lg font-bold text-ra-t1" title={room?.name}>{room ? room.name : '工作室'}</h1>
+          {pending.length ? <button type="button" onClick={openPending}
+            className="room-pending flex min-h-11 shrink-0 items-center rounded-lg bg-ra-raised px-3 text-sm font-semibold text-ra-t1">
+            待你處理 {pending.length}
+          </button> : null}
           {room && !gone ? <button type="button" className={'room-board-toggle flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-ra-t2 ' + (boardOpen ? 'bg-ra-raised' : 'hover:bg-ra-raised')}
             aria-controls="room-work-board" aria-expanded={boardOpen} onClick={() => setBoardOpen((value) => !value)}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 4h12v16H6zM9 8h6m-6 4h6m-6 4h4" /></svg>
-            {boardOpen ? '回到對話' : '備忘與待辦'}
+            {boardOpen ? '回到對話' : '工作概況'}
           </button> : null}
         </div>
+        {roomStale ? <p role="status" className="px-1 pt-1 text-xs text-amber-300">狀態未更新{room?.observed_at ? `，最後成功於 ${room.observed_at}` : ''}</p> : null}
         {members.length ? (
-          <div className="app-scroll mt-1 flex gap-1.5 overflow-x-auto px-0.5 pb-1 pt-0.5" role="list" aria-label="成員">
-            {members.map((mb) => (
-              <div role="listitem" key={mb.session_id} className="shrink-0"><RoomMemberChip member={mb} onOpen={onOpenSession} /></div>
-            ))}
-          </div>
+          <>
+            <div className="room-members-compact mt-1 items-center gap-1.5">
+              {pm ? <RoomMemberChip member={pm} onOpen={onOpenSession} compact /> : null}
+              <button type="button" className="min-h-11 shrink-0 rounded-lg border border-ra-line-soft bg-ra-card px-3 text-sm font-semibold text-ra-t1"
+                onClick={() => { setBoardTab('members'); setBoardOpen(true); }}>成員 {members.length}</button>
+            </div>
+            <div className="room-members-full app-scroll mt-1 gap-1.5 overflow-x-auto px-0.5 pb-1 pt-0.5" role="list" aria-label="成員">
+              {members.map((mb) => (
+                <div role="listitem" key={mb.session_id} className="shrink-0"><RoomMemberChip member={mb} onOpen={onOpenSession} /></div>
+              ))}
+            </div>
+          </>
         ) : null}
       </header>
 
@@ -157,6 +200,7 @@ function RoomView({ roomId, onClose, onOpenSession }) {
                     {!state.loaded && !err ? <div className="py-10 text-center text-sm text-ra-t4">載入中…</div> : null}
                     {state.loaded && !messages.length ? <div className="py-10 text-center text-sm text-ra-t4">成員還沒有任何訊息。</div> : null}
                     {messages.map((m) => <RoomMessageBubble key={m.id} m={m} onPreview={setLightboxSrc} />)}
+                    {pending.map((member) => <RoomMemberActions key={member.session_id} member={member} />)}
                   </>
                 )}
               </div>
@@ -177,7 +221,7 @@ function RoomView({ roomId, onClose, onOpenSession }) {
             </footer>
           )}
         </div>
-        {room && !gone ? <RoomWorkBoard roomId={roomId} onOpenSession={onOpenSession} /> : null}
+        {room && !gone ? <RoomWorkBoard roomId={roomId} members={members} tab={boardTab} onTab={setBoardTab} onOpenSession={onOpenSession} /> : null}
       </div>
       {lightboxSrc ? <ChatImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc('')} /> : null}
     </section>

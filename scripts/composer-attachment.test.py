@@ -13,6 +13,8 @@ tailwind_config = re.search(r"<script>\s*(tailwind.config = .*?)</script>", (roo
 files = ["hooks/tabGroups.js", "ui/SplitLayout.js", "core/toast.js", "hooks/composerDrafts.js", "hooks/cliArgs.js", "hooks/messageRows.js", "hooks/quotaMetrics.js", "hooks/forwardPrompt.js", "ui/uiAtoms.js", "hooks/useChatComposer.js", "chat/AttachmentCards.js", "chat/ChatHeader.js", "chat/ChatView.js"]
 if (root / "js/chat/ComposerTools.js").exists():
     files.insert(-1, "chat/ComposerTools.js")
+files.insert(-1, "chat/SessionActionCards.js")
+files[0:0] = ["hooks/useGitStatus.js", "chat/GitControls.js"]
 source = "\n".join((root / "js" / f).read_text(encoding="utf-8") for f in files)
 compiled = subprocess.run(["go", "run", "github.com/evanw/esbuild/cmd/esbuild", "--loader=jsx", "--target=es2020"],
                           input=source, encoding="utf-8", capture_output=True, cwd=repo, check=True).stdout
