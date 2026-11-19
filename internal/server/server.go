@@ -240,6 +240,7 @@ func runNormal(ctx context.Context, cfg *config.Config, ext ...isolatedExternal)
 	})
 	// 首頁、JS、favicon 與分享頁都來自同一個前端資源來源（static.Assets）。
 	assets := static.Assets
+	app.Use(staticCompress())
 	app.Use(static.Handler(assets))
 	// 聊天截圖（media.SaveBase64Image 寫入 internal/static/uploads）仍由磁碟提供，與嵌入的前端資源分開。
 	app.Use("/uploads", static.UploadsHandler(static.Uploads))
