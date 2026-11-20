@@ -136,6 +136,9 @@ func (db *DB) AddUserMessageFromSession(sessionID, content, author, source strin
 
 // PromoteQueuedMessage moves a queue item into history in one transaction.
 func (db *DB) PromoteQueuedMessage(sessionID string, q QueuedMessage) (*Message, error) {
+	if q.BatchID != "" {
+		return nil, ErrQueueBatchConflict
+	}
 	return db.saveUserMessage(sessionID, q.Content, q.Author, q.SourceSessionID, q.AttachmentIDs, q.ID)
 }
 
@@ -151,7 +154,7 @@ func (db *DB) saveUserMessage(sessionID, content, author, source string, ids []s
 	defer tx.Rollback()
 	requestID := ""
 	if queueID != 0 {
-		err := tx.QueryRow(`SELECT input_request_id FROM queued_messages WHERE session_id = ? AND id = ? AND content = ? AND attachment_ids = ?`, sessionID, queueID, content, attachmentIDsJSON(ids)).Scan(&requestID)
+		err := tx.QueryRow(`SELECT input_request_id FROM queued_messages WHERE session_id = ? AND id = ? AND content = ? AND attachment_ids = ? AND batch_id=''`, sessionID, queueID, content, attachmentIDsJSON(ids)).Scan(&requestID)
 		if err != nil {
 			return nil, fmt.Errorf("排隊訊息已變更或不存在")
 		}

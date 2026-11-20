@@ -503,3 +503,59 @@ func TestRoomsTimelinePendingUsesOriginalID(t *testing.T) {
 		t.Fatalf("同一 id 就地更新、不重複: %v", msgs)
 	}
 }
+
+func TestRoomsTimelineMemberFilterOverHTTP(t *testing.T) {
+	e := newRoomsEnv(t)
+	pm, wa, wb := e.session("PM", "claude"), e.session("同名", "codex"), e.session("同名", "codex")
+	outside := e.session("別間", "claude")
+	rid := e.create("r", member{"session_id": pm.ID, "role": "pm"}, member{"session_id": wa.ID, "role": "worker"}, member{"session_id": wb.ID, "role": "worker"})
+	e.create("別間", member{"session_id": outside.ID, "role": "pm"})
+	for i := 0; i < 5; i++ {
+		e.msg(wa.ID, "claude", fmt.Sprintf("a%d", i), "done", fmt.Sprintf("2026-11-18 10:00:0%d", i))
+	}
+	for i := 0; i < 8; i++ {
+		e.msg(wb.ID, "claude", fmt.Sprintf("b%d", i), "done", fmt.Sprintf("2026-11-18 10:01:0%d", i))
+	}
+	get := func(q string) (int, map[string]any) {
+		code, body := e.do("GET", "/rooms/"+rid+"/timeline"+q, nil)
+		if code != 200 {
+			return code, nil
+		}
+		return code, decode(t, body)
+	}
+	// 相關訊息全在最新 8 則之外；分頁仍要走完 A 的完整歷史
+	var texts []string
+	q := "?member=" + wa.ID + "&limit=2"
+	for pages := 0; ; pages++ {
+		code, tl := get(q)
+		if code != 200 || pages > 5 {
+			t.Fatalf("code=%d pages=%d", code, pages)
+		}
+		for _, m := range tl["messages"].([]any) {
+			mm := m.(map[string]any)
+			if mm["session_id"] != wa.ID {
+				t.Fatalf("leaked %v", mm)
+			}
+			texts = append(texts, mm["text"].(string))
+		}
+		if tl["has_more"] != true {
+			break
+		}
+		q = "?member=" + wa.ID + "&limit=2&before=" + url.QueryEscape(tl["next_cursor"].(string))
+	}
+	if strings.Join(texts, ",") != "a4,a3,a2,a1,a0" {
+		t.Fatalf("texts=%v", texts)
+	}
+	if code, tl := get("?member="); code != 200 || len(tl["messages"].([]any)) != 13 {
+		t.Fatalf("空 member 等於總覽：%d", code)
+	}
+	for _, bad := range []string{outside.ID, "no-such", url.QueryEscape("x' OR 1=1 --")} {
+		code, body := e.do("GET", "/rooms/"+rid+"/timeline?member="+bad, nil)
+		if code != 404 || !strings.Contains(string(body), "error") {
+			t.Fatalf("member=%s → %d %s，非成員要 404", bad, code, body)
+		}
+	}
+	if code, _ := e.do("GET", "/rooms/nope/timeline?member="+wa.ID, nil); code != 404 {
+		t.Fatalf("missing room = %d", code)
+	}
+}

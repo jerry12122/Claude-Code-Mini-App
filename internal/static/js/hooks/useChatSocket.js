@@ -49,6 +49,25 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
   const [runStartedAt, setRunStartedAt] = useState(null);
   /** 執行中先送出、等待前一輪完成的訊息（後端持久化，sync / queue_update 同步） */
   const [queue, setQueue] = useState([]);
+  const [queueRunNowId, setQueueRunNowId] = useState(null);
+  const queueRunNowRef = useRef(null);
+  const queueBatchRef = useRef(null);
+  const [queueBatching, setQueueBatching] = useState(false);
+  const finishBatch = (pending, error, value) => {
+    if (queueBatchRef.current !== pending) return;
+    clearTimeout(pending.timer); queueBatchRef.current = null; setQueueBatching(false);
+    if (error) { if (pending.reject) pending.reject(error); else showToast(error.message, { error: true }); }
+    else pending.resolve?.(value);
+  };
+  const clearQueueRunNow = (target) => {
+    if (target && queueRunNowRef.current !== target) return;
+    if (queueRunNowRef.current?.timer) {
+      clearTimeout(queueRunNowRef.current.timer);
+    }
+    queueRunNowRef.current = null;
+    setQueueRunNowId(null);
+  };
+  useEffect(() => () => { clearQueueRunNow(); }, []);
   const [queuePaused, setQueuePaused] = useState(false);
   const [quotaResume, setQuotaResume] = useState(() => emptyQuotaResume());
   /** status 已 IDLE 但後端任務程序仍活著（等喚醒中）：後端視為忙碌，需顯示中斷鈕 */
@@ -61,6 +80,8 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
   const shellRenderPending = useRef(false);
   const wsRef = useRef(null);
   const inputRequestsRef = useRef(new Map());
+  const queueEditRequestsRef = useRef(new Map());
+  const queueOperationPending = useCallback(() => !!(queueBatchRef.current || queueRunNowRef.current || queueEditRequestsRef.current.size), []);
   const streamBuf = useRef('');
   const connGenRef = useRef(0);
   const activeSessionRef = useRef(session.id);
@@ -97,6 +118,12 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
     setPermRetryTools(false);
     setShellRequest(null);
     setQueue([]);
+    clearQueueRunNow();
+    for (const [id, request] of queueEditRequestsRef.current) {
+      clearTimeout(request.timer);
+      request.reject(new Error('連線已切換，草稿已保留'));
+      queueEditRequestsRef.current.delete(id);
+    }
     setQueuePaused(false);
     setQuotaResume(emptyQuotaResume());
     setLingering(false);
@@ -305,6 +332,19 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
           return;
         }
 
+        if (msg.type === 'queue_batch_success' || msg.type === 'queue_batch_error' || msg.type === 'error') {
+          const pending = queueBatchRef.current;
+          if (pending?.ws === ws && pending.sessionId === activeSessionRef.current &&
+              (msg.type === 'error' || msg.request_id === pending.requestId)) {
+            finishBatch(pending, msg.type === 'queue_batch_success' ? null : new Error(msg.content || '批次操作失敗'), msg);
+            return;
+          }
+        }
+        if (msg.type === 'error' && queueRunNowRef.current?.ws === ws) {
+          clearQueueRunNow();
+          showToast(msg.content || '立刻執行失敗，請稍後再試', { error: true, duration: 3000 });
+          return;
+        }
         if (msg.type === 'error' && isGuest) {
           showToast(msg.content || '操作失敗', { error: true, duration: 3000 });
           return;
@@ -317,6 +357,23 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
             inputRequestsRef.current.delete(msg.request_id);
             if (msg.type === 'input_accepted') request.resolve();
             else request.reject(Object.assign(new Error(msg.content || '訊息未接受'), { rejected: !['update_in_progress', 'retry_input'].includes(msg.code) }));
+          }
+          return;
+        }
+
+        if (msg.type === 'queue_edit_success' || msg.type === 'queue_edit_error') {
+          const request = queueEditRequestsRef.current.get(msg.request_id);
+          if (request && request.ws === ws) {
+            clearTimeout(request.timer);
+            queueEditRequestsRef.current.delete(msg.request_id);
+            if (msg.type === 'queue_edit_success') {
+              request.resolve({ id: msg.id, requestId: msg.request_id });
+            } else {
+              const err = new Error(msg.content || '編輯失敗，請稍後再試');
+              err.code = msg.code || 'failed';
+              err.id = msg.id;
+              request.reject(err);
+            }
           }
           return;
         }
@@ -386,6 +443,10 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
         }
 
         if (msg.type === 'queue_update') {
+          const mutation = queueBatchRef.current;
+          if (mutation?.ws === ws && (mutation.type === 'queue_remove' ? !(msg.queue || []).some(q => q.id === mutation.id) : mutation.type === 'queue_resume' && !msg.queue_paused)) finishBatch(mutation);
+          const pending = queueRunNowRef.current;
+          if (pending?.ws === ws && !(msg.queue || []).some(q => q.id === pending.id)) clearQueueRunNow(pending);
           setQueue(msg.queue || []);
           setQueuePaused(!!msg.queue_paused);
           setQuotaResume((prev) => reduceQuotaResume(prev, msg));
@@ -652,6 +713,8 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
       };
 
       ws.onclose = (evt) => {
+        if (queueRunNowRef.current?.ws === ws) clearQueueRunNow();
+        if (queueBatchRef.current?.ws === ws) finishBatch(queueBatchRef.current, new Error('連線中斷，批次結果未確認；請查看佇列'));
         clearTimeout(openTimer);
         clearTimeout(syncTimer);
         console.warn('[ws] 連線關閉', evt.code, evt.reason);
@@ -660,6 +723,12 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
           clearTimeout(request.timer);
           request.reject(new Error('連線中斷，草稿已保留；請確認歷史或佇列後再重試'));
           inputRequestsRef.current.delete(id);
+        }
+        for (const [id, request] of queueEditRequestsRef.current) {
+          if (request.ws !== ws) continue;
+          clearTimeout(request.timer);
+          request.reject(new Error('連線中斷，草稿已保留；請確認佇列後再重試'));
+          queueEditRequestsRef.current.delete(id);
         }
         if (!isCurrent() || wsRef.current !== ws) return;
         setConnected(false);
@@ -698,10 +767,12 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
     window.addEventListener('online', wake);
 
     return () => {
+      clearQueueRunNow();
       document.removeEventListener('visibilitychange', wake);
       window.removeEventListener('online', wake);
       cancelled = true;
       clearTimeout(deltaTimer);
+      if (queueBatchRef.current?.ws?._gen === effectGen) finishBatch(queueBatchRef.current, new Error('連線已切換，批次結果未確認'));
       if (initCtl) initCtl.abort();
       tgAbortRequest();
       clearReconnectTimer();
@@ -710,6 +781,12 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
         clearTimeout(request.timer);
         request.reject(new Error('連線已切換，草稿已保留'));
         inputRequestsRef.current.delete(id);
+      }
+      for (const [id, request] of queueEditRequestsRef.current) {
+        if (request.ws._gen !== effectGen) continue;
+        clearTimeout(request.timer);
+        request.reject(new Error('連線已切換，草稿已保留'));
+        queueEditRequestsRef.current.delete(id);
       }
       if (wsRef.current && wsRef.current._gen === effectGen) {
         wsRef.current.close();
@@ -803,7 +880,39 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
     const ws = wsRef.current;
     if (!ws || ws.readyState !== 1) return false;
     if (ws._sessionId !== activeSessionRef.current || ws._sessionId !== session.id) return false;
-    try { ws.send(JSON.stringify(obj)); return true; } catch (_) { return false; }
+    const runNow = obj.type === 'queue_run_now';
+    if ((runNow || obj.type === 'queue_remove' || obj.type === 'queue_resume') && queueOperationPending()) return false;
+    try {
+      if (obj.type === 'queue_remove' || obj.type === 'queue_resume') {
+        const pending = { ws, sessionId: session.id, type: obj.type, id: obj.id };
+        pending.timer = setTimeout(() => {
+          finishBatch(pending, new Error('佇列操作結果未確認，請查看佇列'));
+        }, 25000);
+        queueBatchRef.current = pending; setQueueBatching(true);
+      }
+      ws.send(JSON.stringify(obj));
+      if (runNow) {
+        const pending = {
+          ws,
+          id: obj.id,
+          sessionId: session.id,
+          timer: null,
+        };
+        pending.timer = setTimeout(() => {
+          if (
+            queueRunNowRef.current === pending &&
+            queueRunNowRef.current.ws === ws &&
+            queueRunNowRef.current.sessionId === session.id
+          ) {
+            clearQueueRunNow(pending);
+            showToast('執行結果尚未確認，請查看佇列後再試', { error: true, duration: 3000 });
+          }
+        }, 25000);
+        queueRunNowRef.current = pending;
+        setQueueRunNowId(obj.id);
+      }
+      return true;
+    } catch (_) { if (queueBatchRef.current?.ws === ws) finishBatch(queueBatchRef.current); return false; }
   }, [session.id]);
 
   const submitInput = useCallback((data, attachmentIds, requestId = newInputRequestID()) => new Promise((resolve, reject) => {
@@ -823,6 +932,45 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
       reject(new Error('尚未連線，訊息已保留'));
     }
   }), [send]);
+
+  const editQueuedMessage = useCallback((id, previous, content, requestId = `qedit-${Date.now()}-${Math.random().toString(36).slice(2)}`) => new Promise((resolve, reject) => {
+    if (typeof socketPayloadError === 'function') {
+      const error = socketPayloadError({ type: 'queue_edit', id, request_id: requestId, previous, content });
+      if (error) { reject(new Error(error)); return; }
+    }
+    const ws = wsRef.current;
+    if (queueOperationPending()) { reject(new Error('佇列操作處理中')); return; }
+    if (!ws || ws.readyState !== 1 || ws._sessionId !== activeSessionRef.current || ws._sessionId !== session.id) {
+      reject(new Error('連線中斷，草稿已保留；請確認佇列後再重試'));
+      return;
+    }
+    const timer = setTimeout(() => {
+      queueEditRequestsRef.current.delete(requestId);
+      reject(Object.assign(new Error('編輯確認逾時，請查看佇列後再試'), { code: 'timeout' }));
+    }, 25000);
+    queueEditRequestsRef.current.set(requestId, { ws, sessionId: session.id, id, resolve, reject, timer });
+    try {
+      ws.send(JSON.stringify({ type: 'queue_edit', id, request_id: requestId, previous, content }));
+    } catch (_) {
+      clearTimeout(timer);
+      queueEditRequestsRef.current.delete(requestId);
+      reject(new Error('連線中斷，操作未送出，請稍後再試'));
+    }
+  }), [session.id]);
+
+  const changeQueueBatch = useCallback((items, batchId) => new Promise((resolve, reject) => {
+    const ws = wsRef.current;
+    if (queueOperationPending() || isGuest || !ws || ws.readyState !== 1 || ws._sessionId !== session.id || activeSessionRef.current !== session.id) {
+      reject(new Error('連線中斷或佇列操作處理中')); return;
+    }
+    const requestId = newInputRequestID();
+    const pending = { ws, sessionId: session.id, requestId, resolve, reject };
+    pending.timer = setTimeout(() => finishBatch(pending, new Error('25秒未確認批次結果，輸入已保留；請查看佇列，不會自動重送')), 25000);
+    queueBatchRef.current = pending; setQueueBatching(true);
+    try { ws.send(JSON.stringify(batchId ? { type: 'queue_batch_cancel', request_id: requestId, batch_id: batchId } :
+      { type: 'queue_batch', request_id: requestId, items: items.map(q => ({ id: q.id, previous: q.content || '' })) })); }
+    catch (_) { finishBatch(pending, new Error('批次操作未送出，輸入已保留')); }
+  }), [session.id, isGuest]);
 
   const flushPendingModes = useCallback(() => {
     // 訪客不改動擁有者的權限／模型／輸入模式設定（UI 也沒有這些控制項）。
@@ -892,9 +1040,10 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
     sessionModel,
     liveActivity,
     runStartedAt,
-    queue, queuePaused, quotaResume, lingering,
+    queue, queuePaused, queueRunNowId, quotaResume, lingering,
     send,
     submitInput,
+    editQueuedMessage, changeQueueBatch, queueBatching, queueOperationPending,
     flushPendingModes,
     handleQuotaRefresh,
     commitPermMode,

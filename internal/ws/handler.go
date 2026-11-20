@@ -86,21 +86,34 @@ const (
 var lingerNoticeDelay = 3 * time.Second // var：測試縮短用
 
 type clientMsg struct {
-	Answers         []questionAnswer `json:"answers,omitempty"`
-	RequestID       string           `json:"request_id,omitempty"`
-	AttachmentIDs   []string         `json:"attachment_ids,omitempty"`
-	Type            string           `json:"type"`
-	Data            string           `json:"data,omitempty"`
-	Tools           []string         `json:"tools,omitempty"`
-	Mode            string           `json:"mode,omitempty"`
-	Model           string           `json:"model,omitempty"`
-	Effort          string           `json:"effort,omitempty"`
-	ID              int64            `json:"id,omitempty"`         // queue_remove 的目標
-	Generation      int64            `json:"generation,omitempty"` // 僅內部 quota_resume 攜帶，用來對上這一次的世代
-	SourceSessionID string           `json:"source_session_id,omitempty"`
+	BatchID         string              `json:"batch_id,omitempty"`
+	BatchItems      []db.QueueBatchItem `json:"items,omitempty"`
+	interrupted     bool                // 僅 RunNow 內部設定；未匯出，不接受 JSON 輸入。
+	invalidUTF8     bool                // 僅 readLoop 設定：queue_edit 的原始 frame 含無效 UTF-8（JSON 解碼會悄悄換成 U+FFFD）。
+	Answers         []questionAnswer    `json:"answers,omitempty"`
+	RequestID       string              `json:"request_id,omitempty"`
+	AttachmentIDs   []string            `json:"attachment_ids,omitempty"`
+	Type            string              `json:"type"`
+	Data            string              `json:"data,omitempty"`
+	Tools           []string            `json:"tools,omitempty"`
+	Mode            string              `json:"mode,omitempty"`
+	Model           string              `json:"model,omitempty"`
+	Effort          string              `json:"effort,omitempty"`
+	ID              int64               `json:"id,omitempty"`         // queue_remove 的目標
+	Generation      int64               `json:"generation,omitempty"` // 僅內部 quota_resume 攜帶，用來對上這一次的世代
+	SourceSessionID string              `json:"source_session_id,omitempty"`
+	// RequireIdle、RoomID、PMSessionID 只給工作室喚醒連線上的工具重置。
+	// 一般客戶端送出的 reset_context 仍是明確取消，這些欄位不改變那個語意。
+	RequireIdle bool   `json:"require_idle,omitempty"`
+	RoomID      string `json:"room_id,omitempty"`
+	PMSessionID string `json:"pm_session_id,omitempty"`
+	// Previous、EditContent 只給 queue_edit。用 RawMessage 保留「缺欄／null／型別錯」的差異，不影響其他訊息的解析。
+	Previous    json.RawMessage `json:"previous,omitempty"`
+	EditContent json.RawMessage `json:"content,omitempty"`
 }
 
 type serverMsg struct {
+	BatchID      string             `json:"batch_id,omitempty"`
 	Question     *pendingQuestion   `json:"question,omitempty"`
 	RequestID    string             `json:"request_id,omitempty"`
 	Code         string             `json:"code,omitempty"` // 機器可讀的拒絕原因，例如 update_in_progress
@@ -275,6 +288,8 @@ func NewHandler(database *db.DB, botToken string, shellCfg ShellOpts, quotaSvc *
 		}
 		h.restoreState()
 		h.initDispatcher()
+		untrackLive := trackLive(h)
+		defer untrackLive()
 		h.readLoop()
 	}
 }

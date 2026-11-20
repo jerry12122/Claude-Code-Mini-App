@@ -5,6 +5,7 @@
 ---
 
 ## 🚀 待執行項目
+- [x] 工作室結案流程與 PM 規則保留：確認式結案、房間範圍工具及每輪／交接提示已驗收整合，skill 已安裝；正式服務未重啟。準備結案仍須先盤點並取得明確確認，本次未執行真實清理（見 [驗收與計畫](done/workroom-closeout.md)）。
 - [x] 評估以 coder/acp-go-sdk 取代手寫 ACP 客戶端（2026-11-19）：實驗顯示 SDK 對未知更新種類會整則丟棄、且無法用真實 kiro／agy 驗證，**暫不採用**；較便宜的替代是把兩份客戶端的共同傳輸抽成 `internal/acpconn`（見 [評估](todo/acp-sdk-evaluation.md)）
 - [ ] 工作室首次運行後優化：來源身分與暫停狀態、派工優先的桌面／手機版面、長文閱讀、工作室內授權與交接驗收；首版已實作並整合，隔離瀏覽器驗證通過（2026-11-18，2026-11-19 於 HEAD 重跑 10 項皆過，見[優化計畫](todo/workroom-optimization.md)、[驗收紀錄](../reviews/2026-11-18-workroom-optimization-verification.md)）；Wails 桌面版隔離實測已過（2026-11-19）；待做：Telegram Android／iOS 與真實額度停止的交接驗收
 - [ ] Windows x64 安裝包發版驗收：實作與本機 smoke／46 項發布檢查完成，尚待 Win10／乾淨帳戶、真實 Runtime 缺少、安裝版跨版更新及手動遷移驗收。2026-11-18 再單跑 `TestRunReturnsWhenOrphanHoldsStdoutAfterResult` 約 2 秒通過；普通全套仍未重跑（見 [紀錄](../reviews/2026-11-18-windows-installer.md)、[規劃](todo/windows-installer.md)）

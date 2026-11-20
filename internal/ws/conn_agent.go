@@ -30,7 +30,7 @@ import (
 // runAgent：與 WS 解耦，任務在背景執行。
 // allowedOnce：僅「允許此操作」該次 retry 帶入 --allowedTools，不可寫入 DB（否則變成永久 allowlist）。
 // userMsgID：本次 prompt 對應的本機 user 訊息 ID（0 表示非使用者輸入，例如重試提示）；Telegram 發送據此綁定本機列。
-func (h *wsConn) runAgent(prompt string, allowedOnce []string, userMsgID int64, tgFiles []string) {
+func (h *wsConn) runAgent(prompt string, allowedOnce []string, userMsgID int64, tgFiles []string, interrupted ...bool) {
 	// 閘門必須在第一個 cancel 與任何寫入之前：維護中直接拒絕，不取消、不寫 running、不取出佇列。
 	release, err := admitWork()
 	if err != nil {
@@ -68,6 +68,10 @@ func (h *wsConn) runAgent(prompt string, allowedOnce []string, userMsgID int64, 
 			runnerPrompt = "全域指令\n" + g.Text + "\n\n使用者訊息\n" + prompt
 		}
 	}
+	runnerPrompt = withPMCore(h.database, h.sessionID, userMsgID, runnerPrompt)
+	if len(interrupted) > 0 && interrupted[0] {
+		runnerPrompt = runNowNotice + "\n" + runnerPrompt
+	}
 	h.mu.Lock()
 	pm := s.PermissionMode
 	agSid := s.AgentSessionID
@@ -89,7 +93,7 @@ func (h *wsConn) runAgent(prompt string, allowedOnce []string, userMsgID int64, 
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	taskStart(h.sessionID, cancel, msgID)
+	done := taskStartWithDone(h.sessionID, cancel, msgID)
 
 	if err := h.database.UpdateSessionStatus(h.sessionID, db.SessionStatusRunning); err != nil {
 		slog.Info(fmt.Sprintf("[ws] UpdateSessionStatus running: %v", err))
@@ -223,6 +227,8 @@ func (h *wsConn) runAgent(prompt string, allowedOnce []string, userMsgID int64, 
 		if relErr := releaseQuotaResumeRun(h.database, h.sessionID, owned, generation); relErr != nil {
 			slog.Info(fmt.Sprintf("[ws] quota resume release: %v", relErr))
 		}
+		taskFinish(h.sessionID, msgID)
+		close(done)
 		h.pauseQueue()
 		notifyTaskAsync(h.botToken, h.tgUserID, h.notifyCfg, tg.TaskAlert{
 			SessionName: h.sess.Name,
@@ -301,7 +307,6 @@ func (h *wsConn) runAgent(prompt string, allowedOnce []string, userMsgID int64, 
 	go func(opts agent.RunOptions, msgID int64, userPrompt string) {
 		defer goRelease()
 		defer permCleanup()
-		defer taskEnd(h.sessionID, msgID)
 		// run 結束一定要取消 ctx：卡在授權／提問的請求靠它解除，否則 claude 子進程先結束時項目會永遠殘留。
 		defer cancel()
 
@@ -312,6 +317,7 @@ func (h *wsConn) runAgent(prompt string, allowedOnce []string, userMsgID int64, 
 		succeeded := false
 		errText := ""
 		var cancelled bool
+		var interjected bool
 
 		// result 後程序可能仍活著（例如等 ScheduleWakeup 喚醒），此時後端仍視為忙碌、新訊息會排隊，
 		// 但 status 已是 IDLE（MCP 的 ask_session 靠它判斷回合結束，不能改）。另發 lingering 讓前端顯示中斷鈕。
@@ -338,16 +344,19 @@ func (h *wsConn) runAgent(prompt string, allowedOnce []string, userMsgID int64, 
 		}
 
 		// 收尾決定佇列走向。等授權時不動佇列；成功才續跑；失敗／中斷暫停，避免錯誤連鎖。
-		// 成功時先 taskEnd 解除登記，drainIfIdle 才會看到閒置（外層 defer taskEnd 之後自然 no-op）。
+		// 最後登記的收尾 defer 先解除舊任務登記，drainIfIdle 才會看到閒置。
 		defer func() {
 			switch {
+			case interjected:
+				if err := releaseQuotaResumeRun(h.database, h.sessionID, owned, generation); err != nil {
+					slog.Info(fmt.Sprintf("[ws] quota resume release: %v", err))
+				}
 			case permDenied:
 			case succeeded && !runFailed && !cancelled:
 				clearSessionFailure(h.database, h.sessionID)
 				if err := releaseQuotaResumeRun(h.database, h.sessionID, owned, generation); err != nil {
 					slog.Info(fmt.Sprintf("[ws] quota resume release: %v", err))
 				}
-				taskEnd(h.sessionID, msgID)
 				h.drainIfIdle()
 			default:
 				refreshQuota := h.ho.quotaResumeRefresh
@@ -362,6 +371,19 @@ func (h *wsConn) runAgent(prompt string, allowedOnce []string, userMsgID int64, 
 				}
 				h.pauseQueue()
 			}
+		}()
+		// 本體已定稿並寫回 idle；必須先通知，再進入可能等待 dispatchLock 的佇列決策。
+		defer func() {
+			interjected = taskFinish(h.sessionID, msgID)
+			if cancelled && !permDenied && !interjected {
+				notifyTaskAsync(h.botToken, h.tgUserID, h.notifyCfg, tg.TaskAlert{
+					SessionName: h.sess.Name,
+					AgentType:   h.agentType,
+					Outcome:     tg.OutcomeCancelled,
+					Prompt:      userPrompt,
+				})
+			}
+			close(done)
 		}()
 
 		// stream 不含 model，run 前解析並推送。
@@ -637,18 +659,14 @@ func (h *wsConn) runAgent(prompt string, allowedOnce []string, userMsgID int64, 
 				Prompt:      userPrompt,
 				Error:       errText,
 			})
-		} else if cancelled {
-			notifyTaskAsync(h.botToken, h.tgUserID, h.notifyCfg, tg.TaskAlert{
-				SessionName: h.sess.Name,
-				AgentType:   h.agentType,
-				Outcome:     tg.OutcomeCancelled,
-				Prompt:      userPrompt,
-			})
 		}
 	}(opts, msgID, prompt)
 }
 
 func (h *wsConn) startInput(input clientMsg, queued *db.QueuedMessage) error {
+	if queued != nil && queued.BatchID != "" {
+		return h.startQueuedBatch(queued)
+	}
 	prompt, err := attachmentPrompt(h.database, h.sessionID, input.Data, input.AttachmentIDs)
 	if err != nil {
 		return err
@@ -706,7 +724,7 @@ func (h *wsConn) startInput(input clientMsg, queued *db.QueuedMessage) error {
 	if input.RequestID != "" {
 		h.send(serverMsg{Type: "input_accepted", RequestID: input.RequestID})
 	}
-	h.runAgent(prompt, nil, m.ID, nil)
+	h.runAgent(prompt, nil, m.ID, nil, input.interrupted)
 	return nil
 }
 

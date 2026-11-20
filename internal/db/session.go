@@ -153,6 +153,10 @@ func (db *DB) DeleteSession(id string) error {
 	if err := db.ClearQueuedMessages(id); err != nil {
 		return err
 	}
+	// 專案未啟用 foreign_keys；queue 已清空後才清除批次操作 receipt，避免殘留成員失去 metadata。
+	if _, err := db.Exec(`DELETE FROM queue_batches WHERE session_id=?`, id); err != nil {
+		return err
+	}
 	if _, err := db.Exec(`DELETE FROM attachment_access WHERE session_id = ?`, id); err != nil {
 		return err
 	}

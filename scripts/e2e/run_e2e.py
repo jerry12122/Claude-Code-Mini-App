@@ -145,7 +145,7 @@ class App:
             "CMA_E2E_WEBVIEW_DATA": str(inst.parent / "webview"),
             "CMA_E2E_CDP_PORT": str(cdp),
         }
-        self.env.update(extra_env or {})
+        self.env.update({**(extra_env or {}), "MINIAPP_TEST_LOOPBACK": "1"})
 
     def start(self, timeout: float = 150) -> int:
         self.proc = start_detached(self.exe, self.inst, self.env, self.inst.parent / "desktop.log")

@@ -41,7 +41,7 @@ type roomLookup struct {
 	RoomID string `json:"room_id,omitempty"`
 }
 
-func NewRoomHTTPHandler(database *db.DB, quotaSvc *quota.Service) http.Handler {
+func NewRoomHTTPHandler(database *db.DB, quotaSvc *quota.Service, reset func(context.Context, string, string, string) error) http.Handler {
 	s := gomcp.NewServer(&gomcp.Implementation{Name: "miniapp-room", Version: "1.0.0"}, nil)
 	scope := func(req *gomcp.CallToolRequest, requested string) (string, string, error) {
 		extra := req.GetExtra()
@@ -56,6 +56,7 @@ func NewRoomHTTPHandler(database *db.DB, quotaSvc *quota.Service) http.Handler {
 		return room, pm, err
 	}
 	registerRoomTools(s, database, "", scope)
+	registerCloseoutTools(s, database, "", scope, reset)
 	d := deps{quota: quotaSvc}
 	gomcp.AddTool(s, &gomcp.Tool{Name: "get_quota", Description: "讀取 provider 用量快取，可在派工前查閱"}, func(ctx context.Context, req *gomcp.CallToolRequest, in getQuotaIn) (*gomcp.CallToolResult, getQuotaOut, error) {
 		if _, _, err := scope(req, ""); err != nil {
@@ -166,6 +167,48 @@ func registerRoomTools(s *gomcp.Server, database *db.DB, prefix string, scope fu
 		}
 		return nil, out, nil
 	})
+}
+
+func registerCloseoutTools(s *gomcp.Server, database *db.DB, prefix string, scope func(*gomcp.CallToolRequest, string) (string, string, error), reset func(context.Context, string, string, string) error) {
+	gomcp.AddTool(s, &gomcp.Tool{Name: prefix + "room_delete", Description: "刪除現任 PM 的這個工作室：成員關係、備忘、派工與工作室佇列。不刪除 session 或其歷史。完成才回 ok"}, func(_ context.Context, req *gomcp.CallToolRequest, in roomLookup) (*gomcp.CallToolResult, okOut, error) {
+		roomID, pmID, err := scope(req, in.RoomID)
+		if err != nil {
+			return nil, okOut{}, err
+		}
+		if err := database.DeleteRoomAsPM(roomID, pmID); err != nil {
+			return nil, okOut{}, err
+		}
+		return nil, okOut{OK: true}, nil
+	})
+	gomcp.AddTool(s, &gomcp.Tool{Name: prefix + "reset_session", Description: "清除本工作室單一成員在 Mini App 的續接、訊息與佇列。不刪 session，也不清 provider 本機歷史。忙碌、有待授權或待確認、沒連上、被拒絕、共用或其他工作室的會話回失敗，資料不動，不回 ok"}, func(ctx context.Context, req *gomcp.CallToolRequest, in roomResetIn) (*gomcp.CallToolResult, okOut, error) {
+		roomID, pmID, err := scope(req, in.RoomID)
+		if err != nil {
+			return nil, okOut{}, err
+		}
+		sessionID := strings.TrimSpace(in.SessionID)
+		if sessionID == "" {
+			return nil, okOut{}, errors.New("session_id 不可為空")
+		}
+		rooms, err := database.SessionRoomIDs(sessionID)
+		if err != nil {
+			return nil, okOut{}, err
+		}
+		if len(rooms) != 1 || rooms[0] != roomID {
+			return nil, okOut{}, errors.New("只重置僅屬於這個工作室的會話；共用、其他工作室或不在工作室的會話未重置")
+		}
+		if reset == nil {
+			return nil, okOut{}, errors.New("沒有連上 session，未重置")
+		}
+		if err := reset(ctx, sessionID, roomID, pmID); err != nil {
+			return nil, okOut{}, err
+		}
+		return nil, okOut{OK: true}, nil
+	})
+}
+
+type roomResetIn struct {
+	RoomID    string `json:"room_id,omitempty"`
+	SessionID string `json:"session_id" jsonschema:"要重置的本工作室成員 session_id"`
 }
 
 type roomHistoryOut struct {

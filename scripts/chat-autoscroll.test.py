@@ -35,7 +35,8 @@ with tempfile.TemporaryDirectory(prefix="autoscroll-", ignore_cleanup_errors=Tru
     (tmp / "config.yaml").write_text(f'web:\n  password: "{PASSWORD}"\nserver:\n  port: {port}\ndb:\n  path: "./app.db"\n')
     subprocess.run(["go", "build", "-tags", "production", "-o", str(tmp / "server.exe"), "./cmd/server"], cwd=repo, check=True)
     server = subprocess.Popen([str(tmp / "server.exe")], cwd=tmp, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                              env={**os.environ, "PATH": str(tmp / "bin") + ";" + os.environ["PATH"]})
+                              env={**os.environ, "PATH": str(tmp / "bin") + ";" + os.environ["PATH"],
+                                   "MINIAPP_TEST_LOOPBACK": "1"})
     browser = None
     try:
         for _ in range(100):

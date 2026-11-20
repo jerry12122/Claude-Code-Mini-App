@@ -11,9 +11,43 @@ const ROOM_ROLE_LABEL = { pm: 'PM', worker: '執行者' };
 
 function roomsUrl() { return '/rooms'; }
 function roomUrl(id) { return `/rooms/${encodeURIComponent(id)}`; }
-/** before 是後端回的不透明游標，原樣編碼帶回。 */
-function roomTimelineUrl(id, before, limit) {
-  return `${roomUrl(id)}/timeline?limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ''}`;
+/** before 是後端回的不透明游標，原樣編碼帶回。member 空白＝總覽；有值時後端先篩選再分頁。 */
+function roomTimelineUrl(id, before, limit, member) {
+  return `${roomUrl(id)}/timeline?limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ''}${member ? `&member=${encodeURIComponent(member)}` : ''}`;
+}
+
+/** 篩選對象只認目前工作室的成員（以 id，不以名稱）。沒選、換室或成員被移出都是 null＝總覽。 */
+function roomFilterTarget(room, sessionId) {
+  const list = room && Array.isArray(room.members) ? room.members : [];
+  const found = sessionId ? list.find((m) => m.session_id === sessionId) : null;
+  return found ? { id: found.session_id, role: found.role, name: found.session_name || '未命名' } : null;
+}
+
+/** 時間軸資料的世代：換室、換成員、成員角色改變（交接）都會變。 */
+function roomTimelineScope(roomId, target) {
+  return `${roomId}
+${target ? `${target.id}
+${target.role}` : ''}`;
+}
+
+/** 換 scope：清掉別的篩選載入的訊息與游標，只留還沒送達的本地氣泡。 */
+function roomTimelineReset(state, scope) {
+  return { ...roomTimelineEmpty(), messages: (state.messages || []).filter((item) => item.local), scope };
+}
+
+/** 套用一頁；這頁所屬的 scope 已不是目前的（使用者已切到別人）就整頁丟棄。 */
+function roomTimelineAccept(state, scope, page, mode) {
+  return state.scope !== scope ? state : { ...roomTimelineDeliver(state, page, mode), scope };
+}
+
+/** 本地氣泡是送給 PM 的，看 worker 時不顯示（仍留在狀態裡，回總覽或 PM 會再看到）。 */
+function roomFilterVisible(messages, role) {
+  return role === 'worker' && messages.some((item) => item.local) ? messages.filter((item) => !item.local) : messages;
+}
+
+function roomFilterEmptyText(target) {
+  if (!target) return '成員還沒有任何訊息。';
+  return target.role === 'pm' ? '你與 PM 還沒有對話。' : `沒有與「${target.name}」相關的訊息。`;
 }
 
 function roomTimelineEmpty() {
@@ -155,16 +189,17 @@ function roomQuotaView(q) {
 function roomMemberState(member) {
   const m = member || {};
   const queue = Number(m.queue_length) || 0;
-  const paused = !!m.queue_paused;
+  // 暫停只擋已排隊的訊息；空佇列沒有東西可繼續，也沒有按鈕可按，不能顯示成卡住。
+  const paused = !!m.queue_paused && queue > 0;
   const attention = m.attention === 'confirm' || m.attention === 'input' || m.attention === 'shell' ? m.attention : '';
   let primary = '閒置';
   if (attention === 'confirm') primary = '待你授權';
   else if (attention === 'input') primary = '待你回答';
   else if (attention === 'shell') primary = '待你確認指令';
-  else if (paused) primary = queue > 0 ? `佇列已暫停，還有 ${queue} 則` : '佇列已暫停';
+  else if (paused) primary = `佇列已暫停，還有 ${queue} 則`;
   else if (m.status === 'running') primary = '執行中，活動資料未提供';
   const extra = [];
-  if (attention && paused) extra.push(queue > 0 ? `佇列已暫停，還有 ${queue} 則` : '佇列已暫停');
+  if (attention && paused) extra.push(`佇列已暫停，還有 ${queue} 則`);
   else if (!paused && queue > 0) extra.push(`佇列 ${queue} 則`);
   return {
     primary, extra: extra.join('；'), attention, paused, queue,
@@ -177,6 +212,16 @@ function roomJobsSplit(jobs) {
   const list = Array.isArray(jobs) ? jobs : [];
   const closed = new Set(['done', 'failed', 'interrupted']);
   return { open: list.filter((job) => !closed.has(job.status)), closed: list.filter((job) => closed.has(job.status)) };
+}
+
+/** 只補沒有 open job 的 worker 會話活動，不推定活動屬於哪一筆派工。 */
+function roomUnboundWorkers(members, jobs) {
+  const assigned = new Set(roomJobsSplit(jobs).open.map((job) => job.worker_id));
+  return (Array.isArray(members) ? members : []).filter((member) => {
+    if (!member || member.role !== 'worker' || !member.session_id || assigned.has(member.session_id)) return false;
+    const state = roomMemberState(member);
+    return member.status === 'running' || !!state.attention || state.queue > 0;
+  });
 }
 
 /** 標頭晶片所需欄位。狀態文字來自 roomMemberState，不靠顏色點單獨表達。 */
@@ -226,6 +271,51 @@ function roomMessageMeta(m) {
     pending: m.status === 'pending',
     interrupted: m.status === 'interrupted',
   };
+}
+
+// ── 排隊輸入的原地編輯（PATCH /rooms/:id/messages/:queue_id）──
+const ROOM_QUEUE_EDIT_MAX_BYTES = 64000; // 與後端一致：UTF-8 bytes，不是字元數
+
+function roomQueueEditUrl(roomId, queueId) { return `/rooms/${encodeURIComponent(roomId)}/messages/${queueId}`; }
+
+function roomUtf8Bytes(text) { return new TextEncoder().encode(String(text ?? '')).length; }
+
+/**
+ * 只有已接受、持久（負數 id＝-queue id）、本室使用者來源、且仍排在現任 PM 佇列的輸入可編輯。
+ * expectedPm 固定取該項目所屬的 session：之後 PM 交接也不會被悄悄換成新 PM。
+ */
+function roomQueueEditTarget(m, pmId) {
+  if (!m || m.batch_id || m.local || m.queued !== true || m.role !== 'user' || m.source_kind !== 'user') return null;
+  const id = Number(m.id);
+  if (!Number.isSafeInteger(id) || id >= 0 || !m.session_id || m.session_id !== pmId) return null;
+  return { msgId: m.id, queueId: -id, expectedPm: m.session_id, previous: String(m.text ?? ''), hasAttachments: !!(m.attachments && m.attachments.length) };
+}
+
+// 專用 queue GET 的正 ID；scope 由讀取交易驗證，不能混用 timeline 負 ID。
+function roomQueueRowTarget(q, pmId) {
+  if (!q || q.batch_id || !Number.isSafeInteger(q.id) || q.id <= 0 || q.pm_id !== pmId) return null;
+  return { msgId: q.id, queueId: q.id, expectedPm: q.pm_id, previous: q.content, hasAttachments: !!q.attachments?.length };
+}
+
+/** 送出前的本機檢查（後端仍會再驗）。空白但保留原附件可以送出。 */
+function roomQueueEditInvalid(draft, hasAttachments) {
+  const bytes = roomUtf8Bytes(draft);
+  if (bytes > ROOM_QUEUE_EDIT_MAX_BYTES) return `文字最多 ${ROOM_QUEUE_EDIT_MAX_BYTES} bytes（UTF-8），目前 ${bytes} bytes，請縮短後再儲存。`;
+  if (!String(draft).trim() && !hasAttachments) return '請輸入文字；沒有附件的訊息不能存成空白。';
+  return '';
+}
+
+/** 失敗一律保留草稿、不自動重送：文字只說明發生什麼與使用者能做什麼。 */
+function roomQueueEditFailure(status, serverMessage) {
+  if (status === 409) return '這則排隊訊息已被取走、已被修改，或工作室的 PM 已交接。草稿已保留；可取消，或重新載入後再決定是否儲存。';
+  if (status === 404) return '找不到這則排隊訊息或工作室（可能已被刪除）。草稿已保留。';
+  if (status === 401 || status === 403) return '沒有編輯權限或登入已失效。草稿已保留。';
+  return serverMessage || `儲存失敗（${status}）。草稿已保留。`;
+}
+
+function roomQueueEditNetworkError(err) {
+  const timedOut = !!(err && /逾時/.test(String(err.message || '')));
+  return `${timedOut ? '連線逾時' : '連線中斷'}，無法確認是否已儲存。草稿已保留；請重新載入確認後再決定，不會自動重送。`;
 }
 
 function roomIsNearBottom(el) {

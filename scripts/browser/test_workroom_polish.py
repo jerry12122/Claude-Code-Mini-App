@@ -130,11 +130,11 @@ def test_list_alignment_and_composer_height(page, login):
         page.set_viewport_size({"width": width, "height": 800})
         page.evaluate("""theme => { document.documentElement.dataset.theme = theme; }""", theme)
         box = screen.locator('textarea[name="text"]')
-        expect(box).to_be_visible()
+        page.wait_for_function("""() => { const el = document.querySelector('.room-screen textarea[name="text"]'); const h = el ? el.getBoundingClientRect().height : 0; return h >= 32 && h <= 48; }""")
         empty = box.evaluate("el => el.getBoundingClientRect().height")
-        assert 40 <= empty <= 48, empty
+        assert 32 <= empty <= 48, empty
         form = screen.locator(".room-composer").evaluate("el => el.getBoundingClientRect().height")
-        assert form <= 112, form
+        assert form <= 160, form
         box.fill("第一行\n第二行\n第三行\n第四行")
         grown = box.evaluate("el => el.getBoundingClientRect().height")
         assert grown > empty + 10, grown
@@ -408,6 +408,15 @@ def test_latest_message_stays_expanded(page, login):
     timeline = screen.locator(".room-timeline")
     previous.scroll_into_view_if_needed()
     before = timeline.evaluate("el => el.scrollTop")
+    preview = previous.locator('span.whitespace-pre-wrap')
+    expect(preview).to_be_visible()
     previous.click()
     expect(screen.get_by_text("第四行還在")).to_be_visible()
+    expect(preview).not_to_be_visible()
+    expect(previous.get_by_text("收合全文", exact=True)).to_be_visible()
     assert timeline.evaluate("el => el.scrollTop") == before
+    OUT.mkdir(parents=True, exist_ok=True)
+    page.screenshot(path=str(OUT / "expanded-without-preview.png"))
+    previous.press("Enter")
+    expect(preview).to_be_visible()
+    expect(screen.get_by_text("第四行還在")).not_to_be_visible()

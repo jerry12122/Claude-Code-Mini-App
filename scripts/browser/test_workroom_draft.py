@@ -11,6 +11,7 @@ PNG_B64 = base64.b64encode(base64.b64decode(
 
 def test_room_draft_survives_switch_and_mention_reaches_pm(page, login):
     mark = uuid.uuid4().hex[:6]
+    same_name = "同名-" + mark
     login()
     created = page.evaluate("""async mark => {
       const post = async (url, body) => {
@@ -19,8 +20,8 @@ def test_room_draft_survives_switch_and_mention_reaches_pm(page, login):
         return res.json();
       };
       const pm = await post('/sessions', {name: '草稿PM-' + mark, agent_type:'claude', permission_mode:'default'});
-      const alpha = await post('/sessions', {name: '同名', work_dir: 'D:/mention-root/alpha-' + mark, agent_type:'claude', permission_mode:'default'});
-      const beta = await post('/sessions', {name: '同名', work_dir: 'D:/mention-root/beta-' + mark, agent_type:'codex', permission_mode:'default'});
+      const alpha = await post('/sessions', {name: '同名-' + mark, work_dir: 'D:/mention-root/alpha-' + mark, agent_type:'claude', permission_mode:'default'});
+      const beta = await post('/sessions', {name: '同名-' + mark, work_dir: 'D:/mention-root/beta-' + mark, agent_type:'codex', permission_mode:'default'});
       const other = await post('/sessions', {name: '另一間PM-' + mark, agent_type:'claude', permission_mode:'default'});
       const room = await post('/rooms', {name: '草稿間-' + mark, members:[{session_id:pm.id, role:'pm'}]});
       const otherRoom = await post('/rooms', {name: '空草稿-' + mark, members:[{session_id:other.id, role:'pm'}]});
@@ -32,7 +33,7 @@ def test_room_draft_survives_switch_and_mention_reaches_pm(page, login):
     screen = page.get_by_role("region", name="工作室 " + room_name, exact=True)
     box = screen.locator('textarea[name="text"]')
     box.fill("房間A草稿")
-    box.press_sequentially(" @同名")
+    box.press_sequentially(" @" + same_name)
     menu = screen.get_by_role("listbox", name="提及 session")
     expect(menu).to_be_visible()
     expect(menu.get_by_role("option")).to_have_count(2)
@@ -48,16 +49,17 @@ def test_room_draft_survives_switch_and_mention_reaches_pm(page, login):
     chip = screen.get_by_label("已標記要詢問的 session")
     expect(chip).to_be_visible()
     assert created["alpha"]["id"] in (chip.locator("span[title]").first.get_attribute("title") or "")
-    chip.get_by_role("button", name="移除 同名").click()
+    chip.get_by_role("button", name="移除 " + same_name).click()
     expect(chip).to_have_count(0)
-    box.press_sequentially("@同名")
+    box.press_sequentially("@" + same_name)
     expect(menu).to_be_visible()
     box.press("ArrowDown")
     box.press("Enter")
     expect(chip).to_be_visible()
-    chip.get_by_role("button", name="移除 同名").click()
+    assert created["beta"]["id"] in (chip.locator("span[title]").first.get_attribute("title") or "")
+    chip.get_by_role("button", name="移除 " + same_name).click()
     box.fill("房間A草稿")
-    box.press_sequentially(" @同名")
+    box.press_sequentially(" @" + same_name)
     menu.get_by_role("option").filter(has_text="alpha-" + mark).click()
     page.evaluate("""(png) => {
       const binary = atob(png);

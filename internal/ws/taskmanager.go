@@ -9,6 +9,7 @@ import (
 
 type taskEntry struct {
 	cancel    context.CancelFunc
+	done      chan struct{}
 	msgID     int64
 	startedAt int64 // Unix 毫秒；記錄任務啟動，與瀏覽器連線無關。
 	pid       int   // 子進程 PID，Run() 啟動後由 taskSetPid 補上
@@ -19,6 +20,8 @@ var taskManager struct {
 	mu    sync.Mutex
 	tasks map[string]*taskEntry
 }
+
+var interjectedTasks sync.Map // msgID → struct{}；收尾以 LoadAndDelete 一次消耗。
 
 func init() {
 	taskManager.tasks = make(map[string]*taskEntry)
@@ -90,12 +93,19 @@ func permResolve(sessionID string, allow bool) bool {
 }
 
 func taskStart(sessionID string, cancel context.CancelFunc, msgID int64) {
+	taskStartWithDone(sessionID, cancel, msgID)
+}
+
+// taskStartWithDone 在同一次登記內保留通知，避免中斷先移除 entry 後取不到舊通道。
+func taskStartWithDone(sessionID string, cancel context.CancelFunc, msgID int64) chan struct{} {
 	taskManager.mu.Lock()
 	if old, ok := taskManager.tasks[sessionID]; ok && old.cancel != nil {
 		old.cancel()
 	}
-	taskManager.tasks[sessionID] = &taskEntry{cancel: cancel, msgID: msgID, startedAt: time.Now().UnixMilli()}
+	done := make(chan struct{})
+	taskManager.tasks[sessionID] = &taskEntry{cancel: cancel, done: done, msgID: msgID, startedAt: time.Now().UnixMilli()}
 	taskManager.mu.Unlock()
+	return done
 }
 
 func (msg serverMsg) withTaskTiming(sessionID string) serverMsg {
@@ -131,6 +141,17 @@ func taskEnd(sessionID string, msgID int64) {
 	taskManager.mu.Unlock()
 }
 
+// taskFinish 與中斷共用鎖，讓最後一次取標記與移除登記不可分割；避免完成後才被補上標記。
+func taskFinish(sessionID string, msgID int64) bool {
+	taskManager.mu.Lock()
+	defer taskManager.mu.Unlock()
+	if e := taskManager.tasks[sessionID]; e != nil && e.msgID == msgID {
+		delete(taskManager.tasks, sessionID)
+	}
+	_, interjected := interjectedTasks.LoadAndDelete(msgID)
+	return interjected
+}
+
 func taskIsActive(sessionID string) bool {
 	taskManager.mu.Lock()
 	defer taskManager.mu.Unlock()
@@ -152,6 +173,25 @@ func taskCancel(sessionID string) {
 	if e != nil && e.cancel != nil {
 		e.cancel()
 	}
+}
+
+// taskInterruptForRunNow 保留舊回合的完成通知；取消只代表開始收尾，不能代替 done。
+func taskInterruptForRunNow(sessionID string) (<-chan struct{}, bool) {
+	taskManager.mu.Lock()
+	e, ok := taskManager.tasks[sessionID]
+	if !ok {
+		taskManager.mu.Unlock()
+		return nil, false
+	}
+	done := e.done
+	interjectedTasks.Store(e.msgID, struct{}{})
+	delete(taskManager.tasks, sessionID)
+	taskManager.mu.Unlock()
+	// 取消回呼可能重取任務鎖或登記新任務，須在解鎖及移除舊登記後執行。
+	if e.cancel != nil {
+		e.cancel()
+	}
+	return done, true
 }
 
 // dropStalePrompts 清掉沒有任務支撐的授權／提問等待項目；有任務在跑時不動，回傳是否真的清了東西。

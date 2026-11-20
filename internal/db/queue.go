@@ -8,6 +8,7 @@ import (
 
 // QueuedMessage 是 session 執行中時使用者先送出、等前一個任務完成才執行的訊息。
 type QueuedMessage struct {
+	BatchID         string       `json:"batch_id,omitempty"`
 	ID              int64        `json:"id"`
 	Content         string       `json:"content"`
 	Author          string       `json:"author,omitempty"` // 送出者暱稱；空字串＝擁有者
@@ -103,7 +104,7 @@ func (db *DB) enqueueMessage(sessionID, content, author, source string, ids []st
 
 // ListQueuedMessages 依送出順序（FIFO）回傳佇列。
 func (db *DB) ListQueuedMessages(sessionID string) ([]QueuedMessage, error) {
-	rows, err := db.Query(`SELECT id, content, created_at, attachment_ids, author, source_session_id FROM queued_messages WHERE session_id = ? ORDER BY id`, sessionID)
+	rows, err := db.Query(`SELECT id, content, created_at, attachment_ids, author, source_session_id, batch_id FROM queued_messages WHERE session_id = ? ORDER BY id`, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +113,7 @@ func (db *DB) ListQueuedMessages(sessionID string) ([]QueuedMessage, error) {
 	for rows.Next() {
 		var q QueuedMessage
 		var ids string
-		if err := rows.Scan(&q.ID, &q.Content, &q.CreatedAt, &ids, &q.Author, &q.SourceSessionID); err != nil {
+		if err := rows.Scan(&q.ID, &q.Content, &q.CreatedAt, &ids, &q.Author, &q.SourceSessionID, &q.BatchID); err != nil {
 			return nil, err
 		}
 		q.AttachmentIDs, err = decodeAttachmentIDs(ids)
@@ -144,13 +145,16 @@ func (db *DB) PopQueuedMessage(sessionID string) (*QueuedMessage, error) {
 	defer tx.Rollback()
 	var q QueuedMessage
 	var ids string
-	err = tx.QueryRow(`SELECT id, content, created_at, attachment_ids, author, source_session_id FROM queued_messages WHERE session_id = ? ORDER BY id LIMIT 1`, sessionID).
-		Scan(&q.ID, &q.Content, &q.CreatedAt, &ids, &q.Author, &q.SourceSessionID)
+	err = tx.QueryRow(`SELECT id, content, created_at, attachment_ids, author, source_session_id,batch_id FROM queued_messages WHERE session_id = ? ORDER BY id LIMIT 1`, sessionID).
+		Scan(&q.ID, &q.Content, &q.CreatedAt, &ids, &q.Author, &q.SourceSessionID, &q.BatchID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	if q.BatchID != "" {
+		return nil, ErrQueueBatchConflict
 	}
 	q.AttachmentIDs, err = decodeAttachmentIDs(ids)
 	if err != nil {
@@ -165,23 +169,35 @@ func (db *DB) PopQueuedMessage(sessionID string) (*QueuedMessage, error) {
 // DeleteQueuedMessage 刪除指定一則；帶 sessionID 避免跨 session 誤刪。
 // 不取消自動復原。Telegram 出列走這裡，避免把正在跑的排程清掉。
 func (db *DB) DeleteQueuedMessage(sessionID string, id int64) error {
-	_, err := db.Exec(`DELETE FROM queued_messages WHERE session_id = ? AND id = ?`, sessionID, id)
-	return err
+	return db.deleteQueueItem(sessionID, id, false)
 }
 
 // DeleteQueuedMessageCancelQuota 在同一筆交易刪除指定列並取消自動復原。
 // 任一失敗都回滾，佇列與狀態保持原樣。列已經不在時仍取消排程，與原本的冪等刪除一致。
 func (db *DB) DeleteQueuedMessageCancelQuota(sessionID string, id int64) error {
+	return db.deleteQueueItem(sessionID, id, true)
+}
+
+func (db *DB) deleteQueueItem(sessionID string, id int64, cancelQuota bool) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	var grouped bool
+	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM queued_messages WHERE session_id=? AND id=? AND batch_id!='')`, sessionID, id).Scan(&grouped); err != nil {
+		return err
+	}
+	if grouped {
+		return ErrQueueBatchConflict
+	}
 	if _, err := tx.Exec(`DELETE FROM queued_messages WHERE session_id = ? AND id = ?`, sessionID, id); err != nil {
 		return err
 	}
-	if err := execCancelQuotaResume(tx, sessionID); err != nil {
-		return err
+	if cancelQuota {
+		if err := execCancelQuotaResume(tx, sessionID); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -194,6 +210,9 @@ func (db *DB) ClearQueuedMessages(sessionID string) error {
 		return err
 	}
 	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE queue_batches SET state='cancelled' WHERE session_id=? AND state='pending'`, sessionID); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`DELETE FROM queued_messages WHERE session_id = ?`, sessionID); err != nil {
 		return err
 	}

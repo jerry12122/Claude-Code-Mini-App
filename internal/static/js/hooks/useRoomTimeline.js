@@ -5,6 +5,49 @@
 
 const ROOMS_CHANGED_EVENT = 'miniapp:rooms-changed';
 
+function useRoomQueue(roomId, pmId) {
+  const scope = roomId + ':' + pmId;
+  const current = useRef(scope); current.current = scope;
+  const generation = useRef(0);
+  const requestRef = useRef(null);
+  const handoffNotified = useRef('');
+  const [snapshot, setSnapshot] = useState({ scope, rows: [], error: '', ready: false });
+  const refresh = useCallback(async () => {
+    if (!pmId) return;
+    const mine = ++generation.current;
+    requestRef.current?.abort();
+    const controller = new AbortController(); requestRef.current = controller;
+    try {
+      let after = 0, rows = [], more;
+      do {
+        const res = await apiFetch(roomUrl(roomId) + '/queue?expected_pm_id=' + encodeURIComponent(pmId) + '&limit=100&after_id=' + after, { signal: controller.signal });
+        if (!res.ok) {
+          if (res.status === 409 && handoffNotified.current !== scope) { handoffNotified.current = scope; window.dispatchEvent(new Event(ROOMS_CHANGED_EVENT)); }
+          throw new Error(await roomApiError(res, '無法載入佇列，請重新同步'));
+        }
+        const data = await res.json();
+        if (current.current !== scope || mine !== generation.current) return;
+        if (data.pm_id !== pmId) throw new Error('PM 已變更，請重新同步');
+        rows.push(...(data.queue || []).map(q => ({ ...q, pm_id: pmId })));
+        more = data.has_more;
+        if (more && !(data.next_after_id > after)) throw new Error('佇列分頁無法繼續，請重新同步');
+        after = data.next_after_id;
+      } while (more);
+      setSnapshot({ scope, rows, error: '', ready: true });
+      return rows;
+    } catch (err) {
+      if (!controller.signal.aborted && current.current === scope && mine === generation.current) setSnapshot(s => ({ scope, rows: s.scope === scope ? s.rows : [], error: err.message, ready: false }));
+    }
+  }, [roomId, pmId, scope]);
+  useEffect(() => {
+    refresh();
+    const stop = startRoomPoller({ tick: refresh });
+    window.addEventListener(ROOMS_CHANGED_EVENT, refresh);
+    return () => { ++generation.current; requestRef.current?.abort(); stop(); window.removeEventListener(ROOMS_CHANGED_EVENT, refresh); };
+  }, [refresh]);
+  return { rows: snapshot.scope === scope ? snapshot.rows : [], error: snapshot.scope === scope ? snapshot.error : '', ready: snapshot.scope === scope && snapshot.ready, refresh };
+}
+
 async function roomApiError(res, fallback) {
   try {
     const body = await res.json();
@@ -64,8 +107,13 @@ function useRoomDetail(roomId) {
   return { room, error, notFound, stale };
 }
 
-function useRoomTimeline(roomId) {
-  const [state, setState] = useState(roomTimelineEmpty);
+// target：成員篩選對象 { id, role }，null＝總覽。篩選在後端先於分頁，所以換對象就是整條時間軸重載；
+// 每份狀態都帶著所屬的 scope，晚到的舊回應與切換前的游標一律丟棄。
+function useRoomTimeline(roomId, target) {
+  const memberId = target ? target.id : '';
+  const scope = roomTimelineScope(roomId, target);
+  const [raw, setState] = useState(() => roomTimelineReset(roomTimelineEmpty(), scope));
+  const state = raw.scope === scope ? raw : roomTimelineReset(raw, scope);
   const [error, setError] = useState('');
   const [notFound, setNotFound] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -76,35 +124,36 @@ function useRoomTimeline(roomId) {
 
   const fetchPage = useCallback(async (before) => {
     const mine = generation.current;
-    const res = await apiFetch(roomTimelineUrl(roomId, before, ROOM_PAGE_SIZE));
+    const res = await apiFetch(roomTimelineUrl(roomId, before, ROOM_PAGE_SIZE, memberId));
     if (mine !== generation.current) return null;
+    if (res.status === 404 && memberId) throw new Error('這位成員已不在工作室'); // 成員被移出：工作室還在，等成員清單更新後回到總覽
     if (res.status === 404) { setNotFound(true); return null; }
     if (!res.ok) throw new Error(await roomApiError(res, '載入時間軸失敗'));
     const page = await res.json();
     return mine === generation.current ? page : null;
-  }, [roomId]);
+  }, [roomId, memberId, scope]);
 
   const refresh = useCallback(async () => {
     try {
       const page = await fetchPage('');
       if (!page) return;
-      setState((prev) => roomTimelineDeliver(prev, page, 'latest'));
+      setState((prev) => roomTimelineAccept(prev, scope, page, 'latest'));
       setError('');
     } catch (err) {
       setError(err.message || '載入時間軸失敗');
     }
-  }, [fetchPage]);
+  }, [fetchPage, scope]);
 
   // 取更早的一頁；游標在請求期間被輪詢「重來」改掉時，這一頁已經接不上，直接丟棄。
   const loadOlder = useCallback(async () => {
-    const { hasMore, nextCursor } = stateRef.current;
-    if (!hasMore || !nextCursor || olderBusy.current) return;
+    const { hasMore, nextCursor, scope: stateScope } = stateRef.current;
+    if (stateScope !== scope || !hasMore || !nextCursor || olderBusy.current) return;
     olderBusy.current = true;
     setLoadingOlder(true);
     try {
       const page = await fetchPage(nextCursor);
       if (page && stateRef.current.nextCursor === nextCursor) {
-        setState((prev) => roomTimelineDeliver(prev, page, 'older'));
+        setState((prev) => roomTimelineAccept(prev, scope, page, 'older'));
       }
     } catch (err) {
       setError(err.message || '載入更早訊息失敗');
@@ -112,15 +161,15 @@ function useRoomTimeline(roomId) {
       olderBusy.current = false;
       setLoadingOlder(false);
     }
-  }, [fetchPage]);
+  }, [fetchPage, scope]);
 
-  // 換工作室或工作室被編輯（成員可能變了）：整條時間軸重載，不拿舊成員的訊息混進來。
+  // 換工作室、換篩選對象或工作室被編輯（成員可能變了）：整條時間軸重載，不拿舊成員的訊息混進來。
   useEffect(() => {
     const reset = () => {
       ++generation.current;
       olderBusy.current = false;
       setLoadingOlder(false);
-      setState(roomTimelineEmpty());
+      setState((prev) => roomTimelineReset(prev, scope));
       setError('');
       refresh();
     };
@@ -128,7 +177,7 @@ function useRoomTimeline(roomId) {
     reset();
     window.addEventListener(ROOMS_CHANGED_EVENT, reset);
     return () => { window.removeEventListener(ROOMS_CHANGED_EVENT, reset); ++generation.current; };
-  }, [refresh]);
+  }, [refresh, scope]);
 
   useEffect(() => {
     if (notFound) return undefined;

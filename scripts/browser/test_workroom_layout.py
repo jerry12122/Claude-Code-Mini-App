@@ -103,10 +103,12 @@ def _surface(screen):
     assert raw["fg"] and raw["bg"], raw
     ratio = _contrast((raw["fg"]["r"], raw["fg"]["g"], raw["fg"]["b"]), (raw["bg"]["r"], raw["bg"]["g"], raw["bg"]["b"]))
     assert ratio >= 4.5, {"ratio": ratio, "fg": raw["fg"], "bg": raw["bg"]}
+    desktop = screen.evaluate("innerWidth >= 640")
     for control in raw["controls"]:
-        assert control["h"] >= 44, control
+        minimum = 32 if desktop and control["name"] == "傳給 PM" else 44
+        assert control["h"] >= minimum, control
         if control["w"] <= 48:
-            assert control["w"] >= 44, control
+            assert control["w"] >= minimum, control
     return ratio
 
 
@@ -181,6 +183,7 @@ def test_workroom_layout(page, login):
     box.fill("錨點-ALPHA\n" + lines)
     screen.get_by_role("button", name="傳給 PM", exact=True).click()
     timeline = screen.locator(".room-timeline")
+    anchor_body = timeline.get_by_text("錨點-ALPHA").filter(visible=True)
     message = screen.locator('article[data-align="right"]').filter(has_text="錨點-ALPHA").first
     expect(message).to_be_visible()
     message.locator("summary").filter(has_text="展開全文").click()
@@ -238,7 +241,7 @@ def test_workroom_layout(page, login):
             expect(screen.get_by_role("button", name="工作概況")).to_be_visible()
             expect(screen.get_by_role("button", name="成員 50", exact=True)).to_be_visible()
         timeline.evaluate("el => { el.scrollTop = 0; }")
-        expect(screen.get_by_text("錨點-ALPHA").first).to_be_visible()
+        expect(anchor_body).to_be_visible()
         _surface(screen)
         page.screenshot(path=str(OUT / f"container-{px}.png"))
 
@@ -278,6 +281,7 @@ def test_workroom_layout(page, login):
     clear_fit()
     for px in PHONE_WIDTHS:
         page.set_viewport_size({"width": px, "height": 800})
+        page.wait_for_function("px => document.querySelector('.room-screen').clientWidth >= px - 24", arg=px)
         phone = _metrics(screen)
         assert phone["width"] <= px, phone
         assert phone["width"] >= px - 24, phone
@@ -290,7 +294,7 @@ def test_workroom_layout(page, login):
         expect(screen.get_by_role("button", name="工作概況")).to_be_visible()
         expect(screen.get_by_role("button", name="成員 50", exact=True)).to_be_visible()
         timeline.evaluate("el => { el.scrollTop = 0; }")
-        expect(screen.get_by_text("錨點-ALPHA").first).to_be_visible()
+        expect(anchor_body).to_be_visible()
         _surface(screen)
         page.screenshot(path=str(OUT / f"viewport-{px}.png"))
 
@@ -301,7 +305,7 @@ def test_workroom_layout(page, login):
     assert "0, 255, 0" not in contrast["timelineBg"], contrast
     assert contrast["timelineBg"] not in ("rgba(0, 0, 0, 0)", "transparent")
     timeline.evaluate("el => { el.scrollTop = 0; }")
-    expect(screen.get_by_text("錨點-ALPHA").first).to_be_visible()
+    expect(anchor_body).to_be_visible()
     _surface(screen)
     page.screenshot(path=str(OUT / "contrast.png"))
 

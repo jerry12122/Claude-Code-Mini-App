@@ -222,6 +222,13 @@ func replaceRoomMembers(tx *sql.Tx, roomID string, members []RoomMember) error {
 
 // 只移交這個工作室尚未處理的輸入；不帶走舊 PM 的私人佇列、暫停狀態或授權。
 func handoffRoomInputs(tx *sql.Tx, roomID, oldPM, newPM string) error {
+	var grouped bool
+	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM queue_batches WHERE room_id=? AND session_id=? AND state='pending')`, roomID, oldPM).Scan(&grouped); err != nil {
+		return err
+	}
+	if grouped {
+		return ErrRoomHandoffBusy
+	}
 	author := RoomUserAuthorPrefix + roomID
 	// 附件保留原本的儲存位置與舊訊息連結，只授予新 PM 使用這批附件的權限。
 	if _, err := tx.Exec(`INSERT INTO attachment_access (session_id, attachment_id)
@@ -280,6 +287,29 @@ func recordRoomHandoff(tx *sql.Tx, roomID, oldPM, newPM string) error {
 	return err
 }
 
+// FirstTurnAfterHandoff 表示這則使用者訊息是該工作室交接提交後的接任首輪。
+// 沒有成功寫入的交接紀錄就不是；其後再來的使用者訊息也不再算。
+func (db *DB) FirstTurnAfterHandoff(sessionID, roomID string, userMsgID int64) (bool, error) {
+	if userMsgID <= 0 {
+		return false, nil
+	}
+	var handoffID int64
+	err := db.QueryRow(`SELECT id FROM messages WHERE session_id = ? AND role = 'system' AND author = ? ORDER BY id DESC LIMIT 1`,
+		sessionID, "room-handoff:"+roomID).Scan(&handoffID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var earlier int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM messages WHERE session_id = ? AND role = 'user' AND id > ? AND id < ?`,
+		sessionID, handoffID, userMsgID).Scan(&earlier); err != nil {
+		return false, err
+	}
+	return earlier == 0 && userMsgID > handoffID, nil
+}
+
 func roomTransferCounts(tx *sql.Tx, roomID, sessionID string) (inputs, reports int, err error) {
 	err = tx.QueryRow(`SELECT
 		COALESCE(SUM(CASE WHEN author = ? THEN 1 ELSE 0 END), 0),
@@ -320,13 +350,43 @@ func roomMemberPM(tx *sql.Tx, roomID string) (string, error) {
 	return id, err
 }
 
+// SessionRoomIDs 回傳這個 session 目前加入的工作室。結案重置用來拒絕共用會話。
+func (db *DB) SessionRoomIDs(sessionID string) ([]string, error) {
+	rows, err := db.Query(`SELECT room_id FROM room_members WHERE session_id = ? ORDER BY room_id`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // DeleteRoom removes the room and its unstarted inputs while preserving sessions and their history.
-func (db *DB) DeleteRoom(id string) error {
+func (db *DB) DeleteRoom(id string) error { return db.deleteRoom(id, "") }
+
+// DeleteRoomAsPM 同 DeleteRoom，但在同一個交易內確認 pmID 仍是這個工作室的現任 PM；
+// scope 檢查之後若 PM 已交接，回 ErrRoomPM 而不刪除。
+func (db *DB) DeleteRoomAsPM(id, pmID string) error { return db.deleteRoom(id, pmID) }
+
+func (db *DB) deleteRoom(id, expectedPM string) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if expectedPM != "" {
+		var pmRoom string
+		if err := tx.QueryRow("SELECT room_id FROM ("+roomPMQuery+") WHERE session_id = ?", expectedPM).Scan(&pmRoom); err != nil || pmRoom != id {
+			return ErrRoomPM
+		}
+	}
 	res, err := tx.Exec(`DELETE FROM rooms WHERE id = ?`, id)
 	if err != nil {
 		return err
@@ -346,6 +406,9 @@ func (db *DB) DeleteRoom(id string) error {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM room_jobs WHERE room_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE queue_batches SET state='cancelled' WHERE room_id=? AND state='pending'`, id); err != nil {
 		return err
 	}
 	return tx.Commit()

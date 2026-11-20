@@ -36,6 +36,35 @@ function roomLocalAttachment(item) {
   };
 }
 
+function RoomQueuePanel({ queue, error, busy, ready, edit, editPresent, editApi, onBatch, onRefresh, locals }) {
+  const batch = queue.find(q => q.batch_id)?.batch_id;
+  if (!queue.length && !edit && !error && !locals.length) return null;
+  return <section role="region" aria-label="排隊中的訊息" className="shrink-0 border-t border-ra-line-soft bg-ra-card px-3 py-2 text-xs" style={{ maxHeight: '40vh', overflowY: 'auto' }}>
+    <div className="flex items-center justify-between gap-2 text-ra-t3">
+      <span>佇列（{queue.length}）· 完成後依序執行</span>
+      <button type="button" onClick={onRefresh} disabled={busy} className="min-h-11 px-2">重新同步</button>
+      {batch ? <button type="button" disabled={busy || !!edit || !ready} onClick={() => onBatch(batch)} className="min-h-11 px-2">取消批次</button> : queue.length >= 2 ?
+        <button type="button" disabled={busy || !!edit || !ready} onClick={() => onBatch('')} className="min-h-11 px-2">一起送</button> : null}
+    </div>
+    {batch ? <p role="status" className="text-violet-400">已安排本輪結束後一起送；先取消批次才能修改</p> : null}
+    {busy ? <p role="status">等待伺服器確認…</p> : null}
+    {error ? <p role="alert" className="text-rose-400">{error}</p> : null}
+    <ol>{queue.map((q, i) => <li key={q.id}>
+      {edit?.msgId === q.id && edit.expectedPm === q.pm_id ? <RoomQueueEditor edit={edit} api={editApi} /> :
+        <article data-queued="true" data-queue-id={q.id} className="flex min-w-0 items-center gap-1.5 text-ra-t2" style={{ minHeight: 28 }}>
+          <span>{i + 1}.</span><span className="min-w-0 flex-1 truncate" title={q.content}>{q.content || '（附件）'}</span>
+          {q.attachments?.map(a => <span key={a.id} className="truncate">{a.name || '附件'}</span>)}
+          <button type="button" aria-label="編輯排隊訊息" title="編輯排隊訊息" disabled={!!edit || busy || !!q.batch_id || !ready} onClick={() => editApi.onBegin(q)}
+            style={{ width: 24, height: 24, minWidth: 24, minHeight: 24 }} className="inline-flex shrink-0 items-center justify-center rounded border border-ra-line-strong text-ra-t2 disabled:opacity-40">
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="m16 3 5 5M4 20l4-1L21 6l-5-5L3 14l-1 7Z" /></svg>
+          </button>
+        </article>}
+    </li>)}</ol>
+    {edit && !editPresent ? <RoomQueueEditor edit={edit} api={editApi} note="這則排隊訊息已不在佇列中（已出列或交接），草稿已保留。" /> : null}
+    {locals.map(m => <RoomMessageBubble key={m.id} m={m} />)}
+  </section>;
+}
+
 function RoomComposer({ roomId, pm, members, sessions, onAccepted, onDelivery, onDeliveryPatch, onDeliveryDrop }) {
   let loadedDraft;
   try {
@@ -159,11 +188,26 @@ function RoomComposer({ roomId, pm, members, sessions, onAccepted, onDelivery, o
   useLayoutEffect(() => {
     const el = inputRef.current;
     if (!el) return;
-    el.style.blockSize = '40px';
-    // 空草稿固定單行高：窄寬時 placeholder 換行會把 scrollHeight 撐高。
-    if (!draft) return;
-    const limit = Math.min(160, Math.round((window.innerHeight || 800) * 0.3));
-    el.style.blockSize = Math.min(Math.max(el.scrollHeight, 40), limit) + 'px';
+    el.style.height = 'auto';
+    if (!draft) {
+      el.style.height = '';
+      el.style.overflowY = 'hidden';
+      return;
+    }
+    let cap = 240;
+    try {
+      const maxStr = getComputedStyle(el).maxHeight;
+      const maxPx = parseFloat(maxStr);
+      if (Number.isFinite(maxPx) && maxPx > 0) cap = maxPx;
+    } catch (_) {}
+    const needed = el.scrollHeight;
+    if (needed > cap) {
+      el.style.height = `${cap}px`;
+      el.style.overflowY = 'auto';
+    } else {
+      el.style.height = `${needed}px`;
+      el.style.overflowY = 'hidden';
+    }
   }, [draft]);
 
   function releaseFile(item) {
@@ -336,8 +380,10 @@ function RoomComposer({ roomId, pm, members, sessions, onAccepted, onDelivery, o
 
   const pmState = roomMemberState(pm);
   return (
-    <form className="room-composer shrink-0 border-t border-ra-line-soft" onSubmit={submit} aria-labelledby={labelId + '-label'}>
-      <div className="mx-auto max-w-3xl">
+    <form className="room-composer ra-chat-composer shrink-0 px-3 sm:px-7 py-2 sm:py-4 border-t border-ra-line-soft bg-ra-bg transition-colors duration-200"
+      style={{ paddingBottom: 'calc(0.75rem + var(--ra-safe-bottom, env(safe-area-inset-bottom)))' }}
+      onSubmit={submit} aria-labelledby={labelId + '-label'}>
+      <div className="w-full relative">
         <p className="room-composer-meta mb-1 flex min-w-0 items-baseline gap-2 text-xs">
           <label id={labelId + '-label'} htmlFor={labelId} className="min-w-0 truncate text-ra-t3">
             傳訊息給 <strong className="font-semibold text-ra-t1">{(switchPM ? '目前草稿仍對著上一位 PM' : (pm.session_name || 'PM'))}</strong>
@@ -373,47 +419,70 @@ function RoomComposer({ roomId, pm, members, sessions, onAccepted, onDelivery, o
         <div className="relative">
           {mentionOpen ? <MentionMenu items={mentionItems} activeIndex={mentionActive} onSelect={selectMention} /> : null}
         <div className="ra-cmd-bar">
-          <div className="relative">
+          <div className="ra-composer-input relative flex w-full min-w-0 flex-col">
+            <textarea id={labelId} ref={inputRef} name="text" rows={1} value={draft} readOnly={sending} placeholder="輸入訊息，@ 可標記 session"
+              onPaste={pasteFiles}
+              onInput={(e) => {
+                const el = e.target;
+                el.style.height = 'auto';
+                let cap = 240;
+                try {
+                  const maxStr = getComputedStyle(el).maxHeight;
+                  const maxPx = parseFloat(maxStr);
+                  if (Number.isFinite(maxPx) && maxPx > 0) cap = maxPx;
+                } catch (_) {}
+                const needed = el.scrollHeight;
+                if (needed > cap) {
+                  el.style.height = `${cap}px`;
+                  el.style.overflowY = 'auto';
+                } else {
+                  el.style.height = `${needed}px`;
+                  el.style.overflowY = 'hidden';
+                }
+              }}
+              onChange={(event) => {
+                const value = event.target.value;
+                draftBroken.current = false;
+                setDraftReadFailed(false);
+                setDraft(value);
+                setFeedback(null);
+                rememberDraft(value, mentionsRef.current, targetRef.current);
+                syncMention(value, event.target.selectionStart);
+              }}
+              onKeyUp={(event) => {
+                if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+                if (event.key === 'Enter' || event.key === 'Escape' || event.key === 'ArrowUp' || event.key === 'ArrowDown') return;
+                syncMention(event.currentTarget.value, event.currentTarget.selectionStart);
+              }}
+              onKeyDown={(event) => {
+                const action = roomComposerEnterAction({
+                  key: event.key, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing, keyCode: event.keyCode,
+                }, { open: mentionOpen, count: mentionItems.length });
+                if (action === 'ime' || action === 'type') return;
+                event.preventDefault();
+                if (action === 'next') setMentionActive((index) => Math.min(index + 1, Math.max(mentionItems.length - 1, 0)));
+                else if (action === 'prev') setMentionActive((index) => Math.max(index - 1, 0));
+                else if (action === 'close') setMentionOpen(false);
+                else if (action === 'select' && mentionItems[mentionActive]) selectMention(mentionItems[mentionActive]);
+                else if (action === 'send') event.currentTarget.form.requestSubmit();
+              }}
+              className="room-composer-input w-full min-w-0 resize-none border-0 bg-transparent px-1 py-1.5 text-[13.5px] leading-relaxed text-ra-t1 placeholder-ra-t5 focus:outline-none disabled:opacity-40 min-h-[2rem] max-h-[240px] box-border app-scroll" />
+          </div>
+          <div className="ra-composer-tools flex items-center">
             <input id={filesId} name="files" type="file" multiple disabled={sending} className="room-file-input sr-only" onChange={pickFiles} />
-            <label htmlFor={filesId} title="加入附件" className="room-file-label ra-tools-icon">
-              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
+            <label htmlFor={filesId} title="加入附件" className="room-file-label shrink-0 flex items-center justify-center w-8 h-8 sm:w-8 sm:h-8 max-sm:w-11 max-sm:h-11 rounded-[8px] max-sm:rounded-xl text-ra-t3 hover:bg-ra-raised hover:text-violet-300 disabled:opacity-40 transition-colors cursor-pointer">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
               <span className="sr-only">加入附件</span>
             </label>
           </div>
-          <textarea id={labelId} ref={inputRef} name="text" rows={1} value={draft} readOnly={sending} placeholder="輸入訊息，@ 可標記 session"
-            onPaste={pasteFiles}
-            onChange={(event) => {
-              const value = event.target.value;
-              draftBroken.current = false;
-              setDraftReadFailed(false);
-              setDraft(value);
-              setFeedback(null);
-              rememberDraft(value, mentionsRef.current, targetRef.current);
-              syncMention(value, event.target.selectionStart);
-            }}
-            onKeyUp={(event) => {
-              if (event.nativeEvent.isComposing || event.keyCode === 229) return;
-              if (event.key === 'Enter' || event.key === 'Escape' || event.key === 'ArrowUp' || event.key === 'ArrowDown') return;
-              syncMention(event.currentTarget.value, event.currentTarget.selectionStart);
-            }}
-            onKeyDown={(event) => {
-              const action = roomComposerEnterAction({
-                key: event.key, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing, keyCode: event.keyCode,
-              }, { open: mentionOpen, count: mentionItems.length });
-              if (action === 'ime' || action === 'type') return;
-              event.preventDefault();
-              if (action === 'next') setMentionActive((index) => Math.min(index + 1, Math.max(mentionItems.length - 1, 0)));
-              else if (action === 'prev') setMentionActive((index) => Math.max(index - 1, 0));
-              else if (action === 'close') setMentionOpen(false);
-              else if (action === 'select' && mentionItems[mentionActive]) selectMention(mentionItems[mentionActive]);
-              else if (action === 'send') event.currentTarget.form.requestSubmit();
-            }}
-            className="room-composer-input w-full min-w-0 resize-none self-center bg-transparent px-2 text-base leading-6 text-ra-t1 outline-none placeholder:text-ra-t4" />
-          <button type="submit" disabled={sending || (!draft.trim() && !files.length && !mentions.length)}
-            aria-label="傳給 PM" title={sending ? '傳送中…' : '傳給 PM'}
-            className="room-send flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-white hover:brightness-110 disabled:opacity-30">
-            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5m-7 7 7-7 7 7" /></svg>
-          </button>
+          <div className="ra-composer-spacer flex-1" aria-hidden="true" />
+          <div className="ra-composer-actions flex shrink-0 items-center gap-2">
+            <button type="submit" disabled={sending || (!draft.trim() && !files.length && !mentions.length)}
+              aria-label="傳給 PM" title={sending ? '傳送中…' : '傳給 PM'}
+              className="room-send shrink-0 flex items-center justify-center w-8 h-8 rounded-[8px] bg-[oklch(0.62_0.19_275)] hover:brightness-110 disabled:opacity-30 text-white transition-colors text-sm">
+              <svg aria-hidden="true" viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5m-7 7 7-7 7 7" /></svg>
+            </button>
+          </div>
         </div>
         {feedback ? <p className={'mt-1 text-xs ' + (feedback.error ? 'text-rose-400' : 'text-ra-t3')}
           role={feedback.error ? 'alert' : 'status'}>{feedback.text}</p> : null}
@@ -457,6 +526,7 @@ function RoomWorkBoard({ roomId, members, tab, onTab, onOpenSession }) {
 
   const memo = useMemo(() => board?.memo ? parseMarkdown(board.memo, { taskMarkers: true }) : '', [board?.memo]);
   const jobs = roomJobsSplit(board?.jobs);
+  const activities = roomUnboundWorkers(members, board?.jobs);
   const panel = tab === 'memo' || tab === 'members' ? tab : 'jobs';
 
   async function saveMemo(event) {
@@ -501,9 +571,22 @@ function RoomWorkBoard({ roomId, members, tab, onTab, onOpenSession }) {
       </div>
       {error ? <p className="mt-3 text-xs text-rose-400" role="alert">{error}</p> : null}
       {!board && !error ? <p className="mt-3 text-sm text-ra-t4">載入中…</p> : null}
-      {board && panel === 'jobs' ? <>
+      {board && !error && panel === 'jobs' ? <>
         <h2 className="mt-3 text-sm font-semibold text-ra-t1">進行中與需要處理</h2>
-        {jobs.open.length ? <ul className="mt-1">{jobs.open.map(jobButton)}</ul> : <p className="mt-2 text-sm text-ra-t4">沒有進行中的派工</p>}
+        {jobs.open.length || activities.length ? <ul className="mt-1">
+          {jobs.open.map(jobButton)}
+          {activities.map((member) => {
+            const state = roomMemberState(member);
+            return <li key={'activity:' + member.session_id} className="border-b border-ra-line-soft">
+              <button type="button" onClick={() => onOpenSession(member.session_id)}
+                className="block min-h-11 w-full rounded px-1 text-left text-sm text-ra-t2 hover:bg-ra-raised">
+                <span className="block truncate">{member.session_name || '未命名'}</span>
+                <span className="block text-xs text-ra-t4">未綁定派工 · 會話活動</span>
+                <span className="block text-xs text-ra-t3">{state.primary}{state.extra ? '；' + state.extra : ''}</span>
+              </button>
+            </li>;
+          })}
+        </ul> : <p className="mt-2 text-sm text-ra-t4">沒有進行中的派工</p>}
         {jobs.closed.length ? <details className="mt-3">
           <summary className="min-h-11 cursor-pointer text-sm font-semibold text-ra-t2">完成紀錄 {jobs.closed.length}</summary>
           <ul>{jobs.closed.map(jobButton)}</ul>

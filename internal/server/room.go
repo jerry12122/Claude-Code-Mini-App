@@ -21,6 +21,7 @@ import (
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
 	mymcp "github.com/jerry12122/Claude-Code-Mini-App/internal/mcp"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/quota"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/ws"
 )
 
 const roomWakeHeader = "X-Miniapp-Room-Wake"
@@ -39,16 +40,29 @@ func newRoomRuntime(database *db.DB, port int) roomRuntime {
 
 func (r roomRuntime) registerRoutes(app *fiber.App, auth fiber.Handler, quotaSvc *quota.Service) {
 	h := api.NewRoomsHandler(r.db, quotaSvc)
+	h.EditQueued = func(ctx context.Context, roomID, expectedPM string, id int64, previous, content string) error {
+		return ws.EditRoomQueuedMessage(ctx, r.db, roomID, expectedPM, id, previous, content)
+	}
+	h.BatchQueued = func(ctx context.Context, roomID, expectedPM, requestID string, items []db.QueueBatchItem, cancelID string) (string, error) {
+		return ws.ChangeQueueBatch(ctx, r.db, roomID, expectedPM, requestID, items, cancelID)
+	}
+	h.UpdateMembers = func(ctx context.Context, roomID string, name *string, members *[]db.RoomMember, expected ...string) error {
+		return ws.UpdateRoomMembers(ctx, r.db, roomID, name, members, expected...)
+	}
 	app.Get("/rooms", auth, h.List)
 	app.Post("/rooms", auth, h.Create)
 	app.Get("/rooms/:id", auth, h.Get)
 	app.Put("/rooms/:id", auth, h.Update)
 	app.Delete("/rooms/:id", auth, h.Delete)
 	app.Get("/rooms/:id/timeline", auth, h.Timeline)
+	app.Get("/rooms/:id/queue", auth, h.ReadQueue)
 	app.Get("/rooms/:id/board", auth, h.Board)
 	app.Put("/rooms/:id/board", auth, h.SaveMemo)
 	app.Post("/rooms/:id/messages", auth, h.SendToPM)
-	app.Post("/mcp/room", r.mcpAuth, adaptor.HTTPHandler(mymcp.NewRoomHTTPHandler(r.db, quotaSvc)))
+	app.Patch("/rooms/:id/messages/:queue_id", auth, h.EditQueuedMessage)
+	app.Post("/rooms/:id/messages/batch", auth, h.QueueBatch)
+	app.Delete("/rooms/:id/messages/batch/:batch_id", auth, h.QueueBatch)
+	app.Post("/mcp/room", r.mcpAuth, adaptor.HTTPHandler(mymcp.NewRoomHTTPHandler(r.db, quotaSvc, r.resetMemberSession)))
 }
 
 func (r roomRuntime) listen(ctx context.Context, app *fiber.App, ln net.Listener) error {
@@ -176,4 +190,57 @@ func (r roomRuntime) wakeSession(ctx context.Context, sessionID string, timeout 
 func (r roomRuntime) wake(ctx context.Context, sessionID string) error {
 	_, err := r.wakeSession(ctx, sessionID, 2*time.Second, map[string]string{"type": "room_drain"}, "room_drained")
 	return err
+}
+
+// resetMemberSession 連上該 session 的 WS，等重置真正做完才回 nil。送出不算成功。
+// 這裡的狀態檢查擋不住檢查之後才開始的任務；喚醒連線會在 dispatch 鎖內再查一次。
+func (r roomRuntime) resetMemberSession(ctx context.Context, sessionID, roomID, pmID string) error {
+	sess, err := r.db.GetSession(sessionID)
+	if err != nil {
+		return err
+	}
+	if sess.Status != db.SessionStatusIdle {
+		return fmt.Errorf("session 忙碌（%s），未重置", sess.Status)
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+	}
+	conn, _, err := websocket.DefaultDialer.DialContext(ctx, "ws://"+r.address+"/sessions/"+sessionID+"/ws", http.Header{roomWakeHeader: {r.wakeToken}})
+	if err != nil {
+		return fmt.Errorf("沒有連上 session：%w", err)
+	}
+	defer conn.Close()
+	deadline, _ := ctx.Deadline()
+	_ = conn.SetWriteDeadline(deadline)
+	_ = conn.SetReadDeadline(deadline)
+	if err := conn.WriteJSON(map[string]any{
+		"type": "reset_context", "require_idle": true, "room_id": roomID, "pm_session_id": pmID,
+	}); err != nil {
+		return err
+	}
+	for {
+		_, payload, err := conn.ReadMessage()
+		if err != nil {
+			return fmt.Errorf("重置沒有完成：%w", err)
+		}
+		var event struct {
+			Type    string `json:"type"`
+			Code    string `json:"code"`
+			Content string `json:"content"`
+		}
+		if json.Unmarshal(payload, &event) != nil {
+			continue
+		}
+		if event.Type == "reset" {
+			return nil
+		}
+		if event.Type == "error" || event.Type == "input_rejected" || event.Code == "update_in_progress" {
+			if event.Content == "" {
+				event.Content = "重置被拒絕"
+			}
+			return fmt.Errorf("%s", event.Content)
+		}
+	}
 }

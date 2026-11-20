@@ -1,4 +1,5 @@
 """Run directly: validate fixture boundaries and credential redaction."""
+import ast
 import os
 from pathlib import Path
 import subprocess
@@ -6,6 +7,15 @@ import tempfile
 from types import SimpleNamespace
 
 from conftest import pytest_runtest_makereport
+
+repo = Path(__file__).resolve().parents[2]
+for relative in ("scripts/browser/conftest.py", "scripts/chat-autoscroll.test.py", "scripts/e2e/run_e2e.py"):
+    tree = ast.parse((repo / relative).read_text(encoding="utf-8"))
+    assert any(isinstance(node, ast.Dict) and any(
+        isinstance(key, ast.Constant) and key.value == "MINIAPP_TEST_LOOPBACK"
+        and isinstance(value, ast.Constant) and value.value == "1"
+        for key, value in zip(node.keys, node.values)) for node in ast.walk(tree)), relative
+print("Browser, auto-scroll and desktop test child environments explicitly enable loopback")
 
 canary = "synthetic-browserstack-access-key"
 for key, trace, output, expected_trace, expected_output in (

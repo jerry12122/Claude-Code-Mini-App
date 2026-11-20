@@ -9,17 +9,19 @@ const JS = path.join(__dirname, '../internal/static/js');
 const read = (rel) => fs.readFileSync(path.join(JS, rel), 'utf8');
 
 // messageRows.js 提供真正的 formatMessageTime（UTC → 本地）；AGENT_LABEL 是 core 的常數，這裡放同形狀的替身。
-const ctx = vm.createContext({ File });
+const ctx = vm.createContext({ File, TextEncoder });
 vm.runInContext('const AGENT_LABEL = { claude: "Claude", codex: "Codex", cursor: "Cursor" };', ctx);
 for (const f of ['hooks/messageRows.js', 'hooks/rooms.js', 'hooks/roomPoller.js']) vm.runInContext(read(f), ctx, { filename: f });
 const g = vm.runInContext(`({
   ROOM_POLL_MS, ROOM_PAGE_SIZE,
   roomsUrl, roomUrl, roomTimelineUrl, roomTimelineEmpty, roomMergeMessages, roomTimelineApply,
-  roomChip, roomQuotaView, roomMessageMeta, roomMemberState, roomJobsSplit, roomIsNearBottom,
+  roomChip, roomQuotaView, roomMessageMeta, roomMemberState, roomJobsSplit, roomUnboundWorkers, roomIsNearBottom,
   roomFormInit, roomFormToggle, roomFormSetRole, roomFormError, roomFormBody, startRoomPoller,
   clipboardPasteFiles, roomLatestBodyId, roomTimelineDeliver, roomAdmitLocal, roomDropLocal, roomPatchLocal,
   roomDraftStorageKey, roomDraftParse, roomDraftSerialize, roomDraftUniqueFiles, roomDraftSameSnapshot, roomDraftHoldTarget,
   roomMentionChoices, roomMentionBody, roomComposerEnterAction,
+  roomFilterTarget, roomTimelineScope, roomTimelineReset, roomTimelineAccept, roomFilterVisible, roomFilterEmptyText,
+  roomQueueEditUrl, roomUtf8Bytes, roomQueueEditTarget, roomQueueEditInvalid, roomQueueEditFailure, roomQueueEditNetworkError, ROOM_QUEUE_EDIT_MAX_BYTES,
 })`, ctx);
 vm.runInContext('function sessionDisplayAgent(s) { return (s && (s.disguise_agent || s.agent_type)) || ""; }', ctx);
 const mentionSrc = read('chat/MentionMenu.js');
@@ -135,8 +137,11 @@ assert.deepEqual(plain(g.roomMergeMessages([], [msg(1, 'x'), msg(1, 'x')])).leng
   assert.equal(chip.statePrimary, '執行中，活動資料未提供');
 
   const pausedEmpty = g.roomMemberState({ status: 'idle', queue_paused: true, queue_length: 0, last_error: '舊錯誤', quota: { display_text: '5h 100%' } });
-  assert.equal(pausedEmpty.primary, '佇列已暫停');
+  assert.equal(pausedEmpty.primary, '閒置', '空佇列沒有東西可繼續，不顯示暫停');
+  assert.equal(pausedEmpty.paused, false);
   assert.equal(pausedEmpty.attention, '');
+  const pausedQueued = g.roomMemberState({ status: 'idle', queue_paused: true, queue_length: 2 });
+  assert.equal(pausedQueued.primary, '佇列已暫停，還有 2 則');
   const quotaOnly = g.roomMemberState({ status: 'idle', queue_paused: false, queue_length: 0, last_error: '', quota: { display_text: '5h 100%' } });
   assert.equal(quotaOnly.primary, '閒置');
   const recovered = g.roomMemberState({ status: 'idle', queue_paused: false, last_error: '' });
@@ -144,6 +149,35 @@ assert.deepEqual(plain(g.roomMergeMessages([], [msg(1, 'x'), msg(1, 'x')])).leng
   const jobs = g.roomJobsSplit([{ id: 2, status: 'done' }, { id: 1, status: 'running' }, { id: 3, status: 'failed' }]);
   assert.deepEqual(jobs.open.map((job) => job.id), [1]);
   assert.deepEqual(jobs.closed.map((job) => job.id), [2, 3]);
+}
+
+// ── 正式派工之外的會話活動：不偽造 job，也不讓空的暫停佇列看似忙碌 ──────
+{
+  const running = { session_id: 'running', session_name: '執行者', role: 'worker', status: 'running' };
+  const jobs = ['done', 'failed', 'interrupted'].map((status, id) => ({ id, worker_id: 'running', status }));
+  const members = [running, { ...running, session_id: 'pm', role: 'pm' },
+    { ...running, session_id: 'idle', status: 'idle', last_error: '舊錯誤' },
+    { ...running, session_id: 'paused-empty', status: 'idle', queue_paused: true, queue_length: 0 }];
+  const snapshot = JSON.stringify({ members, jobs });
+  assert.deepEqual(plain(g.roomUnboundWorkers(members, jobs).map((m) => m.session_id)), ['running'],
+    '所有正式 job 已結束，running worker 仍須作為未綁定會話活動顯示；PM 與閒置者排除');
+  assert.equal(g.roomUnboundWorkers(members, jobs)[0], running, '保留真實成員資料，不建立假派工');
+  assert.equal(JSON.stringify({ members, jobs }), snapshot, '不得改寫已完成／失敗／中斷 job 或成員狀態');
+  for (const status of ['queued', 'running', 'slow', 'blocked']) {
+    const open = { id: 31, worker_id: 'running', status };
+    assert.deepEqual(plain(g.roomUnboundWorkers(members, [...jobs, open])), [], `${status} job 已綁定，不重複活動列`);
+    assert.deepEqual(plain(g.roomJobsSplit([...jobs, open]).open), [open], '保留原始 open job 生命週期');
+  }
+  const pending = [
+    { session_id: 'confirm', role: 'worker', status: 'idle', attention: 'confirm' },
+    { session_id: 'input', role: 'worker', status: 'idle', attention: 'input' },
+    { session_id: 'shell', role: 'worker', status: 'idle', attention: 'shell' },
+    { session_id: 'queued', role: 'worker', status: 'idle', queue_length: 2 },
+    { session_id: 'paused', role: 'worker', status: 'idle', queue_length: 1, queue_paused: true },
+  ];
+  assert.deepEqual(plain(g.roomUnboundWorkers(pending, []).map((m) => m.session_id)), pending.map((m) => m.session_id));
+  assert.deepEqual(plain(g.roomUnboundWorkers([{ ...running, status: 'idle' }], jobs)), [], '刷新為 idle 後活動消失');
+  assert.deepEqual(plain(g.roomUnboundWorkers(null, null)), []);
 }
 
 // ── 額度過期標示 ──────────────────────────────────────────────────────
@@ -404,6 +438,58 @@ async function pollerScenarios() {
   assert.equal(g.roomComposerEnterAction({ key: 'Enter' }, { open: false, count: 0 }), 'send');
 }
 
+// ── 成員篩選：只改閱讀範圍，競態世代靠 scope ──────────────────────────
+{
+  assert.equal(g.roomTimelineUrl('r1', '', 50, 's1'), '/rooms/r1/timeline?limit=50&member=s1');
+  assert.equal(g.roomTimelineUrl('r1', 'C', 50, 'a/b'), '/rooms/r1/timeline?limit=50&before=C&member=a%2Fb');
+  assert.equal(g.roomTimelineUrl('r1', '', 50, ''), '/rooms/r1/timeline?limit=50', '總覽不帶 member');
+
+  const room = { members: [{ session_id: 'pm', role: 'pm', session_name: 'PM' }, { session_id: 'w1', role: 'worker', session_name: '同名' }, { session_id: 'w2', role: 'worker', session_name: '同名' }] };
+  assert.deepEqual(plain(g.roomFilterTarget(room, 'w2')), { id: 'w2', role: 'worker', name: '同名' }, '以 id 認人，同名不混淆');
+  assert.equal(g.roomFilterTarget(room, ''), null, '空字串＝總覽');
+  assert.equal(g.roomFilterTarget(room, 'gone'), null, '被移出的成員回到總覽');
+  assert.equal(g.roomFilterTarget(null, 'w1'), null);
+  // 交接後同一個 session 角色變了：scope 變，時間軸要重載
+  const asWorker = g.roomTimelineScope('r1', g.roomFilterTarget(room, 'w1'));
+  const asPm = g.roomTimelineScope('r1', { id: 'w1', role: 'pm', name: '同名' });
+  assert.notEqual(asWorker, asPm);
+  assert.notEqual(g.roomTimelineScope('r1', null), asWorker);
+  assert.notEqual(g.roomTimelineScope('r2', null), g.roomTimelineScope('r1', null));
+
+  // A→B 切換：A 的延遲回應不得插進 B 的時間軸，也不能動 B 的游標
+  const scopeA = g.roomTimelineScope('r1', { id: 'w1', role: 'worker' });
+  const scopeB = g.roomTimelineScope('r1', { id: 'w2', role: 'worker' });
+  const stateA = g.roomTimelineAccept(g.roomTimelineReset(g.roomTimelineEmpty(), scopeA), scopeA, { messages: [msg(9, '2026-11-18 10:00:09')], has_more: true, next_cursor: 'CA' }, 'latest');
+  assert.deepEqual(ids(stateA), [9]);
+  assert.equal(stateA.scope, scopeA, '結果要帶著它所屬的 scope');
+  const stateB = g.roomTimelineReset(stateA, scopeB);
+  assert.deepEqual(ids(stateB), [], '切換後清空');
+  assert.equal(stateB.loaded, false);
+  assert.equal(stateB.nextCursor, '');
+  assert.equal(g.roomTimelineAccept(stateB, scopeA, { messages: [msg(8, '2026-11-18 10:00:08')], has_more: false, next_cursor: '' }, 'latest'), stateB, 'A 的晚到最新頁被丟棄');
+  assert.equal(g.roomTimelineAccept(stateB, scopeA, { messages: [msg(7, '2026-11-18 10:00:07')], has_more: false, next_cursor: '' }, 'older'), stateB, 'A 的晚到舊頁被丟棄');
+  const okB = g.roomTimelineAccept(stateB, scopeB, { messages: [msg(5, '2026-11-18 10:00:05')], has_more: false, next_cursor: '' }, 'latest');
+  assert.deepEqual(ids(okB), [5]);
+
+  // 樂觀訊息跨切換保留（不能因為換篩選就丟掉送不出去的訊息），但別的訊息一律清掉
+  const local = { id: 'local:x', local: true, input_request_id: 'x', role: 'user', text: '送出中', created_at: '' };
+  const withLocal = g.roomAdmitLocal(stateA, local);
+  const reset = g.roomTimelineReset(withLocal, scopeB);
+  assert.deepEqual(ids(reset), ['local:x']);
+  // 樂觀訊息是給 PM 的：看 worker 時不顯示，看總覽／PM 時顯示
+  assert.equal(g.roomFilterVisible(reset.messages, 'worker').length, 0);
+  assert.equal(g.roomFilterVisible(reset.messages, 'pm').length, 1);
+  assert.equal(g.roomFilterVisible(reset.messages, '').length, 1);
+  assert.equal(g.roomFilterVisible(reset.messages, '').length, reset.messages.length);
+  // 沒有要隱藏的就沿用同一個陣列（版面不必重算）
+  assert.equal(g.roomFilterVisible(okB.messages, 'worker'), okB.messages);
+  // 空狀態要說目前篩選，不能說整間沒有訊息
+  assert.equal(g.roomFilterEmptyText(null), '成員還沒有任何訊息。');
+  assert.match(g.roomFilterEmptyText({ id: 'w1', role: 'worker', name: '小明' }), /「小明」/);
+  assert.match(g.roomFilterEmptyText({ id: 'pm', role: 'pm', name: 'PM' }), /你與.*PM/);
+  assert.ok(!/成員還沒有任何訊息/.test(g.roomFilterEmptyText({ id: 'w1', role: 'worker', name: 'x' })));
+}
+
 // ── 靜態斷言：PM 輸入、安全渲染 ──────────────────────────────
 function staticChecks() {
   const roomFiles = ['hooks/rooms.js', 'hooks/roomPoller.js', 'hooks/useRoomTimeline.js', 'session/RoomsSection.js', 'session/RoomFormModal.js', 'session/RoomView.js', 'session/RoomMessageBubble.js', 'session/RoomControls.js'];
@@ -435,7 +521,52 @@ function staticChecks() {
   assert.ok(!/tabGroups|dispatchTabGroups/.test(view), '工作室不整合分頁／分割視窗系統');
 }
 
+// 排隊輸入編輯：資格、bytes 規則與失敗文字（純函式）。
+function queueEditChecks() {
+  const queued = { id: -7, queued: true, role: 'user', source_kind: 'user', session_id: 'pm-1', text: '原文', attachments: [{ id: 'a' }] };
+  assert.deepEqual(plain(g.roomQueueEditTarget(queued, 'pm-1')), { msgId: -7, queueId: 7, expectedPm: 'pm-1', previous: '原文', hasAttachments: true });
+  const no = (patch, pm = 'pm-1') => assert.equal(g.roomQueueEditTarget({ ...queued, ...patch }, pm), null);
+  no({ queued: false });           // 已開始的正式訊息
+  no({ id: 7 });                   // 正 id：持久訊息
+  no({ id: 0 });
+  no({ id: -1.5 });
+  no({ id: 'local:abc' });         // 尚未上傳的本地氣泡
+  no({ local: true });             // sending／failed
+  no({ source_kind: 'job' });      // 正式 job／report／agent 來源
+  no({ source_kind: 'agent' });
+  no({ role: 'claude' });
+  no({ session_id: '' });
+  no({}, 'pm-2');                  // PM 已交接：項目不在現任 PM 佇列
+  assert.equal(g.roomQueueEditTarget(null, 'pm-1'), null);
+  assert.equal(g.roomQueueEditUrl('r/1', 7), '/rooms/r%2F1/messages/7');
+  // 64000 bytes 依 UTF-8 計，不是字元數；剛好 64000 可以，超過不行；不截字
+  assert.equal(g.roomUtf8Bytes('中'), 3);
+  assert.equal(g.roomQueueEditInvalid('中'.repeat(21333) + 'a', false), '');
+  assert.match(g.roomQueueEditInvalid('中'.repeat(21334), false), /64000.*64002/);
+  assert.equal(g.roomQueueEditInvalid('a'.repeat(64000), true), '');
+  assert.match(g.roomQueueEditInvalid('a'.repeat(64001), true), /64001/);
+  // 空白：沒有附件不可；有原附件可
+  assert.match(g.roomQueueEditInvalid(' \n ', false), /請輸入文字/);
+  assert.equal(g.roomQueueEditInvalid('', true), '');
+  // 失敗文字都保留草稿、409 涵蓋出列／修改／交接
+  assert.match(g.roomQueueEditFailure(409, ''), /PM 已交接/);
+  assert.match(g.roomQueueEditFailure(409, ''), /草稿已保留/);
+  assert.match(g.roomQueueEditFailure(404, ''), /草稿已保留/);
+  assert.match(g.roomQueueEditFailure(403, ''), /草稿已保留/);
+  assert.equal(g.roomQueueEditFailure(400, '文字無效'), '文字無效');
+  assert.match(g.roomQueueEditFailure(500, ''), /草稿已保留/);
+  assert.match(g.roomQueueEditNetworkError(new Error('連線逾時，請稍後再試')), /^連線逾時.*不會自動重送/);
+  assert.match(g.roomQueueEditNetworkError(new TypeError('Failed to fetch')), /^連線中斷/);
+  // 接線：單一 per-room 草稿狀態放在 RoomView；儲存只走 PATCH，且只在使用者操作時送出（沒有自動重試）
+  const view = read('session/RoomView.js');
+  assert.ok(/method: 'PATCH'/.test(view) && /expected_pm_id: cur\.expectedPm/.test(view), '編輯走 PATCH 並帶捕捉到的 expected PM');
+  assert.ok(!/setInterval|setTimeout\([^)]*onSave|retry/i.test(view.slice(view.indexOf('onSave'), view.indexOf('onReload'))), '儲存失敗不得自動重試');
+  const bubble = read('session/RoomMessageBubble.js');
+  assert.ok(/<textarea/.test(bubble) && /htmlFor=\{id\}/.test(bubble) && !/onKeyDown/.test(bubble.slice(bubble.indexOf('function RoomQueueEditor'), bubble.indexOf('const RoomMessageBubble'))), '原生 textarea＋label，不攔截 Enter／IME');
+}
+
 (async () => {
+  queueEditChecks();
   await pollerScenarios();
   staticChecks();
   console.log('rooms checks passed');

@@ -20,6 +20,7 @@ type migration struct {
 var migrations = []migration{
 	{name: "baseline", up: migrateBaseline},
 	{name: "input_request_id", upTx: migrateInputRequestID},
+	{name: "queue_batches", upTx: migrateQueueBatches},
 }
 
 // runMigrations 把資料庫從目前的 user_version 升到 len(list)。

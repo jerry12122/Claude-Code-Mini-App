@@ -98,9 +98,10 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     sessionModel,
     liveActivity,
     runStartedAt,
-    queue, queuePaused, quotaResume, lingering,
+    queue, queuePaused, queueRunNowId, quotaResume, lingering,
     send,
     submitInput,
+    editQueuedMessage, changeQueueBatch, queueBatching, queueOperationPending,
     flushPendingModes,
     handleQuotaRefresh,
     commitPermMode,
@@ -167,6 +168,117 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const lastKeyRef = useRef(null);
   const [hasNewBelow, setHasNewBelow] = useState(false);
   const chatInputRef = useRef(null);
+  const [queueEdit, setQueueEdit] = useState(null);
+  const queueEditRef = useRef(null);
+  queueEditRef.current = queueEdit;
+  const queueSaveSeq = useRef(0);
+  const queueRef = useRef(queue);
+  queueRef.current = queue;
+
+  useEffect(() => {
+    queueSaveSeq.current += 1;
+    setQueueEdit(null);
+    queueEditRef.current = null;
+  }, [session.id]);
+
+  const queueEditApi = useMemo(() => ({
+    onBegin: (q) => {
+      if (queueEditRef.current || queueOperationPending()) return;
+      if (isGuest || !q || !Number.isSafeInteger(q.id) || q.id <= 0 || q.author || q.source_session_id || q.batch_id) return;
+      const hasAttachments = !!((q.attachment_ids && q.attachment_ids.length > 0) || (q.attachments && q.attachments.length > 0));
+      const initial = {
+        id: q.id,
+        draft: q.content || '',
+        previous: q.content || '',
+        hasAttachments,
+        status: 'editing',
+        error: '',
+        invalid: false,
+        reloading: false,
+        focusTick: 0,
+      };
+      queueEditRef.current = initial;
+      setQueueEdit(initial);
+    },
+    onDraft: (draft) => {
+      setQueueEdit((cur) => {
+        if (!cur || cur.status === 'saving') return cur;
+        const next = { ...cur, draft, error: cur.invalid ? '' : cur.error, invalid: false };
+        queueEditRef.current = next;
+        return next;
+      });
+    },
+    onCancel: () => {
+      const cur = queueEditRef.current;
+      if (cur && cur.status !== 'saving') {
+        queueEditRef.current = null;
+        setQueueEdit(null);
+        chatInputRef.current?.focus();
+      }
+    },
+    onSave: async () => {
+      const cur = queueEditRef.current;
+      if (!cur || cur.status === 'saving') return;
+      if (cur.draft === cur.previous) {
+        queueEditRef.current = null;
+        setQueueEdit(null);
+        chatInputRef.current?.focus();
+        return;
+      }
+      if (!cur.hasAttachments && !cur.draft.trim()) {
+        const next = { ...cur, error: '訊息內容不得為空', invalid: true, focusTick: (cur.focusTick || 0) + 1 };
+        queueEditRef.current = next;
+        setQueueEdit(next);
+        return;
+      }
+      const token = ++queueSaveSeq.current;
+      queueEditRef.current = { ...cur, status: 'saving' };
+      setQueueEdit({ ...cur, status: 'saving', error: '', invalid: false });
+      try {
+        await editQueuedMessage(cur.id, cur.previous, cur.draft);
+        if (token === queueSaveSeq.current) {
+          queueEditRef.current = null;
+          setQueueEdit(null);
+          chatInputRef.current?.focus();
+        }
+      } catch (err) {
+        if (token === queueSaveSeq.current) {
+          const isConflict = err.code === 'conflict' || (err.message && err.message.includes('衝突'));
+          const errorMsg = isConflict
+            ? '內容與伺服器目前版本衝突；草稿已保留。可點擊「重新載入」取得最新版本，或點擊「取消」。'
+            : (err.message || '編輯失敗，請稍後再試');
+          const next = { ...cur, status: 'editing', error: errorMsg };
+          queueEditRef.current = next;
+          setQueueEdit(next);
+        }
+      }
+    },
+    onReload: () => {
+      const cur = queueEditRef.current;
+      if (!cur || cur.status === 'saving' || cur.reloading) return;
+      const latest = queueRef.current?.find((item) => item.id === cur.id);
+      if (latest) {
+        const next = {
+          ...cur,
+          previous: latest.content || '',
+          hasAttachments: !!((latest.attachment_ids && latest.attachment_ids.length > 0) || (latest.attachments && latest.attachments.length > 0)),
+          error: '',
+          invalid: false,
+          reloading: false,
+        };
+        queueEditRef.current = next;
+        setQueueEdit(next);
+      } else {
+        const next = {
+          ...cur,
+          error: '找不到這則排隊訊息（已出列或已移除）。草稿已保留；可取消。',
+          reloading: false,
+        };
+        queueEditRef.current = next;
+        setQueueEdit(next);
+      }
+    },
+  }), [isGuest, editQueuedMessage, queueBatching, queueRunNowId]);
   const focusedPaneRef = useRef(isFocused);
   focusedPaneRef.current = isFocused;
   const slashInputWrapRef = useRef(null);
@@ -544,6 +656,16 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
     showToast('連線中斷，操作未送出，請稍後再試', { error: true, duration: 3000 });
     return false;
   };
+  const queueScopeRef = useRef(session.id); queueScopeRef.current = session.id;
+  const handleQueueBatch = async (items, batchId = '') => {
+    if (isGuest || queueOperationPending() || queueEditRef.current || (!batchId && (items.length < 2 || items.some(q => q.batch_id)))) return;
+    const scope = session.id;
+    try {
+      await changeQueueBatch(items.slice(0, 100), batchId);
+      if (queueScopeRef.current === scope) showToast(batchId ? '已取消批次' : '已安排一起送');
+    } catch (err) { if (queueScopeRef.current === scope) showToast(err.message || '批次操作失敗', { error: true }); }
+  };
+  const handleQueueCancelBatch = batchId => handleQueueBatch([], batchId);
   const handleSend = async (overrideText) => {
     if (pendingInput || pendingSendRef.current || isDisabled) return;
     const raw = overrideText !== undefined && overrideText !== null ? String(overrideText) : input;
@@ -1203,8 +1325,18 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
               items={queue}
               paused={queuePaused}
               canResume={queue.length > 0 && (queuePaused || state === 'IDLE' || state === 'SHELL_IDLE')}
-              onRemove={(id) => sendOrToast({ type: 'queue_remove', id })}
+              canRunNow={canAct && !shareOver && inputMode !== 'shell' && ['claude', 'codex', 'cursor'].includes(agentType) && (agentRunning || (lingering && state === 'IDLE'))}
+              pendingId={queueRunNowId}
+              connected={connected}
+              onRunNow={(id) => { if (!queueEditRef.current && !queueOperationPending()) sendOrToast({ type: 'queue_run_now', id }); }}
+              onRemove={(id) => { if (!queueEditRef.current && !queueOperationPending()) sendOrToast({ type: 'queue_remove', id }); }}
               onResume={() => sendOrToast({ type: 'queue_resume' })}
+              edit={queueEdit}
+              editApi={queueEditApi}
+              isGuest={isGuest}
+              onBatch={handleQueueBatch}
+              onCancelBatch={handleQueueCancelBatch}
+              batching={queueBatching}
             />
             {inputMode !== 'shell' && (
               <MentionChips items={mentionChips} onRemove={handleMentionChipRemove} />
@@ -1457,33 +1589,187 @@ function PermToolDetail({ tool }) {
   );
 }
 
-/** 排隊中的訊息：每則可移除；暫停（前一輪失敗／中斷／拒絕授權）時需手動繼續。 */
-function QueuedMessages({ items, paused, canResume, onRemove, onResume, sessionId }) {
-  if (!Array.isArray(items) || items.length === 0) return null;
+/** 排隊輸入的原地編輯表單。原生 textarea：Enter 換行、IME 組字照原生；儲存只由按鈕／表單送出。 */
+function QueuedMessageEditor({ edit, isDequeued, api }) {
+  const id = 'queue-edit-' + edit.id;
+  const formRef = useRef(null);
+  const inputRef = useRef(null);
+  const saving = edit.status === 'saving';
+
+  useEffect(() => {
+    if (inputRef.current) inputRef.current.focus();
+  }, [edit.id, edit.focusTick]);
+
+  return (
+    <form
+      ref={formRef}
+      data-queue-edit={String(edit.id)}
+      noValidate
+      onSubmit={(e) => {
+        e.preventDefault();
+        api.onSave();
+      }}
+      className="w-full max-w-full min-w-0 rounded-lg border border-ra-line-soft bg-ra-card px-2.5 py-2 text-xs text-ra-t2 my-1"
+    >
+      {isDequeued && (
+        <p className="mb-1 text-xs text-amber-300" role="status">
+          這則排隊訊息已出列或已移除。草稿已保留；可取消。
+        </p>
+      )}
+      <label htmlFor={id} className="block text-xs font-semibold text-ra-t2">
+        編輯排隊訊息
+      </label>
+      <textarea
+        id={id}
+        ref={inputRef}
+        name="content"
+        rows={3}
+        value={edit.draft}
+        readOnly={saving}
+        aria-invalid={edit.invalid ? 'true' : undefined}
+        aria-describedby={edit.error ? id + '-error' : undefined}
+        onChange={(e) => api.onDraft(e.target.value)}
+        className="mt-1 w-full resize-y rounded-lg border border-ra-line bg-ra-bg p-2 text-base text-ra-t1 focus:outline-none focus:ring-1 focus:ring-violet-500"
+      />
+      {edit.error ? (
+        <p id={id + '-error'} role="alert" className="my-1 text-xs text-rose-400">
+          {edit.error}
+        </p>
+      ) : null}
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {!isDequeued && (
+          <button
+            type="submit"
+            disabled={saving}
+            style={{ minWidth: 44, minHeight: 44 }}
+            className="rounded-md bg-violet-600 px-3 text-xs text-white disabled:opacity-60"
+          >
+            {saving ? '儲存中…' : '儲存修改'}
+          </button>
+        )}
+        <button
+          type="button"
+          disabled={saving}
+          style={{ minWidth: 44, minHeight: 44 }}
+          className="rounded-md border border-ra-line px-3 text-xs text-ra-t2 disabled:opacity-60 hover:bg-ra-hover"
+          onClick={api.onCancel}
+        >
+          取消
+        </button>
+        {edit.error && !saving ? (
+          <button
+            type="button"
+            disabled={edit.reloading}
+            style={{ minWidth: 44, minHeight: 44 }}
+            className="rounded-md border border-ra-line px-3 text-xs text-ra-t2 disabled:opacity-60 hover:bg-ra-hover"
+            onClick={api.onReload}
+          >
+            {edit.reloading ? '載入中…' : '重新載入'}
+          </button>
+        ) : null}
+      </div>
+    </form>
+  );
+}
+
+/** 排隊中的訊息：每則可原地編輯或移除；暫停（前一輪失敗／中斷／拒絕授權）時需手動繼續。 */
+function QueuedMessages({ items, paused, canResume, canRunNow, pendingId, connected, onRunNow, onRemove, onResume, sessionId, edit, editApi, isGuest, onBatch, onCancelBatch, batching }) {
+  const helpId = React.useId();
+  const queueItems = Array.isArray(items) ? items : [];
+  const isEditing = !!edit;
+  const boundary = queueItems.findIndex(q => q.author || q.source_session_id || q.batch_id);
+  const batchItems = queueItems.slice(0, boundary < 0 ? 100 : Math.min(boundary, 100));
+  const activeBatchId = queueItems.find(q => q.batch_id && !q.author && !q.source_session_id)?.batch_id;
+  const isDequeued = isEditing && !queueItems.some((q) => q.id === edit.id);
+
+  if (queueItems.length === 0 && !isDequeued) return null;
+
   return (
     <div className="mb-2 rounded-lg border border-ra-line bg-ra-card px-2 py-1.5 text-xs" aria-label="排隊中的訊息">
       <div className="flex items-center justify-between mb-1 text-ra-t4">
-        <span>{paused ? `⏸ 佇列已暫停（${items.length}）` : `佇列（${items.length}）· 完成後依序執行`}</span>
-        {canResume && (
-          <button type="button" onClick={onResume}
-            className="px-2 py-0.5 rounded bg-[oklch(0.62_0.19_275)] hover:brightness-110 text-white">
-            繼續
-          </button>
-        )}
-      </div>
-      <ol className="space-y-0.5">
-        {items.map((q, i) => (
-          <li key={q.id} className="flex items-center gap-1.5 text-ra-t2">
-            <span className="shrink-0 font-mono text-[10px] text-ra-t5">{i + 1}.</span>
-            <span className="min-w-0 flex-1 truncate" title={attachmentQueueSummary(q, sessionId)}>{attachmentQueueSummary(q, sessionId)}</span>
-            <button type="button" onClick={() => onRemove(q.id)}
-              aria-label="移除這則排隊訊息"
-              className="shrink-0 px-1 text-ra-t4 hover:text-red-300">
-              ×
+        <span>{paused ? `⏸ 佇列已暫停（${queueItems.length}）` : `佇列（${queueItems.length}）· 完成後依序執行`}</span>
+        <div className="flex items-center gap-1.5">
+          {!isGuest && batchItems.length >= 2 && !queueItems.some(q => q.batch_id) && (
+            <button type="button" onClick={() => onBatch?.(batchItems)}
+              disabled={!connected || isEditing || pendingId != null || batching}
+              style={{ minHeight: 24 }}
+              className="px-2 py-0.5 rounded bg-[oklch(0.62_0.19_275)] hover:brightness-110 disabled:opacity-40 text-white font-medium">
+              {batching ? '安排中…' : '一起送'}
             </button>
-          </li>
-        ))}
-      </ol>
+          )}
+          {canResume && (
+            <button type="button" onClick={onResume} disabled={!connected || isEditing || batching || pendingId != null || queueItems.some(q => q.batch_id)}
+              style={{ minHeight: 44, minWidth: 44 }}
+              className="px-2 py-0.5 rounded bg-[oklch(0.62_0.19_275)] hover:brightness-110 text-white">
+              繼續
+            </button>
+          )}
+        </div>
+      </div>
+      {activeBatchId && (
+        <div className="mb-1 flex items-center justify-between text-violet-400">
+          <span>已安排批次</span>
+          <button type="button" onClick={() => onCancelBatch?.(activeBatchId)}
+            disabled={!connected || batching || isEditing || pendingId != null}
+            className="text-ra-t4 hover:text-red-300">
+            取消批次
+          </button>
+        </div>
+      )}
+      {canRunNow && <p id={helpId} className="mb-1 text-ra-t4">立刻執行會中斷目前執行中的動作。</p>}
+      {pendingId != null && <p role="status" className="mb-1 text-ra-t4">立刻執行請求處理中…</p>}
+      {queueItems.length > 0 && (
+        <ol className="space-y-0.5">
+          {queueItems.map((q, i) => {
+            const editingThis = edit && edit.id === q.id;
+            const canEdit = !isGuest && Number.isSafeInteger(q.id) && q.id > 0 && !q.author && !q.source_session_id;
+            if (editingThis) {
+              return (
+                <li key={q.id} className="text-ra-t2">
+                  <QueuedMessageEditor edit={edit} isDequeued={false} api={editApi} />
+                </li>
+              );
+            }
+            return (
+              <li key={q.id} className="flex items-center gap-1.5 text-ra-t2 py-0.5">
+                <span className="shrink-0 font-mono text-[10px] text-ra-t5">{i + 1}.</span>
+                <span className="min-w-0 flex-1 truncate" title={attachmentQueueSummary(q, sessionId)}>{attachmentQueueSummary(q, sessionId)}</span>
+                {canRunNow && (
+                  <button type="button" onClick={() => onRunNow(q.id)}
+                    onMouseDown={(e) => e.preventDefault()} aria-describedby={helpId}
+                    disabled={!connected || pendingId != null || isEditing || batching || !!q.batch_id}
+                    style={{ minHeight: 24, minWidth: 24, height: 24, width: 24 }}
+                    aria-label="立刻執行" title="立刻執行"
+                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-ra-line-strong text-ra-t2 hover:text-cyan-400 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5"><path d="M12 19V5m-7 7 7-7 7 7" /></svg>
+                  </button>
+                )}
+                {canEdit && (
+                  <button type="button" onClick={() => editApi?.onBegin(q)}
+                    disabled={isEditing || batching || pendingId != null || !!q.batch_id}
+                    style={{ minHeight: 24, minWidth: 24, height: 24, width: 24 }}
+                    aria-label="編輯" title="編輯"
+                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-ra-line-strong text-ra-t2 hover:text-violet-400 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-violet-400">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5"><path d="m16 3 5 5M4 20l4-1L21 6l-5-5L3 14l-1 7Z" /></svg>
+                  </button>
+                )}
+                <button type="button" onClick={() => onRemove(q.id)}
+                  disabled={!connected || isEditing || batching || pendingId != null || !!q.batch_id}
+                  style={{ minHeight: 24, minWidth: 24, height: 24, width: 24 }}
+                  aria-label="移除這則排隊訊息" title="移除這則排隊訊息"
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-ra-t4 hover:text-red-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      {isDequeued && (
+        <div className="mt-1">
+          <QueuedMessageEditor edit={edit} isDequeued={true} api={editApi} />
+        </div>
+      )}
     </div>
   );
 }

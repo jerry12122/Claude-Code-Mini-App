@@ -1,7 +1,9 @@
 package api
 
 import (
+	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -32,6 +34,10 @@ type QuotaReader interface {
 type RoomsHandler struct {
 	db    *db.DB
 	quota QuotaReader
+	// 由 server 注入共用 dispatchLock 的寫入路徑，未接線時不得直接改 DB。
+	EditQueued    func(context.Context, string, string, int64, string, string) error
+	BatchQueued   func(context.Context, string, string, string, []db.QueueBatchItem, string) (string, error)
+	UpdateMembers func(context.Context, string, *string, *[]db.RoomMember, ...string) error
 }
 
 func NewRoomsHandler(database *db.DB, q QuotaReader) *RoomsHandler {
@@ -125,6 +131,43 @@ func (h *RoomsHandler) SendToPM(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusAccepted)
 }
 
+// EditQueuedMessage 只接受原始文字 CAS，不新增輸入或改動原 receipt。
+func (h *RoomsHandler) EditQueuedMessage(c *fiber.Ctx) error {
+	var body struct {
+		PMID     *string `json:"expected_pm_id"`
+		Previous *string `json:"previous"`
+		Content  *string `json:"content"`
+	}
+	id, err := strconv.ParseInt(c.Params("queue_id"), 10, 64)
+	if err != nil || id <= 0 || !utf8.Valid(c.Body()) || json.Unmarshal(c.Body(), &body) != nil ||
+		body.PMID == nil || body.Previous == nil || body.Content == nil || strings.TrimSpace(*body.PMID) == "" ||
+		len(*body.Content) > 64000 || strings.ContainsRune(*body.PMID, 0) || strings.ContainsRune(*body.Previous, 0) || strings.ContainsRune(*body.Content, 0) {
+		return jsonErr(c, 400, "請提供有效 queue ID、expected_pm_id、previous 與 content（文字最多 64 KB）")
+	}
+	if h.EditQueued == nil {
+		return jsonErr(c, 503, "佇列編輯暫時無法使用")
+	}
+	if _, err := h.db.GetRoom(c.Params("id")); err != nil {
+		return h.writeErr(c, "queue_edit_room", err)
+	}
+	if err := h.EditQueued(c.UserContext(), c.Params("id"), *body.PMID, id, *body.Previous, *body.Content); err != nil {
+		switch {
+		case errors.Is(err, db.ErrQueueEditInvalid), errors.Is(err, db.ErrInvalidAttachment):
+			return jsonErr(c, 400, err.Error())
+		case errors.Is(err, db.ErrQueueEditForbidden):
+			return jsonErr(c, 404, "找不到可編輯的佇列訊息")
+		case errors.Is(err, db.ErrQueueEditConflict):
+			return jsonErr(c, 409, err.Error())
+		case errors.Is(err, db.ErrRoomPM):
+			if _, roomErr := h.db.GetRoom(c.Params("id")); roomErr != nil {
+				return h.writeErr(c, "queue_edit_room", roomErr)
+			}
+		}
+		return h.writeErr(c, "queue_edit", err)
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
 func (h *RoomsHandler) SaveMemo(c *fiber.Ctx) error {
 	var body struct {
 		Text     *string `json:"text"`
@@ -149,6 +192,7 @@ func (h *RoomsHandler) Board(c *fiber.Ctx) error {
 }
 
 type roomTimelineItemJSON struct {
+	BatchID         string          `json:"batch_id,omitempty"`
 	ID              int64           `json:"id"`
 	SessionID       string          `json:"session_id"`
 	SessionName     string          `json:"session_name"`
@@ -252,8 +296,14 @@ func (h *RoomsHandler) Update(c *fiber.Ctx) error {
 	if body.PreviousPMID != nil {
 		expected = append(expected, *body.PreviousPMID)
 	}
-	if err := h.db.UpdateRoom(id, namePtr, membersPtr, expected...); err != nil {
-		return h.writeErr(c, "update", err)
+	var updateErr error
+	if membersPtr != nil && h.UpdateMembers != nil {
+		updateErr = h.UpdateMembers(c.UserContext(), id, namePtr, membersPtr, expected...)
+	} else {
+		updateErr = h.db.UpdateRoom(id, namePtr, membersPtr, expected...)
+	}
+	if updateErr != nil {
+		return h.writeErr(c, "update", updateErr)
 	}
 	room, err := h.db.GetRoom(id)
 	if err != nil {
@@ -270,7 +320,8 @@ func (h *RoomsHandler) Delete(c *fiber.Ctx) error {
 	return c.SendStatus(204)
 }
 
-// Timeline GET /rooms/:id/timeline?before=<游標>&limit=<預設 50、上限 200>
+// Timeline GET /rooms/:id/timeline?before=<游標>&limit=<預設 50、上限 200>&member=<成員 session id>
+// member 空白＝總覽；有值時只回與該成員有關的訊息（先篩再分頁），非本室成員回 404。
 // 回傳新到舊；has_more 為 true 時，把 next_cursor 帶進下一次的 before 取更早的訊息。
 func (h *RoomsHandler) Timeline(c *fiber.Ctx) error {
 	limit := db.RoomTimelineDefaultLimit
@@ -289,7 +340,7 @@ func (h *RoomsHandler) Timeline(c *fiber.Ctx) error {
 		}
 		before = cur
 	}
-	page, err := h.db.RoomTimeline(c.Params("id"), before, limit)
+	page, err := h.db.RoomTimelineMember(c.Params("id"), c.Query("member"), before, limit)
 	if err != nil {
 		return h.writeErr(c, "timeline", err)
 	}
@@ -300,7 +351,7 @@ func (h *RoomsHandler) Timeline(c *fiber.Ctx) error {
 			AgentType: it.AgentType, Role: it.Role, Author: db.RoomMessageAuthor(it.Author), Text: it.Content, Status: it.Status, CreatedAt: it.CreatedAt,
 			Sender: it.Sender, Recipient: it.Recipient, Mine: it.Mine, Attachments: it.Attachments,
 			SourceKind: it.SourceKind, SourceSessionID: it.SourceSessionID, SourceRoom: it.SourceRoom,
-			Body: it.Body, Transfer: it.Transfer, InputRequestID: it.InputRequestID, Queued: it.Queued,
+			Body: it.Body, Transfer: it.Transfer, InputRequestID: it.InputRequestID, Queued: it.Queued, BatchID: it.BatchID,
 		})
 	}
 	next := ""
@@ -392,7 +443,7 @@ func (h *RoomsHandler) memberQuota(provider string) *roomQuotaJSON {
 
 func (h *RoomsHandler) writeErr(c *fiber.Ctx, op string, err error) error {
 	switch {
-	case errors.Is(err, db.ErrRoomNotFound):
+	case errors.Is(err, db.ErrRoomNotFound), errors.Is(err, db.ErrRoomMemberNotFound):
 		return jsonErr(c, 404, err.Error())
 	case errors.Is(err, db.ErrRoomSessionMissing):
 		return jsonErr(c, 400, err.Error())

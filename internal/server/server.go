@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -637,10 +638,7 @@ func runNormal(ctx context.Context, cfg *config.Config, ext ...isolatedExternal)
 		slog.Info("[auth] bot_token 未設定，僅提供 web 密碼／訪客登入，Telegram 通知停用")
 	}
 
-	addr := fmt.Sprintf(":%d", cfg.Server.Port)
-	if external.refresh != nil {
-		addr = fmt.Sprintf("127.0.0.1:%d", cfg.Server.Port)
-	}
+	addr := serverListenAddress(cfg.Server.Port, external.refresh != nil)
 	slog.Info(fmt.Sprintf("MiniApp v%s listening on %s", version.Version, addr))
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -738,6 +736,14 @@ func webSessionToken(c *fiber.Ctx) string {
 		return t
 	}
 	return c.Cookies("session_token")
+}
+
+func serverListenAddress(port int, isolated bool) string {
+	// 測試子程序明確啟用才限縮監聽；正式服務未設定時維持原本對外行為。
+	if isolated || os.Getenv("MINIAPP_TEST_LOOPBACK") == "1" {
+		return net.JoinHostPort("127.0.0.1", fmt.Sprint(port))
+	}
+	return fmt.Sprintf(":%d", port)
 }
 
 // The CLI bridge never accepts browser login, public MCP tokens, or proxy-supplied IPs.

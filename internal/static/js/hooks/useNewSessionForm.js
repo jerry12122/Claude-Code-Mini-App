@@ -5,6 +5,14 @@
  * 各自的 JSX／版面仍分開維護（樣式不同），只共用「狀態 + 送出 payload」這塊。
  */
 /** 新建會話不再提供 kiro（--no-interactive），改走 kiroacp。既有 kiro session 僅供閱讀。 */
+const NEW_SESSION_AGENT_OPTIONS = [
+  { value: 'claude', label: 'Claude' },
+  { value: 'cursor', label: 'Cursor' },
+  { value: 'antigravity', label: 'Antigravity' },
+  { value: 'kiroacp', label: 'Kiro ACP' },
+  { value: 'codex', label: 'Codex' },
+];
+
 function agentTypeForCreate(agentType) {
   return agentType === 'kiro' ? 'kiroacp' : (agentType || 'claude');
 }

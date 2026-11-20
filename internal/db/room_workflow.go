@@ -158,9 +158,9 @@ func (db *DB) DispatchRoomJob(roomID, pmID, workerID, text string) (int64, error
  JOIN (`+roomPMQuery+`) pm ON pm.room_id = wm.room_id
  WHERE wm.room_id = ? AND pm.session_id = ? AND wm.role = 'worker' AND s.id = ?
  AND s.agent_type != 'telegram' AND s.input_mode = 'agent' AND s.status = 'idle'
- AND s.shell_pending = '' AND s.pending_denials = '' AND s.queue_paused = 0
+ AND s.shell_pending = '' AND s.pending_denials = ''
 	AND NOT EXISTS (SELECT 1 FROM room_members WHERE session_id = s.id AND role = 'pm')
- AND NOT EXISTS (SELECT 1 FROM queued_messages WHERE session_id = s.id)
+ AND NOT EXISTS (SELECT 1 FROM queued_messages WHERE session_id = s.id) -- 暫停只擋已排隊的訊息；空佇列的暫停旗標不該擋派工
  ON CONFLICT(worker_id) WHERE outcome = '' DO NOTHING`, roomID, pmID, workerID)
 	if err := roomChange(res, err, ErrRoomWorker); err != nil {
 		return 0, err
@@ -233,11 +233,12 @@ func (db *DB) DeliverRoomReports() error {
     AND author = 'room-job:' || j.id AND created_at >= datetime('now', '-10 seconds'))))`); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`INSERT INTO queued_messages(session_id, content, author)
+	// source_session_id 記下執行者，讓成員篩選能結構化歸屬回報；作者與內容不變。
+	if _, err := tx.Exec(`INSERT INTO queued_messages(session_id, content, author, source_session_id)
  SELECT pm.session_id, printf('派工 #%d｜%s｜%s%s', j.id, COALESCE(NULLIF(s.name, ''), '執行者'),
   CASE j.outcome WHEN 'done' THEN '已完成' WHEN 'failed' THEN '執行失敗' ELSE '已中斷' END,
   CASE WHEN trim(COALESCE(m.content, '')) = '' THEN '' ELSE char(10) || char(10) || substr(m.content, 1, 16000) END),
-  'room-report:' || j.room_id
+  'room-report:' || j.room_id, j.worker_id
  FROM room_jobs j JOIN (` + roomPMQuery + `) pm ON pm.room_id = j.room_id
  LEFT JOIN sessions s ON s.id = j.worker_id
  LEFT JOIN messages m ON m.id = j.assistant_id AND m.session_id = j.worker_id

@@ -424,3 +424,19 @@ func TestRoomTimelineKeepsAcceptedQueueUntilPromotion(t *testing.T) {
 		t.Fatalf("promoted=%+v count=%d", page.Items, len(page.Items))
 	}
 }
+
+func TestRoomDispatchIgnoresPausedFlagOfEmptyQueue(t *testing.T) {
+	d := roomTestDB(t)
+	pm := roomSession(t, d, "PM", "claude")
+	w := roomSession(t, d, "W", "claude")
+	room, err := d.CreateRoom("工作室", []RoomMember{{SessionID: pm.ID, Role: RoomRolePM}, {SessionID: w.ID, Role: RoomRoleWorker}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SetQueuePaused(w.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.DispatchRoomJob(room.ID, pm.ID, w.ID, "job"); err != nil {
+		t.Fatalf("空佇列的暫停旗標不該擋派工：%v", err)
+	}
+}

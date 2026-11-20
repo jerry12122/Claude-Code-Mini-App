@@ -11,6 +11,14 @@ process.stdin.on('end', async () => {
   const long = /STREAM/.test(prompt) || args.includes('--resume');
   out({ type: 'system', subtype: 'init', session_id: 'fake-' + Date.now(), model: 'claude-sonnet-5-5' });
   out({ type: 'stream_event', event: { type: 'content_block_start', content_block: { type: 'text' } } });
+  // ponytail: 明確 UI 測試 marker，最多存活 45 秒；測試仍須經既有 interrupt 清理自己的回合。
+  const queueRunNow = prompt.match(/QUEUE_RUN_NOW_UI_([AC])/);
+  if (queueRunNow) {
+    delta('queue-run-now partial ' + queueRunNow[1]);
+    await sleep(queueRunNow[1] === 'A' ? 45000 : 20000);
+    out({ type: 'result', subtype: 'success', is_error: false, result: 'queue-run-now done', session_id: 'fake-queue-run-now', permission_denials: [] });
+    return;
+  }
   if (/ROOM_QUESTION/.test(prompt)) {
     const fs = require('node:fs');
     const config = JSON.parse(fs.readFileSync(args[args.indexOf('--mcp-config') + 1], 'utf8')).mcpServers.miniapp_perm;

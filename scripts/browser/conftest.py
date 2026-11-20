@@ -54,7 +54,8 @@ def app(tmp_path_factory):
         cwd=REPO, check=True, timeout=300,
     )
     # 不把個人 CLI 加入測試 PATH，避免動用真實 agent 帳號。
-    env = {**os.environ, "PATH": str(root / "bin") + os.pathsep + os.defpath}
+    env = {**os.environ, "PATH": str(root / "bin") + os.pathsep + os.defpath,
+           "MINIAPP_TEST_LOOPBACK": "1"}
     base = f"http://127.0.0.1:{port}"
     with (root / "server.log").open("w", encoding="utf-8") as log:
         process = subprocess.Popen([str(binary)], cwd=root, env=env, stdout=log, stderr=log)

@@ -2,9 +2,29 @@ package db
 
 import (
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"strings"
+
+	"modernc.org/sqlite"
 )
+
+// miniapp_envelope(content) 讓 SQL 與顯示共用 consultDisplay 的完整信封判斷，不在 SQL 重寫一份解析。
+func init() {
+	sqlite.MustRegisterDeterministicScalarFunction("miniapp_envelope", 1, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+		var text string
+		switch v := args[0].(type) {
+		case string:
+			text = v
+		case []byte:
+			text = string(v)
+		}
+		if _, _, ok := consultDisplay(text); ok {
+			return int64(1), nil
+		}
+		return int64(0), nil
+	})
+}
 
 // RoomCursor 標記時間軸上的一個位置。排序鍵是 (created_at, id)：created_at 只到秒，
 // 同秒的訊息靠 id（全域遞增）決勝，所以這個鍵是全序，翻頁不會漏也不會重。
@@ -36,6 +56,7 @@ type RoomTimelineItem struct {
 	Status          string
 	CreatedAt       string
 	InputRequestID  string
+	BatchID         string
 	Queued          bool
 }
 
@@ -51,12 +72,32 @@ type RoomTimelinePage struct {
 // pending 一律保留（內容可能還是空的），因為前端要靠同一個 id 在串流時就地更新。
 // 以 JOIN sessions 取成員，session 被刪後即使殘留成員列，也不會有幽靈訊息或查詢錯誤。
 func (db *DB) RoomTimeline(roomID string, before *RoomCursor, limit int) (*RoomTimelinePage, error) {
+	return db.RoomTimelineMember(roomID, "", before, limit)
+}
+
+// ErrRoomMemberNotFound：篩選的 session 不是這間工作室的成員（不存在、已移出或屬於別間）。
+var ErrRoomMemberNotFound = errors.New("篩選的成員不在這個工作室")
+
+// RoomTimelineMember 與 RoomTimeline 相同，但 memberID 非空時只回與該成員有關的訊息。
+// 篩選在 LIMIT 與游標之前（同一個 WHERE），所以翻頁涵蓋完整歷史。歸屬只看結構化欄位：
+// session_id、source_session_id、訊息作者標記與前一則 user 輸入；絕不讀名稱、PM 標籤或本文推人。
+// 看不出關係的資料（例如只在本文帶派工 id 的 PM 回報、沒有來源的舊信封）只出現在總覽。
+func (db *DB) RoomTimelineMember(roomID, memberID string, before *RoomCursor, limit int) (*RoomTimelinePage, error) {
 	var one int
 	if err := db.QueryRow(`SELECT 1 FROM rooms WHERE id = ?`, roomID).Scan(&one); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrRoomNotFound
 		}
 		return nil, err
+	}
+	var memberRole string
+	if memberID != "" {
+		if err := db.QueryRow(`SELECT role FROM room_members WHERE room_id = ? AND session_id = ?`, roomID, memberID).Scan(&memberRole); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, ErrRoomMemberNotFound
+			}
+			return nil, err
+		}
 	}
 	if limit <= 0 {
 		limit = RoomTimelineDefaultLimit
@@ -98,6 +139,11 @@ func (db *DB) RoomTimeline(roomID string, before *RoomCursor, limit int) (*RoomT
 		  AND (reply.id IS NULL OR reply.room_id = rm.room_id)
 		  AND (reply.id IS NOT NULL OR COALESCE(input.author, '') NOT LIKE 'room-job:%' OR job.room_id = rm.room_id)`
 	args := []any{roomID}
+	if memberID != "" {
+		clause, clauseArgs := roomMemberScope(roomID, memberID, memberRole)
+		q += clause
+		args = append(args, clauseArgs...)
+	}
 	if before != nil {
 		q += ` AND (m.created_at < ? OR (m.created_at = ? AND m.id < ?))`
 		args = append(args, before.CreatedAt, before.CreatedAt, before.ID)
@@ -141,7 +187,7 @@ func (db *DB) RoomTimeline(roomID string, before *RoomCursor, limit int) (*RoomT
 		page.Next = &RoomCursor{CreatedAt: last.CreatedAt, ID: last.MessageID}
 	}
 	if before == nil {
-		queued, err := db.roomQueuedInputs(roomID)
+		queued, err := db.roomQueuedInputs(roomID, memberID)
 		if err != nil {
 			return nil, err
 		}
@@ -180,16 +226,35 @@ func (db *DB) RoomTimeline(roomID string, before *RoomCursor, limit int) (*RoomT
 	return page, nil
 }
 
+// roomMemberScope 回傳接在 RoomTimeline 主查詢 WHERE 後面的篩選條件（m＝訊息、input＝其前一則 user 輸入）。
+//   - worker：自己 session 內本室的訊息，加上來源（source_session_id）是它的跨 session 訊息與其回覆。
+//   - PM：只收「使用者→該 PM」的輸入（空作者或本室 room-user）與對應的 PM 回答；
+//     派工、回報、交接、跨 session 來源與對它們的回覆一律排除。
+//     空作者、無來源、且完整符合信封格式的舊資料只用來排除（絕不歸給使用者），不拿來認人。
+func roomMemberScope(roomID, memberID, role string) (string, []any) {
+	if role != RoomRolePM {
+		return ` AND (m.session_id = ? OR m.source_session_id = ? OR (m.role = 'claude' AND input.source_session_id = ?))`,
+			[]any{memberID, memberID, memberID}
+	}
+	// 明確 room-user 一律算使用者輸入（含貼上的舊信封文字）；空作者只在「不是完整信封」時才算。
+	owner := func(x string) string {
+		return `(` + x + `.source_session_id = '' AND (` + x + `.author = ? OR (` + x + `.author = '' AND miniapp_envelope(` + x + `.content) = 0)))`
+	}
+	author := RoomUserAuthorPrefix + roomID
+	return ` AND m.session_id = ? AND ((m.role = 'user' AND ` + owner("m") + `) OR (m.role = 'claude' AND input.id IS NOT NULL AND ` + owner("input") + `))`,
+		[]any{memberID, author, author}
+}
+
 // roomQueuedInputs 只投影這個工作室已接受、尚未提升的輸入。不讀其他工作室或私人佇列，也不會啟動 session。
-func (db *DB) roomQueuedInputs(roomID string) ([]RoomTimelineItem, error) {
+func (db *DB) roomQueuedInputs(roomID, memberID string) ([]RoomTimelineItem, error) {
 	rows, err := db.Query(`
 		SELECT q.id, q.session_id, s.name, rm.role, s.agent_type, q.author, q.content,
-			q.created_at, q.attachment_ids, COALESCE(q.input_request_id, '')
+			q.created_at, q.attachment_ids, COALESCE(q.input_request_id, ''),q.batch_id
 		FROM room_members rm
 		JOIN sessions s ON s.id = rm.session_id
 		JOIN queued_messages q ON q.session_id = s.id
-		WHERE rm.room_id = ? AND q.author = ?
-		ORDER BY q.created_at DESC, q.id DESC`, roomID, RoomUserAuthorPrefix+roomID)
+		WHERE rm.room_id = ? AND q.author = ? AND (? = '' OR q.session_id = ?)
+		ORDER BY q.created_at DESC, q.id DESC`, roomID, RoomUserAuthorPrefix+roomID, memberID, memberID)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +265,7 @@ func (db *DB) roomQueuedInputs(roomID string) ([]RoomTimelineItem, error) {
 		var queueID int64
 		var attachmentJSON string
 		if err := rows.Scan(&queueID, &it.SessionID, &it.SessionName, &it.MemberRole, &it.AgentType,
-			&it.Author, &it.Content, &it.CreatedAt, &attachmentJSON, &it.InputRequestID); err != nil {
+			&it.Author, &it.Content, &it.CreatedAt, &attachmentJSON, &it.InputRequestID, &it.BatchID); err != nil {
 			return nil, err
 		}
 		it.attachmentIDs, err = decodeAttachmentIDs(attachmentJSON)
@@ -257,6 +322,16 @@ func (it *RoomTimelineItem) setRoute(pmName, workerName string, sameRoom bool, i
 	case "user":
 		it.Recipient = it.SessionName
 		switch {
+		case strings.HasPrefix(it.Author, "room-report:") && it.SourceSessionID != "":
+			// 正式回報的 source 是執行者（DeliverRoomReports 寫入），仍是 report，不是跨 session 諮詢。
+			it.SourceKind = "report"
+			it.Sender = "執行者"
+			if it.SourceName != "" {
+				it.Sender = it.SourceName
+			} else if sameRoom && workerName != "" {
+				it.Sender = workerName
+			}
+			it.SourceRoom = ""
 		case it.SourceSessionID != "":
 			it.Mine = false
 			it.SourceKind = "agent"

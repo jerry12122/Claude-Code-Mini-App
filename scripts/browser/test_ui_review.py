@@ -1,4 +1,5 @@
 """保存成功畫面與版面證據，供逐張視覺檢查；不把尺寸模擬當成真機。"""
+from contextlib import nullcontext
 import json
 import os
 from pathlib import Path
@@ -6,7 +7,6 @@ from urllib.parse import quote
 import uuid
 
 import pytest
-from playwright.sync_api import sync_playwright
 
 PROFILE = os.environ.get("UI_PROFILE", "local-edge")
 PLATFORMS = {
@@ -21,9 +21,9 @@ NATIVE = PROFILE in ("android", "ios")
 
 
 @pytest.fixture(scope="module")
-def page(app, request):
+def page(app, request, playwright):
     tunnel = browser = device = context = current = None
-    with sync_playwright() as p:
+    with nullcontext(playwright) as p:
         try:
             if PROFILE == "local-edge":
                 browser = p.chromium.launch(channel="msedge", headless=True)

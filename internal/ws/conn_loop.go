@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"strings"
+	"unicode/utf8"
 
 	"log/slog"
 
@@ -31,8 +32,11 @@ func (h *wsConn) readLoop() {
 
 		var msg clientMsg
 		if err := json.Unmarshal(raw, &msg); err != nil {
+			h.rejectMalformedQueueEdit(raw)
+			h.rejectMalformedQueueBatch(raw)
 			continue
 		}
+		msg.invalidUTF8 = (msg.Type == "queue_edit" || msg.Type == "queue_batch" || msg.Type == "queue_batch_cancel") && !utf8.Valid(raw)
 
 		if msg.Type == "ping" {
 			h.send(serverMsg{Type: "pong"})
@@ -78,6 +82,12 @@ func (h *wsConn) handleMsg(msg clientMsg) {
 		}
 	case "queue_resume":
 		h.resumeQueue()
+	case "queue_edit":
+		h.onQueueEdit(msg)
+	case "queue_batch", "queue_batch_cancel":
+		h.onQueueBatch(msg)
+	case "queue_run_now":
+		h.dispatcher.RunNow(msg.ID)
 	case "set_input_mode":
 		h.onSetInputMode(msg)
 	case "shell_run":
@@ -376,34 +386,50 @@ func (h *wsConn) onResetContext(msg clientMsg) {
 		dl := dispatchLock(h.sessionID)
 		dl.Lock()
 		defer dl.Unlock()
-		taskCancel(h.sessionID)
-		shellTaskCancel(h.sessionID)
-		clearInMemoryShellApproval(h.sessionID)
-		_ = h.database.FinalizePendingMessagesForSession(h.sessionID)
-		h.mu.Lock()
-		h.agentSessionID = ""
-		h.mu.Unlock()
-		if err := h.database.UpdateAgentSessionID(h.sessionID, ""); err != nil {
-			slog.Info(fmt.Sprintf("[ws] clear agent_session_id: %v", err))
-		}
-		if err := h.database.ClearMessages(h.sessionID); err != nil {
-			slog.Info(fmt.Sprintf("[ws] ClearMessages: %v", err))
-		}
-		clearPendingDenials(h.database, h.sessionID)
-		clearShellPending(h.database, h.sessionID)
-		if err := h.database.ClearQueuedMessages(h.sessionID); err != nil {
-			slog.Info(fmt.Sprintf("[ws] ClearQueuedMessages: %v", err))
+		fail := func(err error) {
+			slog.Info(fmt.Sprintf("[ws] session %s reset failed: %v", h.sessionID, err))
 			h.send(serverMsg{Type: "error", Content: err.Error()})
-			return
 		}
+		if h.roomWake && msg.RequireIdle {
+			// 工具重置：不取消任何東西；範圍前提與清除在同一個 DB 交易內。
+			if err := resetRoomMember(h.database, h.sessionID, msg.RoomID, msg.PMSessionID); err != nil {
+				fail(err)
+				return
+			}
+			clearInMemoryShellApproval(h.sessionID)
+		} else {
+			taskCancel(h.sessionID)
+			shellTaskCancel(h.sessionID)
+			clearInMemoryShellApproval(h.sessionID)
+			if err := h.clearSessionData(); err != nil {
+				fail(err)
+				return
+			}
+		}
+		clearLiveAgentSession(h.sessionID)
 		h.broadcastQueue()
-		if err := h.database.UpdateSessionStatus(h.sessionID, db.SessionStatusIdle); err != nil {
-			slog.Info(fmt.Sprintf("[ws] UpdateSessionStatus idle: %v", err))
-		}
 		h.broadcast(serverMsg{Type: "reset"})
 		h.broadcast(serverMsg{Type: "status", Value: idleUIStatus(h.database, h.sessionID)})
 		slog.Info(fmt.Sprintf("[ws] session %s reset", h.sessionID))
 	})
+}
+
+// clearSessionData 是一般（UI）重置的資料清除：逐項寫入，任何一項失敗就回錯。
+func (h *wsConn) clearSessionData() error {
+	for _, step := range []func() error{
+		func() error { return h.database.FinalizePendingMessagesForSession(h.sessionID) },
+		func() error { return h.database.UpdateAgentSessionID(h.sessionID, "") },
+		func() error { return h.database.ClearMessages(h.sessionID) },
+		func() error { return h.database.UpdatePendingDenials(h.sessionID, "") },
+		func() error { return h.database.UpdateShellPending(h.sessionID, "") },
+		func() error { return h.database.ClearQueuedMessages(h.sessionID) },
+		func() error { return h.database.UpdateSessionStatus(h.sessionID, db.SessionStatusIdle) },
+	} {
+		if err := step(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (h *wsConn) onInterrupt(msg clientMsg) {

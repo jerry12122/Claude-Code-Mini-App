@@ -52,9 +52,8 @@ function mount(context, react, session) {
     showPermModeSelect: false,
     showEffortSelect: false,
   });
-  const cleanup = react.effects[0]();
-  const connect = react.effects[3]();
-  return { socket, cleanup, connect, react };
+  const cleanup = react.effects.map((effect) => effect());
+  return { socket, cleanup, react };
 }
 
 function bind(context, react) {
