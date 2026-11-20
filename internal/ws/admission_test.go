@@ -6,8 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
+	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -60,7 +63,15 @@ func admHold(t *testing.T, key string) func() {
 	g := make(chan struct{})
 	admGates.Store(key, g)
 	var once sync.Once
-	open := func() { once.Do(func() { close(g) }) }
+	open := func() {
+		once.Do(func() {
+			if value, ok := admRaceProbes.Load(key); ok {
+				p := value.(*admRaceProbe)
+				p.openNS.Store(time.Since(p.zero).Nanoseconds())
+			}
+			close(g)
+		})
+	}
 	t.Cleanup(open)
 	return open
 }
@@ -78,6 +89,12 @@ type admRunner struct{}
 func (admRunner) Name() string { return "fakeadm" }
 
 func (admRunner) Run(_ context.Context, opts agent.RunOptions, cb agent.EventCallback) error {
+	if value, ok := admRaceProbes.Load(opts.Prompt); ok {
+		p := value.(*admRaceProbe)
+		p.entryNS.Store(time.Since(p.zero).Nanoseconds())
+		p.entries.Add(1)
+		defer func() { p.returnNS.Store(time.Since(p.zero).Nanoseconds()); p.returns.Add(1) }()
+	}
 	admHit("agent:" + opts.Prompt)
 	admWait(opts.Prompt)
 	cb(agent.Event{Type: agent.EventDelta, Text: "ok:" + opts.Prompt})
@@ -747,12 +764,13 @@ func TestDesktopUpdateAdmission(t *testing.T) {
 			sid := admSession(t, database, "fakeadm", "default")
 			keyA := fmt.Sprintf("adm-race-a-%d", i)
 			keyB := fmt.Sprintf("adm-race-b-%d", i)
+			diagnostic := newAdmRaceDiagnostic(t, database, i, sid, keyA, keyB)
 			openA := admHold(t, keyA)
 			c := admDial(t, wsURL(sid))
 			c.mustSend(map[string]any{"type": "input", "data": keyA})
-			waitFor(t, "A running", func() bool { return taskIsActive(sid) })
+			diagnostic.wait(t, "A running", func(sample *admRaceSample) bool { return sample.active(sid) })
 			c.mustSend(map[string]any{"type": "input", "data": keyB})
-			waitFor(t, "B queued", func() bool { return queueLen(database, sid) == 1 })
+			diagnostic.wait(t, "B queued", func(sample *admRaceSample) bool { return sample.queue(database, sid) == 1 })
 
 			// A 結束（觸發 drain 取出 B）與 TryBegin 同時進行。
 			res := make(chan error, 1)
@@ -777,8 +795,8 @@ func TestDesktopUpdateAdmission(t *testing.T) {
 			} else if !errors.Is(err, ErrUpdateBusy) {
 				t.Fatalf("iter %d: 應為 ErrUpdateBusy，實際 %v", i, err)
 			}
-			waitFor(t, "B finished exactly once", func() bool {
-				return admHitCount("agent:"+keyB) == 1 && queueLen(database, sid) == 0 && !taskIsActive(sid)
+			diagnostic.wait(t, "B finished exactly once", func(sample *admRaceSample) bool {
+				return sample.hits(keyB) == 1 && sample.queue(database, sid) == 0 && !sample.active(sid)
 			})
 			if admHitCount("agent:"+keyA) != 1 {
 				t.Fatalf("iter %d: A 應只執行一次", i)
@@ -830,4 +848,126 @@ func TestDesktopUpdateAdmission(t *testing.T) {
 			admWaitIdle(t)
 		}
 	})
+}
+
+// 僅目標race登記prompt；其他adm案例不產生診斷資料。
+var admRaceProbes sync.Map // prompt → *admRaceProbe
+
+type admRaceProbe struct {
+	zero                                        time.Time
+	entries, returns, entryNS, returnNS, openNS atomic.Int64
+}
+
+func (p *admRaceProbe) snapshot() map[string]any {
+	stamp := func(n int64) any {
+		if n == 0 {
+			return "unknown"
+		}
+		return n
+	}
+	return map[string]any{"entries": p.entries.Load(), "returns": p.returns.Load(), "entry_ns": stamp(p.entryNS.Load()), "return_ns": stamp(p.returnNS.Load()), "gate_open_ns": stamp(p.openNS.Load())}
+}
+
+type admRaceSample struct {
+	BeginNS, EndNS            int64
+	Hits, Queue, Active       any
+	HitsNS, QueueNS, ActiveNS any
+	Result                    bool
+}
+
+func (s *admRaceSample) hits(key string) int {
+	start := time.Now()
+	n := admHitCount("agent:" + key)
+	s.Hits = n
+	s.HitsNS = time.Since(start).Nanoseconds()
+	return n
+}
+func (s *admRaceSample) queue(database *db.DB, sid string) int {
+	start := time.Now()
+	n := queueLen(database, sid)
+	s.Queue = n
+	s.QueueNS = time.Since(start).Nanoseconds()
+	return n
+}
+func (s *admRaceSample) active(sid string) bool {
+	start := time.Now()
+	active := taskIsActive(sid)
+	s.Active = active
+	s.ActiveNS = time.Since(start).Nanoseconds()
+	return active
+}
+
+type admRaceDiagnostic struct {
+	iteration       int
+	sid, keyA, keyB string
+	database        *db.DB
+	zero            time.Time
+	a, b            *admRaceProbe
+}
+
+func newAdmRaceDiagnostic(t *testing.T, database *db.DB, iteration int, sid, keyA, keyB string) *admRaceDiagnostic {
+	zero := time.Now()
+	d := &admRaceDiagnostic{iteration: iteration, sid: sid, keyA: keyA, keyB: keyB, database: database, zero: zero, a: &admRaceProbe{zero: zero}, b: &admRaceProbe{zero: zero}}
+	admRaceProbes.Store(keyA, d.a)
+	admRaceProbes.Store(keyB, d.b)
+	t.Cleanup(func() {
+		if t.Failed() {
+			d.log(t, "cleanup_probe_snapshot", nil)
+		}
+		admRaceProbes.Delete(keyA)
+		admRaceProbes.Delete(keyB)
+	})
+	return d
+}
+
+func (d *admRaceDiagnostic) log(t *testing.T, phase string, detail any) {
+	t.Helper()
+	b, _ := json.Marshal(map[string]any{"phase": phase, "iteration": d.iteration, "session": d.sid, "A": d.keyA, "B": d.keyB, "epoch_utc": d.zero.UTC().Format(time.RFC3339Nano), "now_ns": time.Since(d.zero).Nanoseconds(), "runner_A": d.a.snapshot(), "runner_B": d.b.snapshot(), "detail": detail})
+	t.Logf("ADMISSION_DIAG %s", b)
+}
+
+// 原waitFor、5秒deadline、20ms取樣不變；只包原callback，不補查被短路略過的欄位。
+func (d *admRaceDiagnostic) wait(t *testing.T, what string, condition func(*admRaceSample) bool) {
+	t.Helper()
+	start := time.Since(d.zero).Nanoseconds()
+	var first any = "unknown"
+	last := admRaceSample{Hits: "unknown", Queue: "unknown", Active: "unknown", HitsNS: "unknown", QueueNS: "unknown", ActiveNS: "unknown"}
+	samples, passed := 0, false
+	defer func() {
+		if passed {
+			return
+		}
+		var observed, upper any = "unknown", "unknown"
+		if samples > 0 {
+			observed = last
+			upper = first.(int64) + int64(5*time.Second)
+		}
+		d.log(t, "wait_failed", map[string]any{"what": what, "wait_call_start_ns": start, "wait_exit_ns": time.Since(d.zero).Nanoseconds(), "first_sample_begin_ns": first, "samples": samples, "last": observed, "deadline_lower_bound_ns": start + int64(5*time.Second), "deadline_upper_bound_ns": upper, "deadline_note": "exact waitFor deadline is internal; bounds are call-start+5s and first-callback+5s; no extra deadline imposed", "snapshot": "unknown until ADMISSION_TIMEOUT_SNAPSHOT; async, not awaited"})
+		// 取證不能延誤原Fatal：不等Stats／stack，不新增gate鎖或SQL。
+		go func() {
+			stats := make(chan any, 1)
+			go func() { stats <- d.database.Stats() }()
+			buf := make([]byte, 1<<20)
+			n := runtime.Stack(buf, true)
+			var pool any = "unknown (Stats not ready)"
+			select {
+			case pool = <-stats:
+			default:
+			}
+			header, _ := json.Marshal(map[string]any{"iteration": d.iteration, "session": d.sid, "what": what, "stats": pool, "stack_bytes": n, "stack_truncated": n == len(buf)})
+			fmt.Fprintf(os.Stderr, "ADMISSION_TIMEOUT_SNAPSHOT %s\nADMISSION_TIMEOUT_STACK_BEGIN\n%s\nADMISSION_TIMEOUT_STACK_END\n", header, buf[:n])
+		}()
+	}()
+	waitFor(t, what, func() bool {
+		sample := admRaceSample{BeginNS: time.Since(d.zero).Nanoseconds(), Hits: "unknown", Queue: "unknown", Active: "unknown", HitsNS: "unknown", QueueNS: "unknown", ActiveNS: "unknown"}
+		if samples == 0 {
+			first = sample.BeginNS
+		}
+		samples++
+		sample.Result = condition(&sample)
+		sample.EndNS = time.Since(d.zero).Nanoseconds()
+		last = sample
+		return sample.Result
+	})
+	passed = true
 }
