@@ -27,6 +27,7 @@ func startShareServer(t *testing.T) (*db.DB, func(sessionID, guestToken string) 
 		t.Fatal(err)
 	}
 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	lifecycle := newWSTestLifecycle(database)
 	app.Get("/sessions/:id/ws", func(c *fiber.Ctx) error {
 		if tok := c.Query("share"); tok != "" {
 			ga, err := database.ResolveGuestToken(tok)
@@ -40,13 +41,14 @@ func startShareServer(t *testing.T) (*db.DB, func(sessionID, guestToken string) 
 			c.Locals("share_expires_at", ga.Share.ExpiresAt)
 		}
 		return c.Next()
-	}, fiberws.New(NewHandler(database, "", ShellOpts{}, nil, tg.NotifyConfig{})))
+	}, fiberws.New(lifecycle.wrap(NewHandler(database, "", ShellOpts{}, nil, tg.NotifyConfig{}))))
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	go func() { _ = app.Listener(ln) }()
-	t.Cleanup(func() { _ = app.Shutdown(); database.Close() })
+	served := make(chan struct{})
+	go func() { defer close(served); _ = app.Listener(ln) }()
+	t.Cleanup(func() { lifecycle.close(t, app, served) })
 	port := ln.Addr().(*net.TCPAddr).Port
 	return database, func(id, tok string) string {
 		u := fmt.Sprintf("ws://127.0.0.1:%d/sessions/%s/ws", port, id)

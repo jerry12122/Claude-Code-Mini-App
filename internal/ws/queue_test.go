@@ -82,13 +82,15 @@ func startTestServer(t *testing.T) (*db.DB, func(sessionID string) string) {
 		t.Fatal(err)
 	}
 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-	app.Get("/sessions/:id/ws", fiberws.New(NewHandler(database, "", ShellOpts{}, nil, tg.NotifyConfig{})))
+	lifecycle := newWSTestLifecycle(database)
+	app.Get("/sessions/:id/ws", fiberws.New(lifecycle.wrap(NewHandler(database, "", ShellOpts{}, nil, tg.NotifyConfig{}))))
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	go func() { _ = app.Listener(ln) }()
-	t.Cleanup(func() { _ = app.Shutdown(); database.Close() })
+	served := make(chan struct{})
+	go func() { defer close(served); _ = app.Listener(ln) }()
+	t.Cleanup(func() { lifecycle.close(t, app, served) })
 	port := ln.Addr().(*net.TCPAddr).Port
 	return database, func(id string) string { return fmt.Sprintf("ws://127.0.0.1:%d/sessions/%s/ws", port, id) }
 }
