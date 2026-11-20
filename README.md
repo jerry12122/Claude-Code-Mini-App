@@ -28,6 +28,8 @@ All three talk to the same server and see the same sessions in real time.
 
 Detailed walkthrough: [Getting started from scratch](docs/getting-started.md) · [Telegram remote setup](docs/getting-started.md#6-optional-open-from-telegram) · [Troubleshooting](docs/getting-started.md#troubleshooting)
 
+Custom PM workflows: [PM skill authoring guide (繁體中文)](docs/examples/miniapp-pm-example/references/authoring-guide.md) · [Editable SKILL.md example](docs/examples/miniapp-pm-example/SKILL.md).
+
 Installed data lives in `%LOCALAPPDATA%\ClaudeMiniApp\data` and survives uninstall. Existing portable users: follow [manual migration and upgrade precautions](docs/getting-started.md#portable-to-installed-migration) before first launch. The separate desktop update EXE is for the in-app updater.
 
 ## ✨ Features
