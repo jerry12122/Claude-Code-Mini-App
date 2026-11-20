@@ -23,4 +23,4 @@
 
 ## 5. 收尾
 
-- [ ] 5.1 [after: 4.1] 執行 `go test ./internal/ws/... ./internal/db/...` 並手動走一遍端到端（Windows 本機）：對真實 claude 回合按「立刻執行」，確認進程樹被終止、新回合以 `--resume` 成功、`~/.claude` 無殘留互相覆寫的 transcript 錯誤。驗證：測試全數通過，手動結果記錄於變更說明。
+- [x] 5.1 [after: 4.1] 執行 `go test ./internal/ws/... ./internal/db/...` 並手動走一遍端到端（Windows 本機）：對真實 claude 回合按「立刻執行」，確認進程樹被終止、新回合以 `--resume` 成功、`~/.claude` 無殘留互相覆寫的 transcript 錯誤。驗證：測試全數通過，手動結果記錄於變更說明。

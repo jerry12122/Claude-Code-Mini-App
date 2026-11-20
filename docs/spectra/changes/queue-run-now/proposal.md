@@ -9,7 +9,7 @@ Session 忙碌時送出的訊息只會排在佇列尾端，等當前回合跑完
 - 「立刻執行」與「停止」不同：不暫停佇列、不發「已取消」的 Telegram 通知，被指定那則之外的佇列項目保持原順序，新回合成功後照常接著執行。
 - 後端必須等舊子進程確實退出後才啟動新進程，避免兩個 `claude --resume` 同時寫同一份 transcript。
 - 被打斷的回合其 partial 輸出已在 DB 但不在 agent 的 transcript，新 prompt 前綴一行說明（上一輪回覆被使用者打斷），讓模型知道發生過什麼。
-- 範圍限定：僅 Claude 與其他 spawn 型 runner（codex、cursor、kiro）；等授權、等使用者回答問題、直連 Shell 任務進行中、ACP 型（kiroacp、antigravity）一律拒絕並回傳明確錯誤。
+- 範圍限定：僅白名單 spawn 型 runner（claude、codex、cursor）；已停用的 kiro、等授權、等使用者回答問題、直連 Shell 任務進行中、ACP 型（kiroacp、antigravity）一律拒絕並回傳明確錯誤。
 - 前端佇列項目加「立刻執行」按鈕，與一般送出明確分開（不與送出鈕共用、不依狀態猜意圖），預設維持排隊。
 
 ## Capabilities

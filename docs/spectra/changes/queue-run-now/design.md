@@ -136,5 +136,13 @@
 
 ## Open Questions
 
+### 2026-11-20 產品 RunNow 整合驗收（task 5.1）
+
+- PM 已驗收派工 #78：Windows、Claude Code 2.1.327、claude-sonnet-5-5、Edge 157.0.4341.60，經隔離 MiniApp 真 DOM／WS 點第二筆「立刻執行」，恰好兩個真回合。來源 d612d568b707b9b09abb0e8fa47455ce28d32709；PM 核對驗證樹 848 個追蹤檔精確 hash 均符合凍結基線。Git 比對發布準備 main e6901e0 僅有六個版本／說明檔不同；磁碟另有 CRLF/LF 差異，正規化後相關 runner、測試與設定內容相同。
+- 真 Bash command 執行自有 Python 等待，marker 及程序父鏈確認工具仍執行且沒有配對 tool_result 才點擊。七個已持 handle 的舊程序全退出後 62.5478 ms，新 Claude 才建立；原回合定稿先於新回合開始。
+- 同一 native session 的 --resume 成功、exit 0。PM 核對原始 transcript SHA256、35198-byte 前綴 hash、原生補入的同 ID 中斷結果與 parentUuid；無 orphan／未配對工具。PM 已目視前後截圖，餘佇列項目保留。
+- 界線：本次只驗單一 Bash／一次 resume；餘 queue 刻意設 paused 防止額外第三回合，真 provider 的自動第三回合未測。其自動續跑及 paused 不變契約由同版 TestRunNowBasic、TestRunNowIdlePausedAndLingering 與既有 ws/db 完整 PASS 覆蓋，不能將此真測延伸宣稱所有工具／版本通過。
+- 有效證據與 PM 核對紀錄：D:/Temp/miniapp-release-v0220-20261120/real-run-now-v3/。原 #76／#77 失敗前提證據保留。20 個自有持 handle 程序全退出，44703 埠已釋放；未動正式服務或個人 DB。
+
 - 15 秒等待上限是否足夠 Windows 上的 `KillTree` 與進程樹退出？以實測決定。
 - 「立刻執行」按鈕在 lingering 狀態是否顯示？預設顯示；若使用者覺得易誤觸再調整。
