@@ -1,5 +1,6 @@
 """保存成功畫面與版面證據，供逐張視覺檢查；不把尺寸模擬當成真機。"""
 from contextlib import nullcontext
+from playwright.sync_api import sync_playwright
 import json
 import os
 from pathlib import Path
@@ -21,9 +22,13 @@ NATIVE = PROFILE in ("android", "ios")
 
 
 @pytest.fixture(scope="module")
-def page(app, request, playwright):
+def page(app, request):
     tunnel = browser = device = context = current = None
-    with nullcontext(playwright) as p:
+    try:
+        shared = request.getfixturevalue("playwright")
+    except pytest.FixtureLookupError:
+        shared = None
+    with nullcontext(shared) if shared is not None else sync_playwright() as p:
         try:
             if PROFILE == "local-edge":
                 browser = p.chromium.launch(channel="msedge", headless=True)
