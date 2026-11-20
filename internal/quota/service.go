@@ -86,8 +86,8 @@ func (s *Service) Get(provider string) Snapshot {
 		return Snapshot{Provider: provider, DisplayText: "—"}
 	}
 	snap := ent.snap
-	snap.Stale = time.Since(ent.fetchedAt) > s.ttl(provider)*2
-	if snap.UpdatedAt.IsZero() {
+	snap.Stale = snap.Stale || time.Since(ent.fetchedAt) > s.ttl(provider)*2
+	if snap.UpdatedAt.IsZero() && !ent.snap.Stale {
 		snap.UpdatedAt = ent.fetchedAt
 	}
 	return snap

@@ -5,10 +5,40 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
+
+// Fetch 仍執行正常 codex app-server；測試把自己的 protocol peer 放在隔離 PATH，無 production 注入工廠。
+func init() {
+	if os.Getenv("QUOTA_TEST_CODEX_PROCESS") != "" && len(os.Args) > 1 && os.Args[1] == "app-server" {
+		os.Args = []string{os.Args[0], "-test.run=^TestCodexQuotaProcess$"}
+	}
+}
+
+func fakeCodexOnPath(t *testing.T) {
+	t.Helper()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	name := "codex"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), data, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
 
 func TestCodexQuotaRPC(t *testing.T) {
 	exe, err := os.Executable()
@@ -67,6 +97,12 @@ func TestCodexQuotaProcess(t *testing.T) {
 		return request.ID
 	}
 	id := read("initialize")
+	if mode == "auth-initialize" {
+		_ = enc.Encode(map[string]any{"id": id, "error": map[string]any{"code": -32000, "message": "chatgpt authentication required"}})
+		var extra any
+		_ = dec.Decode(&extra)
+		os.Exit(0)
+	}
 	if mode == "timeout" {
 		time.Sleep(time.Minute)
 		os.Exit(1)
@@ -81,6 +117,10 @@ func TestCodexQuotaProcess(t *testing.T) {
 		os.Exit(0)
 	case "rpc-error":
 		_ = enc.Encode(map[string]any{"id": id, "error": map[string]any{"code": -32000, "message": "sign in required"}})
+	case "auth-error":
+		_ = enc.Encode(map[string]any{"id": id, "error": map[string]any{"code": -32000, "message": "chatgpt authentication required"}})
+	case "auth-unrelated":
+		_ = enc.Encode(map[string]any{"id": id, "error": map[string]any{"code": -32000, "message": "network failed, not chatgpt authentication required"}})
 	case "missing-result":
 		_ = enc.Encode(map[string]any{"id": id, "result": nil})
 	case "server-request":

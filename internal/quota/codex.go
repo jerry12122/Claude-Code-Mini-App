@@ -3,8 +3,10 @@ package quota
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/agent"
@@ -21,13 +23,34 @@ func (f *CodexFetcher) Fetch(ctx context.Context) (Snapshot, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	info, err := readCodexQuota(exec.CommandContext(ctx, "codex", "app-server"))
+	if ctx.Err() != nil {
+		err = errors.Join(ctx.Err(), err)
+	}
+	var rpcErr *codexQuotaRPCError
+	if ctx.Err() == nil && errors.As(err, &rpcErr) && rpcErr.method == "account/rateLimits/read" && strings.EqualFold(strings.TrimSpace(rpcErr.message), "chatgpt authentication required") {
+		var fallbackErr error
+		if info, fallbackErr = cockpitCodexQuota(ctx, cockpitDir()); fallbackErr == nil && ctx.Err() == nil {
+			return Snapshot{Provider: agent.TypeCodex, DisplayText: "歷史估計（非即時） · " + FormatDisplay(agent.TypeCodex, info), Windows: windowsFromInfo(info), Stale: true}, nil
+		}
+		err = fmt.Errorf("%w (cockpit fallback: %v)", err, fallbackErr)
+	}
 	if err != nil {
-		if ctx.Err() != nil {
-			err = ctx.Err()
+		if ctx.Err() != nil && !errors.Is(err, ctx.Err()) {
+			err = errors.Join(ctx.Err(), err)
 		}
 		return Snapshot{Provider: agent.TypeCodex, DisplayText: "—"}, fmt.Errorf("codex quota: %w", err)
 	}
 	return snapshotFromInfo(agent.TypeCodex, info), nil
+}
+
+type codexQuotaRPCError struct {
+	method  string
+	code    int
+	message string
+}
+
+func (e *codexQuotaRPCError) Error() string {
+	return fmt.Sprintf("%s: RPC %d: %s", e.method, e.code, e.message)
 }
 
 func readCodexQuota(cmd *exec.Cmd) (*usage.QuotaInfo, error) {
@@ -81,7 +104,7 @@ func readCodexQuota(cmd *exec.Cmd) (*usage.QuotaInfo, error) {
 				continue
 			}
 			if response.Error != nil {
-				return nil, fmt.Errorf("%s: RPC %d: %s", method, response.Error.Code, response.Error.Message)
+				return nil, &codexQuotaRPCError{method: method, code: response.Error.Code, message: response.Error.Message}
 			}
 			if len(response.Result) == 0 || string(response.Result) == "null" {
 				return nil, fmt.Errorf("%s: missing result", method)
