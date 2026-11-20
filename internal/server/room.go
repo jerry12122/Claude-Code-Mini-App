@@ -216,7 +216,7 @@ func (r roomRuntime) resetMemberSession(ctx context.Context, sessionID, roomID, 
 	_ = conn.SetWriteDeadline(deadline)
 	_ = conn.SetReadDeadline(deadline)
 	if err := conn.WriteJSON(map[string]any{
-		"type": "reset_context", "require_idle": true, "room_id": roomID, "pm_session_id": pmID,
+		"type": "reset_context", "require_idle": true, "room_id": roomID, "pm_session_id": pmID, "operation_approval": db.OperationApprovalFromContext(ctx),
 	}); err != nil {
 		return err
 	}

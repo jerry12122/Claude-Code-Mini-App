@@ -548,17 +548,27 @@ function RoomWorkBoard({ roomId, members, tab, onTab, onOpenSession }) {
       setSaving(false);
     }
   }
-  const jobButton = (job) => (
+  const jobRecord = (job) => (
     <li key={job.id} className="border-b border-ra-line-soft">
-      <button type="button" onClick={() => onOpenSession(job.worker_id)}
-        className="flex min-h-11 w-full items-center gap-2 rounded px-1 text-left text-sm text-ra-t2 hover:bg-ra-raised">
-        <span className="shrink-0 text-xs tabular-nums text-ra-t4">#{job.id}</span>
-        <span className="min-w-0 flex-1 truncate">{job.worker_name}</span>
-        <span className="room-job-status shrink-0 rounded-md bg-ra-sunken px-1.5 py-0.5 text-xs font-medium text-ra-t3"
+      <details className="room-job-record room-wrap" data-job-id={job.id}>
+        <summary className="min-h-11 cursor-pointer rounded px-1 py-2 text-sm text-ra-t2 hover:bg-ra-raised">
+          <span>#{job.id} · {job.title || '舊任務（標題未保存）'}</span>
+          <span className="room-job-status ml-2 rounded-md bg-ra-sunken px-1.5 py-0.5 text-xs font-medium text-ra-t3"
           data-tone={['blocked', 'slow', 'failed'].includes(job.status) ? 'warn' : job.status}>
-          {ROOM_JOB_STATUS[job.status] || job.status}
-        </span>
-      </button>
+            {ROOM_JOB_STATUS[job.status] || job.status}
+          </span>
+          <span className="mt-1 block text-xs text-ra-t4">執行者（派工時）：{job.worker_name || '派工時名稱未保存'}</span>
+        </summary>
+        <dl className="space-y-1 px-2 pb-3 text-sm text-ra-t2">
+          <dt className="text-xs font-medium text-ra-t4">原任務</dt>
+          <dd className="whitespace-pre-wrap">{job.task_text || '舊任務內容未保存'}</dd>
+          <dt className="pt-2 text-xs font-medium text-ra-t4">結果摘要（最多 16000 字）</dt>
+          <dd className="whitespace-pre-wrap">{job.result_text || (job.result_saved ? '已保存空白結果' : ['done', 'failed', 'interrupted'].includes(job.status) ? '結果未保存' : '尚未產生結果')}</dd>
+        </dl>
+        {job.worker_exists === true ? <button type="button" onClick={() => onOpenSession(job.worker_id)}
+          className="mb-2 min-h-11 rounded px-2 text-xs text-ra-t3 hover:bg-ra-raised">開啟執行者會話</button> :
+          <p className="px-2 pb-3 text-xs text-ra-t4">執行者會話已不存在，以上為已保存工作紀錄。</p>}
+      </details>
     </li>
   );
   return (
@@ -574,7 +584,7 @@ function RoomWorkBoard({ roomId, members, tab, onTab, onOpenSession }) {
       {board && !error && panel === 'jobs' ? <>
         <h2 className="mt-3 text-sm font-semibold text-ra-t1">進行中與需要處理</h2>
         {jobs.open.length || activities.length ? <ul className="mt-1">
-          {jobs.open.map(jobButton)}
+          {jobs.open.map(jobRecord)}
           {activities.map((member) => {
             const state = roomMemberState(member);
             return <li key={'activity:' + member.session_id} className="border-b border-ra-line-soft">
@@ -589,7 +599,7 @@ function RoomWorkBoard({ roomId, members, tab, onTab, onOpenSession }) {
         </ul> : <p className="mt-2 text-sm text-ra-t4">沒有進行中的派工</p>}
         {jobs.closed.length ? <details className="mt-3">
           <summary className="min-h-11 cursor-pointer text-sm font-semibold text-ra-t2">完成紀錄 {jobs.closed.length}</summary>
-          <ul>{jobs.closed.map(jobButton)}</ul>
+          <ul>{jobs.closed.map(jobRecord)}</ul>
         </details> : null}
       </> : null}
       {board && panel === 'memo' ? <>

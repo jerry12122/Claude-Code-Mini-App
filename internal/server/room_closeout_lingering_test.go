@@ -61,6 +61,14 @@ func TestPMCloseoutRejectsLiveLingeringTask(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
+	approval, _, err := database.RequestOperationApproval("reset_session", roomID, pm.ID, worker.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.ApproveOperation(approval); err != nil {
+		t.Fatal(err)
+	}
+	ctx = db.WithOperationApproval(ctx, approval)
 	if err := runtime.resetMemberSession(ctx, worker.ID, roomID, pm.ID); err == nil {
 		t.Fatal("reset_session reported success and cancelled a still-live lingering task; expected busy rejection")
 	}

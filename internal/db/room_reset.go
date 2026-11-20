@@ -8,7 +8,7 @@ import (
 // ResetRoomMemberSession 在同一個交易內確認「閒置、無待處理、僅屬本工作室、PM 仍是 pmID」，
 // 再清掉續接、訊息、佇列與 quota 續跑。連線設定為 _txlock=immediate，交易一開始就持有寫鎖，
 // 所以檢查與清除之間沒有別的寫入（換 PM、加入別間）能插進來。任一前提不成立就回錯、資料不動。
-func (db *DB) ResetRoomMemberSession(sessionID, roomID, pmID string) error {
+func (db *DB) ResetRoomMemberSession(sessionID, roomID, pmID string, approval ...string) error {
 	if strings.TrimSpace(roomID) == "" || strings.TrimSpace(pmID) == "" {
 		return errors.New("重置條件不足，未重置")
 	}
@@ -17,6 +17,14 @@ func (db *DB) ResetRoomMemberSession(sessionID, roomID, pmID string) error {
 		return err
 	}
 	defer tx.Rollback()
+	if len(approval) > 0 {
+		if err := consumeOperation(tx, approval[0], "reset_session", roomID, pmID, sessionID); err != nil {
+			return err
+		}
+		if err := idleCleanupTarget(tx, sessionID); err != nil {
+			return err
+		}
+	}
 	var status, denials, shell string
 	if err := tx.QueryRow(`SELECT status, pending_denials, shell_pending FROM sessions WHERE id = ?`, sessionID).Scan(&status, &denials, &shell); err != nil {
 		return err

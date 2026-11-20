@@ -144,37 +144,7 @@ func (db *DB) ListSessions() ([]*Session, error) {
 }
 
 func (db *DB) DeleteSession(id string) error {
-	if _, err := db.Exec(`DELETE FROM input_receipts WHERE session_id = ?`, id); err != nil {
-		return err
-	}
-	if _, err := db.Exec(`DELETE FROM messages WHERE session_id = ?`, id); err != nil {
-		return err
-	}
-	if err := db.ClearQueuedMessages(id); err != nil {
-		return err
-	}
-	// 專案未啟用 foreign_keys；queue 已清空後才清除批次操作 receipt，避免殘留成員失去 metadata。
-	if _, err := db.Exec(`DELETE FROM queue_batches WHERE session_id=?`, id); err != nil {
-		return err
-	}
-	if _, err := db.Exec(`DELETE FROM attachment_access WHERE session_id = ?`, id); err != nil {
-		return err
-	}
-	// 交接中的附件仍由新 PM 使用，保留原始 metadata 與檔案位置。
-	if _, err := db.Exec(`DELETE FROM attachments WHERE session_id = ? AND NOT EXISTS
-		(SELECT 1 FROM attachment_access WHERE attachment_id = attachments.id)`, id); err != nil {
-		return err
-	}
-	// session 刪除後退出所屬工作室，工作室本身保留。
-	if _, err := db.Exec(`DELETE FROM room_members WHERE session_id = ?`, id); err != nil {
-		return err
-	}
-	// 分享綁定的聊天室已不存在，一併結束（記錄保留供列表顯示「已結束」）。
-	if _, err := db.RevokeSharesBySession(id); err != nil {
-		return err
-	}
-	_, err := db.Exec(`DELETE FROM sessions WHERE id = ?`, id)
-	return err
+	return db.deleteSession(id, "", "", nil)
 }
 
 func (db *DB) UpdateSessionName(id, name string) error {

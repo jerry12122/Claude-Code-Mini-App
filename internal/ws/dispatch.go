@@ -256,7 +256,7 @@ func (d *sessionDispatcher) Dispatch(input clientMsg) {
 	}
 	// 舊客戶端沒有 request_id：先把新訊息與取消一起提交，再啟動。
 	// 不能先 start 再取消，否則新 run 可能已經武裝，晚到的取消會清掉新排程。
-	if _, err := d.database.EnqueueMessageFromCancelQuota(d.sessionID, input.Data, d.author, input.SourceSessionID, input.AttachmentIDs...); err != nil {
+	if _, err := d.database.EnqueueAgentMessageCancelQuota(d.sessionID, input.Data, d.author, input.SourceSessionID, input.agentMessage, input.AttachmentIDs...); err != nil {
 		reject(err)
 		return
 	}

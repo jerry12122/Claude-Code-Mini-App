@@ -100,6 +100,10 @@ func (h *wsConn) handleMsg(msg clientMsg) {
 			h.broadcast(serverMsg{Type: "status", Value: idleUIStatus(h.database, h.sessionID)})
 		}
 	case "question_answer":
+		if h.mcpAgent || h.roomWake || h.isGuest {
+			h.send(serverMsg{Type: "question_error", RequestID: msg.RequestID, Content: "只有使用者擁有者連線可以回答確認，MCP 不可代答"})
+			return
+		}
 		if err := questionResolve(h.sessionID, msg.RequestID, msg.Answers); err != nil {
 			h.send(serverMsg{Type: "question_error", RequestID: msg.RequestID, Content: err.Error()})
 		}
@@ -165,11 +169,15 @@ func (h *wsConn) onQuotaResumeCancel(msg clientMsg) {
 
 func (h *wsConn) onInput(msg clientMsg) {
 	slog.Info(fmt.Sprintf("[ws] input len=%d", len(msg.Data)))
+	if h.mcpAgent && !h.isGuest {
+		msg.agentMessage = &db.AgentMessage{Intent: msg.MessageIntent, JobID: msg.JobID, Ask: msg.ConsultationMode == "ask"}
+	}
 	if !h.mcpAgent || h.isGuest || msg.SourceSessionID == h.sessionID {
 		msg.SourceSessionID = ""
 	} else if msg.SourceSessionID != "" {
 		if _, err := h.database.GetSession(msg.SourceSessionID); err != nil {
-			msg.SourceSessionID = ""
+			h.send(serverMsg{Type: "error", Content: "from_session_id 來源已不存在，未入列"})
+			return
 		}
 	}
 	h.dispatcher.Dispatch(msg)
@@ -381,6 +389,10 @@ func (h *wsConn) onSetEffort(msg clientMsg) {
 }
 
 func (h *wsConn) onResetContext(msg clientMsg) {
+	if h.mcpAgent || (h.roomWake && !msg.RequireIdle) {
+		h.send(serverMsg{Type: "error", Content: "agent 不可使用一般重置；請走工作室 reset_session 的使用者確認"})
+		return
+	}
 	// 會清除訊息與佇列，屬於寫入；維護中整段拒絕，佇列與訊息保留。
 	withWorkAdmission(h.send, "", func() {
 		dl := dispatchLock(h.sessionID)
@@ -392,7 +404,11 @@ func (h *wsConn) onResetContext(msg clientMsg) {
 		}
 		if h.roomWake && msg.RequireIdle {
 			// 工具重置：不取消任何東西；範圍前提與清除在同一個 DB 交易內。
-			if err := resetRoomMember(h.database, h.sessionID, msg.RoomID, msg.PMSessionID); err != nil {
+			if msg.OperationApproval == "" {
+				fail(db.ErrOperationApproval)
+				return
+			}
+			if err := resetRoomMember(h.database, h.sessionID, msg.RoomID, msg.PMSessionID, msg.OperationApproval); err != nil {
 				fail(err)
 				return
 			}

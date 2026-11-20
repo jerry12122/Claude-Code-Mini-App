@@ -27,6 +27,7 @@ type questionAnswer struct {
 }
 
 type pendingQuestion struct {
+	operation bool
 	ctx       context.Context
 	RequestID string         `json:"request_id"`
 	Questions []userQuestion `json:"questions"`
@@ -87,6 +88,9 @@ func questionResolve(sessionID, requestID string, answers []questionAnswer) erro
 	}
 	values := make(map[string]string, len(answers))
 	for i, answer := range answers {
+		if q.operation && (len(answer.Selected) != 1 || answer.Text != "") {
+			return fmt.Errorf("請由使用者選擇明確的批准或取消按鈕")
+		}
 		item := q.Questions[i]
 		if len(answer.Text) > 16000 {
 			return fmt.Errorf("回答過長")

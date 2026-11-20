@@ -357,6 +357,10 @@ func runNormal(ctx context.Context, cfg *config.Config, ext ...isolatedExternal)
 	})
 
 	authMiddleware := func(c *fiber.Ctx) error {
+		// 即使 no_auth 或非 loopback，也標記 agent 憑證；不可借 UI 路由代答／刪除。
+		if cfg.McpToken != "" && subtle.ConstantTimeCompare([]byte(c.Get("Authorization")), []byte("Bearer "+cfg.McpToken)) == 1 {
+			c.Locals("mcp_agent", true)
+		}
 		c.Locals("max_message_bytes", cfg.Server.MaxMessageBytes)
 		authorizedNext := func() error {
 			if err := readJSONBody(c, cfg.Server.MaxMessageBytes); err != nil {
@@ -442,9 +446,7 @@ func runNormal(ctx context.Context, cfg *config.Config, ext ...isolatedExternal)
 			if h := c.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
 				token := strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
 				if subtle.ConstantTimeCompare([]byte(token), []byte(cfg.McpToken)) == 1 {
-					if c.Context().RemoteIP().IsLoopback() {
-						c.Locals("mcp_agent", true)
-					}
+					c.Locals("mcp_agent", true)
 					return authorizedNext()
 				}
 			}

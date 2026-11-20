@@ -356,6 +356,9 @@ func (h *SessionHandler) Patch(c *fiber.Ctx) error {
 }
 
 func (h *SessionHandler) Delete(c *fiber.Ctx) error {
+	if agent, _ := c.Locals("mcp_agent").(bool); agent {
+		return c.Status(403).JSON(fiber.Map{"error": "agent 不可借一般刪除 API 放行；請用 delete_session 並取得使用者確認"})
+	}
 	id := c.Params("id")
 	if shareIDs, err := h.db.RevokeSharesBySession(id); err == nil && len(shareIDs) > 0 && h.OnSharesRevoked != nil {
 		h.OnSharesRevoked(shareIDs)

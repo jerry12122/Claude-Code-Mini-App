@@ -373,14 +373,24 @@ func (db *DB) DeleteRoom(id string) error { return db.deleteRoom(id, "") }
 
 // DeleteRoomAsPM 同 DeleteRoom，但在同一個交易內確認 pmID 仍是這個工作室的現任 PM；
 // scope 檢查之後若 PM 已交接，回 ErrRoomPM 而不刪除。
-func (db *DB) DeleteRoomAsPM(id, pmID string) error { return db.deleteRoom(id, pmID) }
+func (db *DB) DeleteRoomAsPM(id, pmID string, approval ...string) error {
+	return db.deleteRoom(id, pmID, approval...)
+}
 
-func (db *DB) deleteRoom(id, expectedPM string) error {
+func (db *DB) deleteRoom(id, expectedPM string, approval ...string) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if len(approval) > 0 {
+		if err := consumeOperation(tx, approval[0], "room_delete", id, expectedPM, id); err != nil {
+			return err
+		}
+		if err := idleCleanupRoom(tx, id, expectedPM); err != nil {
+			return err
+		}
+	}
 	if expectedPM != "" {
 		var pmRoom string
 		if err := tx.QueryRow("SELECT room_id FROM ("+roomPMQuery+") WHERE session_id = ?", expectedPM).Scan(&pmRoom); err != nil || pmRoom != id {
@@ -436,15 +446,24 @@ func (db *DB) ListRooms() ([]*RoomSummary, error) {
 
 // GetRoom 回工作室與成員清單。以 JOIN sessions 讀取，所以就算有殘留的孤兒成員列也不會出現。
 func (db *DB) GetRoom(id string) (*Room, error) {
+	return getRoom(db.DB, id)
+}
+
+type roomReader interface {
+	QueryRow(string, ...any) *sql.Row
+	Query(string, ...any) (*sql.Rows, error)
+}
+
+func getRoom(reader roomReader, id string) (*Room, error) {
 	var r Room
-	err := db.QueryRow(`SELECT id, name, created_at FROM rooms WHERE id = ?`, id).Scan(&r.ID, &r.Name, &r.CreatedAt)
+	err := reader.QueryRow(`SELECT id, name, created_at FROM rooms WHERE id = ?`, id).Scan(&r.ID, &r.Name, &r.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrRoomNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	rows, err := db.Query(`SELECT rm.session_id, rm.role, rm.position, s.name, s.agent_type, s.status,
+	rows, err := reader.Query(`SELECT rm.session_id, rm.role, rm.position, s.name, s.agent_type, s.status,
 		s.queue_paused, COALESCE(s.last_error_text, ''), COALESCE(s.last_error_at, ''),
 		(SELECT COUNT(*) FROM queued_messages q WHERE q.session_id = s.id),
 		COALESCE(s.shell_pending, ''), COALESCE(s.pending_denials, '')

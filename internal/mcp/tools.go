@@ -142,8 +142,22 @@ type okOut struct {
 	OK bool `json:"ok"`
 }
 
-func (d *deps) deleteSession(_ context.Context, _ *gomcp.CallToolRequest, in sessionIDIn) (*gomcp.CallToolResult, okOut, error) {
-	if err := d.db.DeleteSession(in.SessionID); err != nil {
+type deleteSessionIn struct {
+	ExpectedVersion string `json:"expected_version" jsonschema:"先以工作室 get_board 取得目前 PM 的 version；全域刪除也必須取得使用者確認"`
+	SessionID       string `json:"session_id"`
+	RoomID          string `json:"room_id"`
+	PMID            string `json:"pm_session_id"`
+}
+
+func (d *deps) deleteSession(ctx context.Context, _ *gomcp.CallToolRequest, in deleteSessionIn) (*gomcp.CallToolResult, okOut, error) {
+	if in.RoomID == "" || in.PMID == "" {
+		return nil, okOut{}, db.ErrOperationApproval
+	}
+	approval, err := ws.RequestOperationApproval(ctx, d.db, "delete_session", in.RoomID, in.PMID, in.SessionID, in.ExpectedVersion)
+	if err != nil {
+		return nil, okOut{}, err
+	}
+	if err := ws.DeleteSessionApproved(d.db, in.SessionID, in.RoomID, in.PMID, approval); err != nil {
 		return nil, okOut{}, err
 	}
 	return nil, okOut{OK: true}, nil
@@ -368,9 +382,12 @@ func groupActivity(rows []*db.ActivityRow, maxChars int) []activityGroup {
 // --- send_message（非阻塞：立刻回，結果靠 get_status 輪詢） ---
 
 type sendMessageIn struct {
-	SessionID     string `json:"session_id"`
-	Text          string `json:"text"`
-	FromSessionID string `json:"from_session_id,omitempty" jsonschema:"送出者的 miniapp session_id；session 互問／討論時必填，伺服器會蓋上自介與回覆署名"`
+	Intent          string `json:"intent,omitempty" jsonschema:"送往現任 PM 必填 question 或 completion；正式 worker 另必帶 job_id，缺標識拒絕且不喚醒。一般非工作室協作可省略。"`
+	JobID           int64  `json:"job_id,omitempty" jsonschema:"正式 worker 向現任 PM 詢問或完工的派工 ID；已完成 job 仍可提出新問題。不可冒用其他 worker 或工作室的 job。"`
+	CompletionJobID int64  `json:"completion_job_id,omitempty" jsonschema:"相容既有結構化完工通知，等同 intent=completion＋job_id；不可與 question 混用，新版交付另派新 job。"`
+	SessionID       string `json:"session_id"`
+	Text            string `json:"text"`
+	FromSessionID   string `json:"from_session_id,omitempty" jsonschema:"送出者的 miniapp session_id；session 互問／討論時必填，伺服器會蓋上自介與回覆署名"`
 }
 
 type startedOut struct {
@@ -378,11 +395,26 @@ type startedOut struct {
 }
 
 func (d *deps) sendMessage(_ context.Context, _ *gomcp.CallToolRequest, in sendMessageIn) (*gomcp.CallToolResult, startedOut, error) {
+	in.SessionID = strings.TrimSpace(in.SessionID)
+	in.FromSessionID = strings.TrimSpace(in.FromSessionID)
+	if in.CompletionJobID != 0 {
+		if (in.Intent != "" && in.Intent != "completion") || (in.JobID != 0 && in.JobID != in.CompletionJobID) {
+			return nil, startedOut{}, db.ErrRoomAgentIntent
+		}
+		in.Intent = "completion"
+		in.JobID = in.CompletionJobID
+	}
+	if err := d.db.CheckRoomAgentMessage(in.SessionID, in.FromSessionID, db.AgentMessage{Intent: in.Intent, JobID: in.JobID}); err != nil {
+		return nil, startedOut{}, err
+	}
+	if in.Intent == "completion" {
+		return nil, startedOut{Status: "automatic_job_report"}, nil
+	}
 	text, err := d.prepareConsult(in.SessionID, in.FromSessionID, in.Text, consultAsync)
 	if err != nil {
 		return nil, startedOut{}, err
 	}
-	if err := d.reg.SendFrom(in.SessionID, text, strings.TrimSpace(in.FromSessionID)); err != nil {
+	if err := d.reg.SendWithIntent(in.SessionID, text, in.FromSessionID, in.Intent, in.JobID); err != nil {
 		return nil, startedOut{}, err
 	}
 	return nil, startedOut{Status: "started"}, nil

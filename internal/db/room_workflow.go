@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -45,30 +46,55 @@ func roomPM(row *sql.Row) (string, error) {
 }
 
 type RoomJob struct {
-	ID         int64  `json:"id"`
-	WorkerID   string `json:"worker_id"`
-	WorkerName string `json:"worker_name"`
-	Status     string `json:"status"`
-	CreatedAt  string `json:"created_at"`
+	ID              int64  `json:"id"`
+	WorkerID        string `json:"worker_id"`
+	WorkerName      string `json:"worker_name"`
+	Status          string `json:"status"`
+	CreatedAt       string `json:"created_at"`
+	Title           string `json:"title"`
+	TaskText        string `json:"task_text"`
+	ResultText      string `json:"result_text"`
+	ResultSaved     bool   `json:"result_saved"`
+	ResultMessageID int64  `json:"result_message_id"`
+	WorkerExists    bool   `json:"worker_exists"`
 }
 
 type RoomBoard struct {
-	Memo string    `json:"memo"`
-	Jobs []RoomJob `json:"jobs"`
+	Version string    `json:"version"`
+	Room    *Room     `json:"-"`
+	Memo    string    `json:"memo"`
+	Jobs    []RoomJob `json:"jobs"`
 }
 
 func (db *DB) RoomBoard(roomID string) (RoomBoard, error) {
 	board := RoomBoard{Jobs: []RoomJob{}}
-	err := db.QueryRow("SELECT COALESCE((SELECT text FROM room_memos WHERE room_id = r.id), '') FROM rooms r WHERE r.id = ?", roomID).Scan(&board.Memo)
+	tx, err := db.Begin()
+	if err != nil {
+		return board, err
+	}
+	defer tx.Rollback()
+	board.Version, err = workflowVersion(tx, roomID)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = ErrRoomNotFound
+	}
+	if err != nil {
+		return board, err
+	}
+	board.Room, err = getRoom(tx, roomID)
+	if err != nil {
+		return board, err
+	}
+	err = tx.QueryRow("SELECT COALESCE((SELECT text FROM room_memos WHERE room_id = r.id), '') FROM rooms r WHERE r.id = ?", roomID).Scan(&board.Memo)
 	if errors.Is(err, sql.ErrNoRows) {
 		return board, ErrRoomNotFound
 	}
 	if err != nil {
 		return board, err
 	}
-	rows, err := db.Query(`SELECT j.id, j.worker_id, COALESCE(NULLIF(s.name, ''), '執行者'), j.created_at,
+	rows, err := tx.Query(`SELECT j.id, j.worker_id, COALESCE(NULLIF(j.worker_name_snapshot, ''), '派工時名稱未保存'), j.created_at,
 		CASE WHEN j.outcome != '' THEN j.outcome WHEN j.attention != '' THEN j.attention
-  WHEN j.assistant_id > 0 THEN 'running' ELSE 'queued' END
+  WHEN j.assistant_id > 0 THEN 'running' ELSE 'queued' END,
+ j.title,j.task_text,j.result_text,j.result_saved,j.assistant_id,(s.id IS NOT NULL)
  FROM room_jobs j LEFT JOIN sessions s ON s.id = j.worker_id
  WHERE j.room_id = ? ORDER BY (j.outcome = '') DESC, j.id DESC LIMIT 50`, roomID)
 	if err != nil {
@@ -77,7 +103,7 @@ func (db *DB) RoomBoard(roomID string) (RoomBoard, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var job RoomJob
-		if err := rows.Scan(&job.ID, &job.WorkerID, &job.WorkerName, &job.CreatedAt, &job.Status); err != nil {
+		if err := rows.Scan(&job.ID, &job.WorkerID, &job.WorkerName, &job.CreatedAt, &job.Status, &job.Title, &job.TaskText, &job.ResultText, &job.ResultSaved, &job.ResultMessageID, &job.WorkerExists); err != nil {
 			return board, err
 		}
 		board.Jobs = append(board.Jobs, job)
@@ -85,11 +111,24 @@ func (db *DB) RoomBoard(roomID string) (RoomBoard, error) {
 	return board, rows.Err()
 }
 
-func (db *DB) SaveRoomMemo(roomID, pmID, text string) error {
-	res, err := db.Exec(`INSERT INTO room_memos(room_id, text)
+func (db *DB) SaveRoomMemo(roomID, pmID, text string, expected ...string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if len(expected) > 0 {
+		if err := checkRoomVersion(tx, roomID, pmID, expected[0]); err != nil {
+			return err
+		}
+	}
+	res, err := tx.Exec(`INSERT INTO room_memos(room_id, text)
  SELECT room_id, ? FROM (`+roomPMQuery+`) WHERE room_id = ? AND session_id = ?
  ON CONFLICT(room_id) DO UPDATE SET text = excluded.text`, text, roomID, pmID)
-	return roomChange(res, err, ErrRoomPM)
+	if err := roomChange(res, err, ErrRoomPM); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (db *DB) EditRoomMemo(roomID, previous, text string) error {
@@ -99,12 +138,25 @@ func (db *DB) EditRoomMemo(roomID, previous, text string) error {
 	return roomChange(res, err, ErrRoomMemoChanged)
 }
 
-func (db *DB) RenameRoomSession(roomID, pmID, sessionID, name string) error {
-	res, err := db.Exec(`UPDATE sessions SET name = ?, last_active = datetime('now')
+func (db *DB) RenameRoomSession(roomID, pmID, sessionID, name string, expected ...string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if len(expected) > 0 {
+		if err := checkRoomVersion(tx, roomID, pmID, expected[0]); err != nil {
+			return err
+		}
+	}
+	res, err := tx.Exec(`UPDATE sessions SET name = ?, last_active = datetime('now')
 		WHERE id = ? AND EXISTS(SELECT 1 FROM room_members WHERE room_id = ? AND session_id = sessions.id)
 		AND EXISTS(SELECT 1 FROM (`+roomPMQuery+`) WHERE room_id = ? AND session_id = ?)`,
 		name, sessionID, roomID, roomID, pmID)
 	if err := roomChange(res, err, ErrRoomSessionMissing); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 	if db.OnSessionChange != nil {
@@ -114,7 +166,7 @@ func (db *DB) RenameRoomSession(roomID, pmID, sessionID, name string) error {
 }
 
 // CreateRoomWorker atomically adds a normal session inheriting its PM's working directory.
-func (db *DB) CreateRoomWorker(roomID, pmID, name, agentType string) (string, error) {
+func (db *DB) CreateRoomWorker(roomID, pmID, name, agentType string, expected ...string) (string, error) {
 	id := uuid.NewString()
 	global, err := db.GetGlobalInstruction()
 	if err != nil {
@@ -125,6 +177,11 @@ func (db *DB) CreateRoomWorker(roomID, pmID, name, agentType string) (string, er
 		return "", err
 	}
 	defer tx.Rollback()
+	if len(expected) > 0 {
+		if err := checkRoomVersion(tx, roomID, pmID, expected[0]); err != nil {
+			return "", err
+		}
+	}
 	res, err := tx.Exec(`INSERT INTO sessions(id, name, agent_type, work_dir, global_instruction_text, global_instruction_mode, last_read_at)
  SELECT ?, ?, ?, s.work_dir, ?, ?, datetime('now') FROM sessions s
  JOIN (`+roomPMQuery+`) pm ON pm.session_id = s.id WHERE s.id = ? AND pm.room_id = ?`, id, name, agentType, global.Text, global.Mode, pmID, roomID)
@@ -145,15 +202,32 @@ func (db *DB) CreateRoomWorker(roomID, pmID, name, agentType string) (string, er
 	return id, nil
 }
 
-// DispatchRoomJob records the assignment and its queue entry in the same transaction.
-func (db *DB) DispatchRoomJob(roomID, pmID, workerID, text string) (int64, error) {
+// ponytail: 舊 Go 呼叫保留明示的缺標題 fallback；MCP 派工一律走有明確標題的入口。
+func (db *DB) DispatchRoomJob(roomID, pmID, workerID, text string, expected ...string) (int64, error) {
+	return db.DispatchRoomJobWithTitle(roomID, pmID, workerID, "未提供工作標題（舊呼叫）", text, expected...)
+}
+
+// DispatchRoomJobWithTitle 在同一交易保存當次工作快照與排隊項目。
+func (db *DB) DispatchRoomJobWithTitle(roomID, pmID, workerID, title, text string, expected ...string) (int64, error) {
+	title = strings.TrimSpace(title)
+	if title == "" || utf8.RuneCountInString(title) > 120 || strings.ContainsAny(title, "\r\n") {
+		return 0, errors.New("工作標題須為 1 到 120 字的單行文字")
+	}
+	if strings.TrimSpace(text) == "" || len(text) > 64000 {
+		return 0, errors.New("交辦內容須為 1 到 64000 bytes")
+	}
 	tx, err := db.Begin()
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
-	res, err := tx.Exec(`INSERT INTO room_jobs(room_id, pm_id, worker_id)
- SELECT wm.room_id, pm.session_id, s.id FROM room_members wm
+	if len(expected) > 0 {
+		if err := checkRoomVersion(tx, roomID, pmID, expected[0]); err != nil {
+			return 0, err
+		}
+	}
+	res, err := tx.Exec(`INSERT INTO room_jobs(room_id, pm_id, worker_id,title,task_text,worker_name_snapshot)
+ SELECT wm.room_id, pm.session_id, s.id,?,?,COALESCE(NULLIF(s.name,''),'未命名') FROM room_members wm
  JOIN sessions s ON s.id = wm.session_id
  JOIN (`+roomPMQuery+`) pm ON pm.room_id = wm.room_id
  WHERE wm.room_id = ? AND pm.session_id = ? AND wm.role = 'worker' AND s.id = ?
@@ -161,7 +235,7 @@ func (db *DB) DispatchRoomJob(roomID, pmID, workerID, text string) (int64, error
  AND s.shell_pending = '' AND s.pending_denials = ''
 	AND NOT EXISTS (SELECT 1 FROM room_members WHERE session_id = s.id AND role = 'pm')
  AND NOT EXISTS (SELECT 1 FROM queued_messages WHERE session_id = s.id) -- 暫停只擋已排隊的訊息；空佇列的暫停旗標不該擋派工
- ON CONFLICT(worker_id) WHERE outcome = '' DO NOTHING`, roomID, pmID, workerID)
+ ON CONFLICT(worker_id) WHERE outcome = '' DO NOTHING`, title, text, roomID, pmID, workerID)
 	if err := roomChange(res, err, ErrRoomWorker); err != nil {
 		return 0, err
 	}
@@ -196,12 +270,91 @@ func (db *DB) BindRoomJob(sessionID string, inputID, assistantID int64) error {
 }
 
 func (db *DB) FinishRoomJob(sessionID string, assistantID int64, outcome string) error {
-	_, err := db.Exec("UPDATE room_jobs SET outcome = ? WHERE worker_id = ? AND assistant_id = ? AND outcome = ''", outcome, sessionID, assistantID)
+	_, err := db.Exec(`UPDATE room_jobs AS j SET outcome = ?,`+roomJobResultSnapshot+` WHERE worker_id = ? AND assistant_id = ? AND outcome = ''`, outcome, sessionID, assistantID)
 	return err
 }
 
+// 完工只有 FinishRoomJob → DeliverRoomReports 一個入口；手動通知不產生另一筆 runnable。
+// 不解析本文；不同 job 的回報仍各自保留，新版交付應建立新 job。
+func (db *DB) RoomCompletionNotification(jobID int64, workerID, pmID string) error {
+	return db.CheckRoomAgentMessage(pmID, workerID, AgentMessage{Intent: "completion", JobID: jobID})
+}
+
+// AgentMessage 的意圖是協定宣告，不是來源的 OS 身分證明；不解析自然語言。
+type AgentMessage struct {
+	Intent string
+	JobID  int64
+	Ask    bool
+}
+
+var ErrRoomAgentIntent = errors.New("送往現任 PM 的 send_message 必須帶 from_session_id、intent=question 與正式 worker 的 job_id；完工請用 intent=completion＋job_id（或 completion_job_id），只走自動回報；明確同步詢問可用 ask_session")
+var ErrRoomAgentJob = errors.New("job_id／來源不屬於這個現任 PM 的正式 worker；請核對 job_id、from_session_id 與目前 PM，未入列")
+
+func (db *DB) CheckRoomAgentMessage(target, source string, message AgentMessage) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	return checkRoomAgentMessage(tx, target, source, message)
+}
+
+func checkRoomAgentMessage(reader roomReader, target, source string, message AgentMessage) error {
+	if message.Intent != "" && message.Intent != "question" && message.Intent != "completion" {
+		return ErrRoomAgentIntent
+	}
+	if source != "" {
+		var exists bool
+		if err := reader.QueryRow("SELECT EXISTS(SELECT 1 FROM sessions WHERE id=?)", source).Scan(&exists); err != nil {
+			return err
+		}
+		if !exists {
+			return errors.New("from_session_id 來源已不存在，未入列")
+		}
+	}
+	// ask_session 本身就是明確詢問，保留其不依賴正式派工的既有語意。
+	if message.Ask && message.Intent == "question" {
+		return nil
+	}
+	var roomID string
+	err := reader.QueryRow("SELECT room_id FROM ("+roomPMQuery+") WHERE session_id=?", target).Scan(&roomID)
+	if errors.Is(err, sql.ErrNoRows) {
+		if message.Intent == "completion" || message.JobID != 0 {
+			return ErrRoomAgentJob
+		}
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if source == "" || message.Intent == "" {
+		return ErrRoomAgentIntent
+	}
+	var worker bool
+	if err := reader.QueryRow("SELECT EXISTS(SELECT 1 FROM room_members WHERE room_id=? AND session_id=? AND role='worker')", roomID, source).Scan(&worker); err != nil {
+		return err
+	}
+	if !worker {
+		if message.Intent == "completion" || message.JobID != 0 {
+			return ErrRoomAgentJob
+		}
+		return nil
+	}
+	if message.JobID <= 0 {
+		return ErrRoomAgentIntent
+	}
+	var valid bool
+	if err := reader.QueryRow("SELECT EXISTS(SELECT 1 FROM room_jobs WHERE id=? AND room_id=? AND worker_id=?)", message.JobID, roomID, source).Scan(&valid); err != nil {
+		return err
+	}
+	if !valid {
+		return ErrRoomAgentJob
+	}
+	return nil
+}
+
 func (db *DB) RecoverRoomJobs() error {
-	_, err := db.Exec("UPDATE room_jobs SET outcome = 'interrupted' WHERE assistant_id > 0 AND outcome = ''")
+	_, err := db.Exec(`UPDATE room_jobs AS j SET outcome = 'interrupted',` + roomJobResultSnapshot + ` WHERE assistant_id > 0 AND outcome = ''`)
 	return err
 }
 
@@ -234,14 +387,16 @@ func (db *DB) DeliverRoomReports() error {
 		return err
 	}
 	// source_session_id 記下執行者，讓成員篩選能結構化歸屬回報；作者與內容不變。
+	if err := snapshotRoomJobResults(tx); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`INSERT INTO queued_messages(session_id, content, author, source_session_id)
- SELECT pm.session_id, printf('派工 #%d｜%s｜%s%s', j.id, COALESCE(NULLIF(s.name, ''), '執行者'),
+ SELECT pm.session_id, printf('派工 #%d｜%s｜%s｜執行者：%s%s', j.id,j.title,
   CASE j.outcome WHEN 'done' THEN '已完成' WHEN 'failed' THEN '執行失敗' ELSE '已中斷' END,
-  CASE WHEN trim(COALESCE(m.content, '')) = '' THEN '' ELSE char(10) || char(10) || substr(m.content, 1, 16000) END),
+  COALESCE(NULLIF(j.worker_name_snapshot,''),'派工時名稱未保存'),
+  CASE WHEN trim(j.result_text) = '' THEN '' ELSE char(10) || char(10) || j.result_text END),
   'room-report:' || j.room_id, j.worker_id
  FROM room_jobs j JOIN (` + roomPMQuery + `) pm ON pm.room_id = j.room_id
- LEFT JOIN sessions s ON s.id = j.worker_id
- LEFT JOIN messages m ON m.id = j.assistant_id AND m.session_id = j.worker_id
  WHERE j.outcome != '' AND j.reported = 0 ORDER BY j.id`); err != nil {
 		return err
 	}

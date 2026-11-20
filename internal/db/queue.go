@@ -27,12 +27,11 @@ func (db *DB) EnqueueMessage(sessionID, content, author string, ids ...string) (
 // EnqueueMessageFromCancelQuota 把新佇列訊息與取消舊自動復原放在同一筆交易。
 // 取消失敗時不留下新訊息，也不解除暫停。source 不是既存 session 時不取消。
 func (db *DB) EnqueueMessageFromCancelQuota(sessionID, content, author, source string, ids ...string) (*QueuedMessage, error) {
-	if source != "" {
-		var one int
-		if err := db.QueryRow(`SELECT 1 FROM sessions WHERE id = ?`, source).Scan(&one); err != nil {
-			return nil, fmt.Errorf("來源 session 不存在")
-		}
-	}
+	return db.EnqueueAgentMessageCancelQuota(sessionID, content, author, source, nil, ids...)
+}
+
+// 意圖／工作／來源與入列同交易，MCP 預檢後若來源或 PM 改變，仍不接受舊範圍。
+func (db *DB) EnqueueAgentMessageCancelQuota(sessionID, content, author, source string, message *AgentMessage, ids ...string) (*QueuedMessage, error) {
 	attachments, err := db.ResolveAttachments(sessionID, ids)
 	if err != nil {
 		return nil, err
@@ -42,6 +41,23 @@ func (db *DB) EnqueueMessageFromCancelQuota(sessionID, content, author, source s
 		return nil, err
 	}
 	defer tx.Rollback()
+	if message != nil {
+		if message.Intent == "completion" {
+			return nil, errors.New("完工通知只走 FinishRoomJob → DeliverRoomReports，不可從一般 agent 輸入入列")
+		}
+		if err := checkRoomAgentMessage(tx, sessionID, source, *message); err != nil {
+			return nil, err
+		}
+	}
+	if source != "" {
+		var exists bool
+		if err := tx.QueryRow("SELECT EXISTS(SELECT 1 FROM sessions WHERE id=?)", source).Scan(&exists); err != nil {
+			return nil, err
+		}
+		if !exists {
+			return nil, fmt.Errorf("來源 session 不存在")
+		}
+	}
 	var n int
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM queued_messages WHERE session_id = ?`, sessionID).Scan(&n); err != nil {
 		return nil, err

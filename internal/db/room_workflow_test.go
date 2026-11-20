@@ -1,7 +1,9 @@
 package db
 
 import (
+	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -311,6 +313,121 @@ func requireRoomTestOK(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRoomJobRecordsSurviveRenameAndSessionDeletion(t *testing.T) {
+	d, roomID, pm, worker := roomWithWorker(t)
+	results := []string{strings.Repeat("甲", 16001), "第二份結果"}
+	outcomes := []string{"done", "failed"}
+	ids := []int64{}
+	for i, name := range []string{"派工時名稱一", "派工時名稱二"} {
+		requireRoomTestOK(t, d.UpdateSessionName(worker, name))
+		id, err := d.DispatchRoomJobWithTitle(roomID, pm, worker, fmt.Sprintf("工作 %d", i+1), fmt.Sprintf("原任務 %d", i+1))
+		requireRoomTestOK(t, err)
+		ids = append(ids, id)
+		reply := bindQueuedRoomTestJob(t, d, worker)
+		requireRoomTestOK(t, d.AppendMessageContent(reply, results[i]))
+		requireRoomTestOK(t, d.FinishRoomJob(worker, reply, outcomes[i]))
+		requireRoomTestOK(t, d.AppendMessageContent(reply, "不屬於已封存結果的後續文字"))
+		requireRoomTestOK(t, d.FinishRoomJob(worker, reply, "interrupted"))
+	}
+	requireRoomTestOK(t, d.AddMessage(worker, "user", "無關對話不可複製", ""))
+	requireRoomTestOK(t, d.DeleteSession(worker))
+	requireRoomTestOK(t, d.DeliverRoomReports())
+	requireRoomTestOK(t, d.DeliverRoomReports())
+	board, err := d.RoomBoard(roomID)
+	requireRoomTestOK(t, err)
+	if len(board.Jobs) != 2 || board.Jobs[0].WorkerName != "派工時名稱二" || board.Jobs[1].WorkerName != "派工時名稱一" {
+		t.Fatalf("工作紀錄隨會話改名／刪除而消失：%+v", board.Jobs)
+	}
+	for i, job := range board.Jobs {
+		n := 2 - i
+		want := results[n-1]
+		if n == 1 {
+			want = strings.Repeat("甲", 16000)
+		}
+		if job.ID != ids[n-1] || job.Title != fmt.Sprintf("工作 %d", n) || job.TaskText != fmt.Sprintf("原任務 %d", n) || job.ResultText != want || !job.ResultSaved || job.WorkerExists || job.Status != outcomes[n-1] {
+			t.Fatalf("工作快照混淆／遺失：%+v", job)
+		}
+	}
+	reports, err := d.ListQueuedMessages(pm)
+	requireRoomTestOK(t, err)
+	if len(reports) != 2 {
+		t.Fatalf("job 重複回報：%d", len(reports))
+	}
+	for i, report := range reports {
+		if !strings.HasPrefix(report.Content, fmt.Sprintf("派工 #%d｜工作 %d｜", ids[i], i+1)) || !strings.Contains(report.Content, results[i][:3]) || strings.Contains(report.Content, "不屬於") || strings.Contains(report.Content, "無關對話") {
+			t.Fatalf("回報未使用同一工作快照：%s", report.Content)
+		}
+	}
+}
+
+func TestRoomJobRecordsLegacyMigration(t *testing.T) {
+	raw, err := sql.Open("sqlite", t.TempDir()+"/legacy.db?_txlock=immediate")
+	requireRoomTestOK(t, err)
+	defer raw.Close()
+	d := &DB{DB: raw}
+	requireRoomTestOK(t, d.runMigrations(migrations[:4]))
+	pm := roomSession(t, d, "PM", "claude")
+	worker := roomSession(t, d, "現在的名稱", "claude")
+	room, err := d.CreateRoom("old", []RoomMember{{SessionID: pm.ID, Role: RoomRolePM}, {SessionID: worker.ID, Role: RoomRoleWorker}})
+	requireRoomTestOK(t, err)
+	for _, id := range []int{11, 12, 13} {
+		_, err := d.Exec(`INSERT INTO room_jobs(id,room_id,pm_id,worker_id,outcome,reported) VALUES(?,?,?,?,'done',1)`, id, room.ID, pm.ID, worker.ID)
+		requireRoomTestOK(t, err)
+	}
+	requireRoomTestOK(t, d.AddMessage(worker.ID, "user", "歷史原派工", "room-job:11"))
+	reply, err := d.CreatePendingMessage(worker.ID)
+	requireRoomTestOK(t, err)
+	requireRoomTestOK(t, d.AppendMessageContent(reply, "歷史結果"))
+	_, err = d.Exec("UPDATE room_jobs SET assistant_id=? WHERE id=11", reply)
+	requireRoomTestOK(t, err)
+	_, err = d.EnqueueMessage(worker.ID, "仍在佇列的原派工", "room-job:12")
+	requireRoomTestOK(t, err)
+	requireRoomTestOK(t, d.runMigrations(migrations))
+	board, err := d.RoomBoard(room.ID)
+	requireRoomTestOK(t, err)
+	if len(board.Jobs) != 3 || board.Jobs[0].TaskText != "" || board.Jobs[1].TaskText != "仍在佇列的原派工" || board.Jobs[2].TaskText != "歷史原派工" || board.Jobs[2].ResultText != "歷史結果" {
+		t.Fatalf("舊資料回填錯誤：%+v", board.Jobs)
+	}
+	for _, job := range board.Jobs {
+		if job.Title != "舊任務（標題未保存）" || job.WorkerName != "派工時名稱未保存" {
+			t.Fatalf("拿現在名稱虛構歷史：%+v", job)
+		}
+	}
+}
+
+func TestRoomJobRecordValidationAndApprovalVersion(t *testing.T) {
+	d, r, pm, worker := roomWithWorker(t)
+	for _, title := range []string{"", " \t", strings.Repeat("甲", 121), "two\nlines"} {
+		if _, err := d.DispatchRoomJobWithTitle(r, pm, worker, title, "body"); err == nil {
+			t.Fatal("無效標題可派工")
+		}
+	}
+	job, err := d.DispatchRoomJobWithTitle(r, pm, worker, strings.Repeat("甲", 120), "body")
+	requireRoomTestOK(t, err)
+	reply := bindQueuedRoomTestJob(t, d, worker)
+	requireRoomTestOK(t, d.AppendMessageContent(reply, "中斷前結果"))
+	requireRoomTestOK(t, d.RecoverRoomJobs())
+	requireRoomTestOK(t, d.DeliverRoomReports())
+	board, err := d.RoomBoard(r)
+	requireRoomTestOK(t, err)
+	if board.Jobs[0].Status != "interrupted" || board.Jobs[0].ResultText != "中斷前結果" {
+		t.Fatal("中斷遺失工作結果")
+	}
+	approval, _, err := d.RequestOperationApproval("reset_session", r, pm, worker)
+	requireRoomTestOK(t, err)
+	requireRoomTestOK(t, d.ApproveOperation(approval))
+	_, err = d.Exec("UPDATE room_jobs SET result_text='新版結果' WHERE id=?", job)
+	requireRoomTestOK(t, err)
+	if err := d.ResetRoomMemberSession(worker, r, pm, approval); err == nil {
+		t.Fatal("工作紀錄更新仍沿用舊批准")
+	}
+	current, err := d.RoomBoard(r)
+	requireRoomTestOK(t, err)
+	if current.Version == board.Version {
+		t.Fatal("工作快照變更沒更新版號")
 	}
 }
 

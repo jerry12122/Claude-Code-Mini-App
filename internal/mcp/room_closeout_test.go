@@ -116,7 +116,11 @@ func TestRoomDeleteRefusesPMHandedOffAfterScope(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = cs.Close() })
-		res, err := cs.CallTool(ctx, &gomcp.CallToolParams{Name: "room_delete", Arguments: map[string]any{}})
+		board, err := database.RoomBoard(room.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := cs.CallTool(ctx, &gomcp.CallToolParams{Name: "room_delete", Arguments: map[string]any{"expected_version": board.Version}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -155,16 +159,16 @@ func TestRoomDeleteRefusesPMHandedOffAfterScope(t *testing.T) {
 		}
 	})
 
-	t.Run("同一 PM 正常刪除", func(t *testing.T) {
+	t.Run("同一 PM 缺使用者批准仍不刪除", func(t *testing.T) {
 		database, roomID, oldPM, newPM, worker, res := setup(t, false)
-		if res.IsError {
-			t.Fatalf("現任 PM 刪除失敗：%+v", res)
+		if !res.IsError {
+			t.Fatalf("缺批准仍刪除：%+v", res)
 		}
-		if _, err := database.GetRoom(roomID); err == nil {
-			t.Fatal("工作室還在")
+		if _, err := database.GetRoom(roomID); err != nil {
+			t.Fatal("工作室被刪除")
 		}
-		if n := count(t, database, `SELECT COUNT(*) FROM room_memos WHERE room_id = ?`, roomID) + count(t, database, `SELECT COUNT(*) FROM room_jobs WHERE room_id = ?`, roomID); n != 0 {
-			t.Fatal("備忘或派工殘留")
+		if n := count(t, database, `SELECT COUNT(*) FROM room_memos WHERE room_id = ?`, roomID) + count(t, database, `SELECT COUNT(*) FROM room_jobs WHERE room_id = ?`, roomID); n != 2 {
+			t.Fatal("備忘或派工被刪")
 		}
 		for _, id := range []string{oldPM, newPM, worker} {
 			if _, err := database.GetSession(id); err != nil {

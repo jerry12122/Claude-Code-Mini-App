@@ -252,7 +252,10 @@ func (r *Registry) AskFrom(ctx context.Context, sessionID, text, sourceSessionID
 	lock.Lock()
 	defer lock.Unlock()
 
-	done, st, err := r.begin(sessionID, consultInput(text, sourceSessionID))
+	payload := consultInput(text, sourceSessionID)
+	payload["message_intent"] = "question"
+	payload["consultation_mode"] = "ask"
+	done, st, err := r.begin(sessionID, payload)
 	if err != nil {
 		return AskResult{}, err
 	}
@@ -300,8 +303,15 @@ func (r *Registry) SendFrom(sessionID, text, sourceSessionID string) error {
 	return r.send(sessionID, consultInput(text, sourceSessionID))
 }
 
-func consultInput(text, sourceSessionID string) map[string]string {
-	payload := map[string]string{"type": "input", "data": text}
+func (r *Registry) SendWithIntent(sessionID, text, sourceSessionID, intent string, jobID int64) error {
+	payload := consultInput(text, sourceSessionID)
+	payload["message_intent"] = intent
+	payload["job_id"] = jobID
+	return r.send(sessionID, payload)
+}
+
+func consultInput(text, sourceSessionID string) map[string]any {
+	payload := map[string]any{"type": "input", "data": text}
 	if sourceSessionID != "" {
 		payload["source_session_id"] = sourceSessionID
 	}

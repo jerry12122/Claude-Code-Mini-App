@@ -314,6 +314,9 @@ func (h *RoomsHandler) Update(c *fiber.Ctx) error {
 
 // Delete DELETE /rooms/:id：只刪工作室，不刪任何 session。
 func (h *RoomsHandler) Delete(c *fiber.Ctx) error {
+	if agent, _ := c.Locals("mcp_agent").(bool); agent {
+		return c.Status(403).JSON(fiber.Map{"error": "agent 不可借一般刪除 API 放行；請用 room_delete 並取得使用者確認"})
+	}
 	if err := h.db.DeleteRoom(c.Params("id")); err != nil {
 		return h.writeErr(c, "delete", err)
 	}

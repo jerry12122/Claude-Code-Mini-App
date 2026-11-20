@@ -680,6 +680,9 @@ func (h *wsConn) startInput(input clientMsg, queued *db.QueuedMessage) error {
 	if who != "" {
 		prompt = "[" + db.RoomMessageAuthor(who) + "] " + prompt
 	}
+	if strings.HasPrefix(who, "room-job:") {
+		prompt += "\n[工作室完工入口] 本輪最後答覆會依 job_id=" + strings.TrimPrefix(who, "room-job:") + " 自動回報目前 PM。不要另送未標識的完工通知；若仍需 send_message 完工通知，必帶 completion_job_id=" + strings.TrimPrefix(who, "room-job:") + "，由 server 合併到同一份自動回報。一般詢問不帶此欄位，新版交付另派新 job。"
+	}
 	// Telegram 的對話內容不進 messages 表：待傳氣泡只存在這次連線，重整後改向 Telegram 要最新頁。
 	// 佇列裡的項目也只出列，不晉升成歷史列。
 	if h.agentType == agent.TypeTelegram {

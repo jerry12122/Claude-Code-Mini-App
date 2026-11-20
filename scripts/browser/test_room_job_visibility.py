@@ -22,7 +22,9 @@ def test_unbound_activity_refresh_and_board_failure(page, login):
     worker = {'session_id': 'visibility-worker', 'session_name': name + ' worker',
               'role': 'worker', 'status': 'running', 'attention': '', 'queue_length': 0}
     board = {'memo': '', 'jobs': [{'id': number, 'worker_id': worker['session_id'],
-                       'worker_name': worker['session_name'], 'status': status}
+                       'worker_name': '派工時名稱-' + str(number), 'status': status,
+                       'title': '當次工作-' + str(number), 'task_text': '<b>原任務-' + str(number) + '</b>\n保留換行',
+                       'result_text': '已保存結果-' + str(number), 'result_saved': True, 'worker_exists': True}
                       for number, status in ((31, 'done'), (30, 'failed'), (29, 'interrupted'))]}
     failed = False
 
@@ -42,7 +44,6 @@ def test_unbound_activity_refresh_and_board_failure(page, login):
                 worker['session_name'] = member['session_name']
                 for job in board['jobs']:
                     job['worker_id'] = member['session_id']
-                    job['worker_name'] = member['session_name']
             else:
                 member['status'] = 'running'
         route.fulfill(response=response, json=data)
@@ -69,10 +70,40 @@ def test_unbound_activity_refresh_and_board_failure(page, login):
     worker['status'] = 'idle'
     expect(activity).to_have_count(0, timeout=10000)
     expect(panel.get_by_text('沒有進行中的派工', exact=True)).to_be_visible()
-    panel.locator('summary').click()
-    expect(panel.get_by_role('button').filter(has_text='#31')).to_contain_text('已完成')
-    expect(panel.get_by_role('button').filter(has_text='#30')).to_contain_text('失敗')
-    expect(panel.get_by_role('button').filter(has_text='#29')).to_contain_text('已中斷')
+    panel.locator('summary').filter(has_text='完成紀錄').click()
+    for number, status in ((31, '已完成'), (30, '失敗'), (29, '已中斷')):
+        record = panel.locator(f'.room-job-record[data-job-id="{number}"]')
+        expect(record.locator('summary')).to_contain_text(f'#{number} · 當次工作-{number}')
+        expect(record.locator('summary')).to_contain_text(status)
+    record = panel.locator('.room-job-record[data-job-id="31"]')
+    record.locator('summary').focus()
+    page.keyboard.press('Enter')
+    expect(record.get_by_text('<b>原任務-31</b>\n保留換行', exact=True)).to_be_visible()
+    expect(record.get_by_text('已保存結果-31', exact=True)).to_be_visible()
+    expect(record.locator('b')).to_have_count(0)
+    expect(record.get_by_role('button', name='開啟執行者會話')).to_be_visible()
+    # 改名與刪除的是此測試建立的 session；mock 只供 DOM 狀態，DB 持久化另有 Go 整合測試。
+    page.evaluate("""async id => {
+      const res = await apiFetch('/sessions/' + id, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:'改名後的會話'})});
+      if (!res.ok) throw new Error(await res.text());
+    }""", worker['session_id'])
+    expect(record.locator('summary')).to_contain_text('派工時名稱-31')
+    page.evaluate("""async id => {
+      const res = await apiFetch('/sessions/' + id, {method:'DELETE'});
+      if (!res.ok) throw new Error(await res.text());
+    }""", worker['session_id'])
+    for job in board['jobs']:
+        job['worker_exists'] = False
+    expect(record.get_by_role('button', name='開啟執行者會話')).to_have_count(0, timeout=10000)
+    expect(record.get_by_text('已保存結果-31', exact=True)).to_be_visible()
+    expect(record.get_by_text('執行者會話已不存在，以上為已保存工作紀錄。', exact=True)).to_be_visible()
+    legacy = board['jobs'][2]
+    legacy.update(title='', task_text='', result_text='', result_saved=False)
+    legacy_record = panel.locator('.room-job-record[data-job-id="29"]')
+    expect(legacy_record.locator('summary')).to_contain_text('舊任務（標題未保存）', timeout=10000)
+    legacy_record.locator('summary').click()
+    expect(legacy_record.get_by_text('舊任務內容未保存', exact=True)).to_be_visible()
+    expect(legacy_record.get_by_text('結果未保存', exact=True)).to_be_visible()
     page.screenshot(path=str(out / 'idle-closed-history.png'))
 
     failed = True

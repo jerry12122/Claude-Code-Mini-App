@@ -40,6 +40,7 @@ type resetRig struct {
 	url                              func(string) string
 	room, otherRoom                  string
 	pm, worker, otherPM, otherWorker string
+	approval                         string
 }
 
 func newResetRig(t *testing.T) *resetRig {
@@ -79,9 +80,6 @@ func (r *resetRig) seed(t *testing.T, id, marker string) {
 	if _, err := d.CreatePendingMessage(id); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.EnqueueMessage(id, "queue-"+marker, ""); err != nil {
-		t.Fatal(err)
-	}
 }
 
 type resetSnap struct {
@@ -110,7 +108,23 @@ func isResetResult(m map[string]any) bool { return m["type"] == "reset" || m["ty
 
 func (r *resetRig) sendReset(t *testing.T, c *wsClient) {
 	t.Helper()
-	c.send(t, map[string]any{"type": "reset_context", "require_idle": true, "room_id": r.room, "pm_session_id": r.pm})
+	if r.approval == "" {
+		r.approve(t)
+	}
+	c.send(t, map[string]any{"type": "reset_context", "require_idle": true, "room_id": r.room, "pm_session_id": r.pm, "operation_approval": r.approval})
+}
+
+// 此 rig 測交易／dispatch 鎖；真正使用者問答另由 operation_approval_test 覆蓋。
+func (r *resetRig) approve(t *testing.T) {
+	t.Helper()
+	id, _, err := r.database.RequestOperationApproval("reset_session", r.room, r.pm, r.worker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.database.ApproveOperation(id); err != nil {
+		t.Fatal(err)
+	}
+	r.approval = id
 }
 
 func TestToolResetIdleClearsOnlyThatSession(t *testing.T) {
@@ -208,6 +222,7 @@ func TestToolResetScopeCheckAndClearShareOneTransaction(t *testing.T) {
 		before := r.snap(t, r.worker)
 		c := dialClient(t, r.url(r.worker))
 		waitFor(t, "連線就緒", func() bool { return c.count(func(map[string]any) bool { return true }) > 0 })
+		r.approve(t)
 		tx, err := r.database.Begin()
 		if err != nil {
 			t.Fatal(err)

@@ -23,8 +23,11 @@ func TestRoomCloseoutResetAndDelete(t *testing.T) {
 		database, runtime, _ := startCloseout(t, true)
 		pm, _, worker, other := closeoutMembers(t, database)
 		seedTrail(t, database, worker.ID, "keep", false)
+		if err := database.ClearQueuedMessages(worker.ID); err != nil {
+			t.Fatal(err)
+		}
 		seedTrail(t, database, other.ID, "other", false)
-		res := callCloseout(t, runtime, pm.ID, "reset_session", map[string]any{"session_id": worker.ID})
+		res := callApprovedCloseout(t, runtime, pm.ID, "reset_session", map[string]any{"session_id": worker.ID})
 		if res.Status != http.StatusOK || res.IsError || !res.OK {
 			t.Fatalf("reset status=%d error=%v ok=%v body=%s", res.Status, res.IsError, res.OK, res.Body)
 		}
@@ -125,12 +128,14 @@ func TestRoomCloseoutResetAndDelete(t *testing.T) {
 	})
 
 	t.Run("delete keeps sessions and other room", func(t *testing.T) {
-		database, runtime, _ := startCloseout(t, false)
+		database, runtime, _ := startCloseout(t, true)
 		pm, roomID, worker, other := closeoutMembers(t, database)
 		if err := database.SaveRoomMemo(roomID, pm.ID, "結案備忘"); err != nil {
 			t.Fatal(err)
 		}
-		seedTrail(t, database, worker.ID, "stay", true)
+		if err := database.AddMessage(worker.ID, "user", "stay", ""); err != nil {
+			t.Fatal(err)
+		}
 		wrong := callCloseout(t, runtime, pm.ID, "room_delete", map[string]any{"room_id": other.RoomID})
 		if wrong.Status != http.StatusOK || !wrong.IsError || wrong.OK {
 			t.Fatalf("別間工作室被接受 status=%d error=%v ok=%v body=%s", wrong.Status, wrong.IsError, wrong.OK, wrong.Body)
@@ -142,7 +147,7 @@ func TestRoomCloseoutResetAndDelete(t *testing.T) {
 		if denied.Status != http.StatusForbidden {
 			t.Fatalf("非 PM 刪除得到 %d", denied.Status)
 		}
-		res := callCloseout(t, runtime, pm.ID, "room_delete", nil)
+		res := callApprovedCloseout(t, runtime, pm.ID, "room_delete", nil)
 		if res.Status != http.StatusOK || res.IsError || !res.OK {
 			t.Fatalf("delete status=%d error=%v ok=%v body=%s", res.Status, res.IsError, res.OK, res.Body)
 		}
@@ -158,7 +163,10 @@ func TestRoomCloseoutResetAndDelete(t *testing.T) {
 		if _, err := database.GetSession(worker.ID); err != nil {
 			t.Fatal(err)
 		}
-		assertTrail(t, database, worker.ID, "stay", false, true)
+		messages, err := database.ListMessages(worker.ID)
+		if err != nil || len(messages) != 1 || messages[0].Content != "stay" {
+			t.Fatalf("歷史改變：%v %v", messages, err)
+		}
 	})
 }
 
