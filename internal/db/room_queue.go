@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"net/url"
 )
 
@@ -11,11 +12,12 @@ type RoomQueueItem struct {
 }
 
 type RoomQueuePage struct {
-	PMID    string          `json:"pm_id"`
-	Queue   []RoomQueueItem `json:"queue"`
-	Paused  bool            `json:"queue_paused"`
-	HasMore bool            `json:"has_more"`
-	Next    int64           `json:"next_after_id"`
+	PMID       string          `json:"pm_id"`
+	Queue      []RoomQueueItem `json:"queue"`
+	Paused     bool            `json:"queue_paused"`
+	HasMore    bool            `json:"has_more"`
+	Next       int64           `json:"next_after_id"`
+	BatchReady bool            `json:"batch_ready"`
 }
 
 // RoomQueue 與 member/timeline 無關；同一讀交易固定 PM、FIFO、附件權限與 paused。
@@ -103,5 +105,37 @@ func (db *DB) RoomQueue(ctx context.Context, roomID, expectedPM string, limit in
 	if out.HasMore {
 		out.Next = out.Queue[len(out.Queue)-1].ID
 	}
+	ready, err := roomPageBatchReady(ctx, tx, expectedPM, RoomUserAuthorPrefix+roomID, out.Queue)
+	if err != nil {
+		return out, err
+	}
+	out.BatchReady = ready
 	return out, tx.Commit()
+}
+
+// roomPageBatchReady 只回答這一頁可見項是否剛好是同一 session 的連續 Room user。
+// 別的 session 造成的全域 ID 空隙不算；頁面以外的回報也不算。不回傳隱藏內容、作者或數量。
+func roomPageBatchReady(ctx context.Context, tx *sql.Tx, sessionID, author string, items []RoomQueueItem) (bool, error) {
+	if len(items) < 2 {
+		return false, nil
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT id, author, source_session_id FROM queued_messages
+ WHERE session_id=? AND id>=? AND id<=? ORDER BY id`, sessionID, items[0].ID, items[len(items)-1].ID)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	i := 0
+	for rows.Next() {
+		var id int64
+		var rowAuthor, source string
+		if err := rows.Scan(&id, &rowAuthor, &source); err != nil {
+			return false, err
+		}
+		if i >= len(items) || id != items[i].ID || rowAuthor != author || source != "" {
+			return false, nil
+		}
+		i++
+	}
+	return i == len(items), rows.Err()
 }

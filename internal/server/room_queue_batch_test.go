@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
@@ -231,4 +232,157 @@ func TestRoomQueueReadHTTPScopedFIFO(t *testing.T) {
 	if status != 200 || page.PMID != e.worker || len(page.Queue) != 2 || page.Queue[0].RequestID != "queue-first" || page.Queue[1].RequestID != "queue-second" || len(page.Queue[0].Attachments) != 1 {
 		t.Fatalf("新 PM FIFO／附件授權錯誤：%d %s", status, raw)
 	}
+}
+
+func TestRoomQueueBatchHintHTTP(t *testing.T) {
+	postBatch := func(t *testing.T, e *roomEditHTTP, requestID string, rows []db.QueuedMessage) (int, []byte) {
+		t.Helper()
+		items := make([]map[string]any, len(rows))
+		for i, row := range rows {
+			items[i] = map[string]any{"id": row.ID, "previous": row.Content}
+		}
+		return e.request("POST", "/rooms/"+e.room+"/messages/batch", map[string]any{"expected_pm_id": e.pm, "request_id": requestID, "items": items}, e.token)
+	}
+	getPage := func(t *testing.T, e *roomEditHTTP) (db.RoomQueuePage, []byte) {
+		t.Helper()
+		status, raw := e.request("GET", "/rooms/"+e.room+"/queue?expected_pm_id="+e.pm, nil, e.token)
+		var page db.RoomQueuePage
+		if err := json.Unmarshal(raw, &page); err != nil || status != 200 {
+			t.Fatalf("GET queue %d %s %v", status, raw, err)
+		}
+		return page, raw
+	}
+	counts := func(t *testing.T, e *roomEditHTTP) (receipts, batches int) {
+		t.Helper()
+		if err := e.d.QueryRow(`SELECT count(*) FROM input_receipts WHERE session_id=?`, e.pm).Scan(&receipts); err != nil {
+			t.Fatal(err)
+		}
+		if err := e.d.QueryRow(`SELECT count(*) FROM queue_batches WHERE session_id=?`, e.pm).Scan(&batches); err != nil {
+			t.Fatal(err)
+		}
+		return receipts, batches
+	}
+
+	t.Run("contiguous posts", func(t *testing.T) {
+		e := newRoomEditHTTP(t)
+		if err := e.d.SetQueuePaused(e.pm, true); err != nil {
+			t.Fatal(err)
+		}
+		for _, id := range []string{"a", "b"} {
+			if err := e.d.AcceptRoomInput(e.room, e.pm, id, id, nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+		page, raw := getPage(t, e)
+		if !page.BatchReady || len(page.Queue) != 2 {
+			t.Fatalf("連續應可一起送：ready=%v %s", page.BatchReady, raw)
+		}
+		rows, err := e.d.ListQueuedMessages(e.pm)
+		if err != nil {
+			t.Fatal(err)
+		}
+		status, body := postBatch(t, e, "http-ready", rows)
+		if status != 202 {
+			t.Fatalf("連續 HTTP 應 202：%d %s", status, body)
+		}
+	})
+	t.Run("hidden report does not post and does not leak", func(t *testing.T) {
+		e := newRoomEditHTTP(t)
+		if err := e.d.SetQueuePaused(e.pm, true); err != nil {
+			t.Fatal(err)
+		}
+		if err := e.d.AcceptRoomInput(e.room, e.pm, "a", "甲", nil); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.d.EnqueueMessageFromCancelQuota(e.pm, "SECRET-REPORT", "room-report:"+e.room, e.worker); err != nil {
+			t.Fatal(err)
+		}
+		if err := e.d.AcceptRoomInput(e.room, e.pm, "b", "乙", nil); err != nil {
+			t.Fatal(err)
+		}
+		before, err := e.d.ListQueuedMessages(e.pm)
+		if err != nil {
+			t.Fatal(err)
+		}
+		receipts, batches := counts(t, e)
+		page, raw := getPage(t, e)
+		if page.BatchReady || len(page.Queue) != 2 {
+			t.Fatalf("夾回報應不可一起送：ready=%v %s", page.BatchReady, raw)
+		}
+		for _, hidden := range []string{"SECRET-REPORT", "room-report", e.worker} {
+			if strings.Contains(string(raw), hidden) {
+				t.Fatalf("HTTP 快照洩漏 %q", hidden)
+			}
+		}
+		status, body := postBatch(t, e, "http-hidden", []db.QueuedMessage{before[0], before[2]})
+		if status != 403 || !strings.Contains(string(body), "forbidden") {
+			t.Fatalf("伺服器再驗應拒絕：%d %s", status, body)
+		}
+		after, err := e.d.ListQueuedMessages(e.pm)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r2, b2 := counts(t, e)
+		if !reflect.DeepEqual(before, after) || receipts != r2 || batches != b2 {
+			t.Fatal("403 後佇列、receipt 或 batch 被改寫")
+		}
+		editStatus, _ := e.request("PATCH", fmt.Sprintf("/rooms/%s/messages/%d", e.room, before[0].ID), map[string]string{"expected_pm_id": e.pm, "previous": before[0].Content, "content": "草稿仍在"}, e.token)
+		if editStatus != 204 {
+			t.Fatalf("拒絕後仍應可編輯草稿：%d", editStatus)
+		}
+	})
+	t.Run("snapshot race keeps the server refusal", func(t *testing.T) {
+		e := newRoomEditHTTP(t)
+		if err := e.d.SetQueuePaused(e.pm, true); err != nil {
+			t.Fatal(err)
+		}
+		if err := e.d.AcceptRoomInput(e.room, e.pm, "a", "甲", nil); err != nil {
+			t.Fatal(err)
+		}
+		other, err := e.d.CreateSession("other", "", t.TempDir(), "default", "room-edit-fake", nil, "agent")
+		if err != nil {
+			t.Fatal(err)
+		}
+		gap, err := e.d.EnqueueMessage(other.ID, "GAP", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.d.Exec(`DELETE FROM queued_messages WHERE id=?`, gap.ID); err != nil {
+			t.Fatal(err)
+		}
+		if err := e.d.AcceptRoomInput(e.room, e.pm, "b", "乙", nil); err != nil {
+			t.Fatal(err)
+		}
+		page, raw := getPage(t, e)
+		if !page.BatchReady || len(page.Queue) != 2 || page.Queue[1].ID-page.Queue[0].ID <= 1 {
+			t.Fatalf("別 session 的全域 ID 空隙不該擋：ready=%v %s", page.BatchReady, raw)
+		}
+		if _, err := e.d.Exec(`INSERT INTO queued_messages(id, session_id, content, author, source_session_id, attachment_ids) VALUES(?, ?, 'RACE-SECRET', ?, ?, '[]')`, gap.ID, e.pm, "room-report:"+e.room, e.worker); err != nil {
+			t.Fatal(err)
+		}
+		status, body := postBatch(t, e, "http-race", []db.QueuedMessage{{ID: page.Queue[0].ID, Content: page.Queue[0].Content}, {ID: page.Queue[1].ID, Content: page.Queue[1].Content}})
+		if status != 403 {
+			t.Fatalf("快照後插入應被交易拒絕：%d %s", status, body)
+		}
+		var pending int
+		if err := e.d.QueryRow(`SELECT count(*) FROM queue_batches WHERE session_id=? AND state='pending'`, e.pm).Scan(&pending); err != nil {
+			t.Fatal(err)
+		}
+		if pending != 0 {
+			t.Fatal("競爭失敗留下 pending batch")
+		}
+		again, _ := getPage(t, e)
+		if again.BatchReady || strings.Contains(string(mustJSON(t, again)), "RACE-SECRET") {
+			t.Fatal("競爭後重新讀取仍不可一起送，且不得洩漏")
+		}
+	})
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

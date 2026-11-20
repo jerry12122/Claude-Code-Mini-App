@@ -565,8 +565,33 @@ function queueEditChecks() {
   assert.ok(/<textarea/.test(bubble) && /htmlFor=\{id\}/.test(bubble) && !/onKeyDown/.test(bubble.slice(bubble.indexOf('function RoomQueueEditor'), bubble.indexOf('const RoomMessageBubble'))), '原生 textarea＋label，不攔截 Enter／IME');
 }
 
+function batchHintChecks() {
+  const src = read('hooks/useRoomTimeline.js');
+  const start = src.indexOf('function roomQueuePageHint');
+  const end = src.indexOf('function useRoomQueue');
+  if (start < 0 || end < start) throw new Error('roomQueuePageHint 尚未提供第一頁能力提示');
+  vm.runInContext(src.slice(start, end), ctx);
+  const hint = vm.runInContext('({ roomQueuePageHint, roomQueueKeepHint, roomQueueHintForScope })', ctx);
+  assert.equal(hint.roomQueuePageHint(null), null);
+  assert.equal(hint.roomQueuePageHint({}), null);
+  assert.equal(hint.roomQueuePageHint({ batch_ready: false }), false);
+  assert.equal(hint.roomQueuePageHint({ batch_ready: true }), true);
+  assert.equal(hint.roomQueueKeepHint(false, { batch_ready: true }, false), false);
+  assert.equal(hint.roomQueueKeepHint(null, { batch_ready: true }, true), true);
+  assert.equal(hint.roomQueueHintForScope({ scope: 'pm-1', ready: true, batchReady: false }, 'pm-1'), false);
+  assert.equal(hint.roomQueueHintForScope({ scope: 'pm-1', ready: true, batchReady: true }, 'pm-2'), null);
+  assert.equal(hint.roomQueueHintForScope({ scope: 'pm-1', ready: false, batchReady: true }, 'pm-1'), null);
+  const view = read('session/RoomView.js');
+  assert.ok(/queueState\.batchReady !== true/.test(view), '缺提示或不可批次時不得送出');
+  const controls = read('session/RoomControls.js');
+  assert.ok(controls.includes('這幾則中間有其他來源訊息，無法一起送；會依原順序執行'), '不可批次要有可讀原因');
+  assert.ok(controls.includes('無法確認能否一起送，請重新同步'), '未知提示要要求重新同步');
+  assert.ok(/aria-disabled="true"/.test(controls) && /aria-describedby=\{reasonId\}/.test(controls), '原因要能被聚焦讀到');
+}
+
 (async () => {
   queueEditChecks();
+  batchHintChecks();
   await pollerScenarios();
   staticChecks();
   console.log('rooms checks passed');

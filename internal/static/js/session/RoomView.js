@@ -169,7 +169,7 @@ function RoomView({ roomId, sessions, onClose, onOpenSession }) {
     if (queueBusy.current || editRef.current || !queueState.ready) return;
     const expectedPm = pmIdRef.current, scope = operationScopeRef.current;
     const items = queueRows.slice(0, 100);
-    if (!batchId && (items.length < 2 || queueRows.some(q => q.batch_id))) return;
+    if (!batchId && (queueState.batchReady !== true || items.length < 2 || queueRows.some(q => q.batch_id))) return;
     queueBusy.current = true; setBatchBusy(true); setBatchError('');
     try {
       const res = await apiFetch(roomUrl(roomId) + '/messages/batch' + (batchId ? '/' + encodeURIComponent(batchId) : ''), {
@@ -418,7 +418,7 @@ function RoomView({ roomId, sessions, onClose, onOpenSession }) {
               </button>
             ) : null}
           </div>
-          {pm && !gone ? <RoomQueuePanel queue={queueRows} error={queueState.error || batchError} busy={batchBusy} ready={queueState.ready}
+          {pm && !gone ? <RoomQueuePanel queue={queueRows} error={queueState.error || batchError} busy={batchBusy} ready={queueState.ready} batchReady={queueState.batchReady}
             edit={edit} editPresent={editPresent} editApi={editApi} onBatch={changeBatch} onRefresh={refreshQueue}
             locals={state.messages.filter(m => m.local && m.delivery !== 'queued' && !queueRows.some(q => q.input_request_id === m.input_request_id))} /> : null}
           {pm && !gone ? <RoomComposer roomId={roomId} pm={pm} members={members} sessions={sessions} onDelivery={admitLocal} onDeliveryPatch={patchLocal}

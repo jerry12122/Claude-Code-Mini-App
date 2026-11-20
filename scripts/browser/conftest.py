@@ -82,7 +82,7 @@ def app(tmp_path_factory):
                 processes.append(proxy)
                 base = proxy.stdout.readline().strip()
                 assert base.startswith("https://127.0.0.1:"), "TLS fixture failed to start"
-            yield {"url": base, "password": password}
+            yield {"url": base, "password": password, "root": str(root)}
         finally:
             for child in reversed(processes):
                 child.terminate()

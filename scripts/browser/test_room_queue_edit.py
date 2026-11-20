@@ -6,6 +6,7 @@ PM 以 fake CLI 的 PERM 關鍵字卡在待授權，之後經 composer 同一條
 import json
 import os
 import re
+import sqlite3
 import uuid
 from pathlib import Path
 
@@ -411,3 +412,51 @@ def test_mobile_keyboard_and_touch_targets(page, login, made_rooms, width):
     page.keyboard.press("Enter")
     expect(editor).to_have_count(0)
     assert len(patches) == 1 and patches[0]["content"] == "第一行\n第二行"
+
+
+def test_hidden_source_blocks_batch_without_leaking(page, login, made_rooms, app):
+    """夾著隱藏回報時，一起送留在畫面上但不能送出，回應也不含來源。"""
+    from playwright.sync_api import TimeoutError as PlaywrightTimeout
+
+    secret = "SECRET-REPORT-" + uuid.uuid4().hex
+    ids, screen, _ = _setup(page, login, made_rooms, "夾層-", ("排隊甲",))
+    queue = screen.get_by_role("region", name="排隊中的訊息", exact=True)
+    expect(queue.get_by_role("button", name="一起送", exact=True)).to_have_count(0)
+    db = Path(app["root"]) / "app.db"
+    con = sqlite3.connect(f"file:{db}?mode=rw", uri=True, timeout=5)
+    try:
+        con.execute("PRAGMA busy_timeout=5000")
+        con.execute(
+            "INSERT INTO queued_messages(session_id, content, author, source_session_id, attachment_ids) VALUES (?, ?, ?, ?, '[]')",
+            (ids["pm"], secret, "room-report:" + ids["room"], ids["worker"]),
+        )
+        con.commit()
+    finally:
+        con.close()
+    _accept(page, ids, "排隊乙")
+    page.evaluate("() => window.dispatchEvent(new Event('miniapp:rooms-changed'))")
+    expect(screen.locator("article[data-queued='true']").filter(has_text="排隊乙")).to_be_visible(timeout=30000)
+    button = queue.get_by_role("button", name="一起送", exact=True)
+    expect(button).to_have_attribute("aria-disabled", "true")
+    expect(queue.get_by_role("status").filter(has_text="這幾則中間有其他來源訊息，無法一起送；會依原順序執行")).to_be_visible()
+    for trigger in ("click", "Enter", "Space"):
+        with pytest.raises(PlaywrightTimeout):
+            with page.expect_request(lambda r: r.method == "POST" and "/messages/batch" in r.url, timeout=1000):
+                if trigger == "click":
+                    button.click()
+                else:
+                    button.focus()
+                    page.keyboard.press(trigger)
+    expect(queue.get_by_role("button", name="編輯排隊訊息").first).to_be_enabled()
+    raw = page.evaluate("""async ({room, pm}) => {
+      const res = await apiFetch('/rooms/' + room + '/queue?expected_pm_id=' + encodeURIComponent(pm) + '&limit=100');
+      if (!res.ok) throw new Error(await res.text());
+      return await res.text();
+    }""", {"room": ids["room"], "pm": ids["pm"]})
+    for hidden in (secret, ids["worker"], "room-report"):
+        assert hidden not in raw, hidden
+    assert '"batch_ready":false' in raw
+    out = Path(os.environ.get("ROOM_QUEUE_FIX_ARTIFACTS", str(OUT)))
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "hidden-queue.json").write_text(raw, encoding="utf-8")
+    page.screenshot(path=str(out / "hidden-batch.png"))

@@ -5,6 +5,20 @@
 
 const ROOMS_CHANGED_EVENT = 'miniapp:rooms-changed';
 
+function roomQueuePageHint(page) {
+  if (!page || typeof page.batch_ready !== 'boolean') return null;
+  return page.batch_ready;
+}
+
+function roomQueueKeepHint(kept, page, firstPage) {
+  return firstPage ? roomQueuePageHint(page) : kept;
+}
+
+function roomQueueHintForScope(snapshot, scope) {
+  if (!snapshot || snapshot.scope !== scope || snapshot.ready !== true) return null;
+  return typeof snapshot.batchReady === 'boolean' ? snapshot.batchReady : null;
+}
+
 function useRoomQueue(roomId, pmId) {
   const scope = roomId + ':' + pmId;
   const current = useRef(scope); current.current = scope;
@@ -18,7 +32,7 @@ function useRoomQueue(roomId, pmId) {
     requestRef.current?.abort();
     const controller = new AbortController(); requestRef.current = controller;
     try {
-      let after = 0, rows = [], more;
+      let after = 0, rows = [], more, hint = null, firstPage = true;
       do {
         const res = await apiFetch(roomUrl(roomId) + '/queue?expected_pm_id=' + encodeURIComponent(pmId) + '&limit=100&after_id=' + after, { signal: controller.signal });
         if (!res.ok) {
@@ -28,15 +42,17 @@ function useRoomQueue(roomId, pmId) {
         const data = await res.json();
         if (current.current !== scope || mine !== generation.current) return;
         if (data.pm_id !== pmId) throw new Error('PM 已變更，請重新同步');
+        hint = roomQueueKeepHint(hint, data, firstPage);
+        firstPage = false;
         rows.push(...(data.queue || []).map(q => ({ ...q, pm_id: pmId })));
         more = data.has_more;
         if (more && !(data.next_after_id > after)) throw new Error('佇列分頁無法繼續，請重新同步');
         after = data.next_after_id;
       } while (more);
-      setSnapshot({ scope, rows, error: '', ready: true });
+      setSnapshot({ scope, rows, error: '', ready: true, batchReady: hint });
       return rows;
     } catch (err) {
-      if (!controller.signal.aborted && current.current === scope && mine === generation.current) setSnapshot(s => ({ scope, rows: s.scope === scope ? s.rows : [], error: err.message, ready: false }));
+      if (!controller.signal.aborted && current.current === scope && mine === generation.current) setSnapshot(s => ({ scope, rows: s.scope === scope ? s.rows : [], error: err.message, ready: false, batchReady: null }));
     }
   }, [roomId, pmId, scope]);
   useEffect(() => {
@@ -45,7 +61,7 @@ function useRoomQueue(roomId, pmId) {
     window.addEventListener(ROOMS_CHANGED_EVENT, refresh);
     return () => { ++generation.current; requestRef.current?.abort(); stop(); window.removeEventListener(ROOMS_CHANGED_EVENT, refresh); };
   }, [refresh]);
-  return { rows: snapshot.scope === scope ? snapshot.rows : [], error: snapshot.scope === scope ? snapshot.error : '', ready: snapshot.scope === scope && snapshot.ready, refresh };
+  return { rows: snapshot.scope === scope ? snapshot.rows : [], error: snapshot.scope === scope ? snapshot.error : '', ready: snapshot.scope === scope && snapshot.ready, batchReady: roomQueueHintForScope(snapshot, scope), refresh };
 }
 
 async function roomApiError(res, fallback) {
