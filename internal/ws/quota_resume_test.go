@@ -462,7 +462,8 @@ func TestQuotaResumeHandlerFinishDoesNotRearmAfterNewInput(t *testing.T) {
 	fakeGate <- errors.New("usage limit")
 	waitFor(t, "not rearmed", func() bool {
 		state, at, _, err := database.GetQuotaResume(s.ID)
-		return err == nil && !taskIsActive(s.ID) && state == db.QuotaResumeNone && at == "" && queueText(t, database, s.ID) == "B,C"
+		paused, pauseErr := database.QueuePaused(s.ID)
+		return err == nil && pauseErr == nil && paused && !taskIsActive(s.ID) && state == db.QuotaResumeNone && at == "" && queueText(t, database, s.ID) == "B,C"
 	})
 	paused, err := database.QueuePaused(s.ID)
 	if err != nil || !paused {
