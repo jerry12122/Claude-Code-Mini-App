@@ -300,44 +300,12 @@ func (h *SessionHandler) Patch(c *fiber.Ctx) error {
 			categoryID = &id
 		}
 	}
-	markManual := false
-	clearManual := false
-	var clearRevision int64
-	if body.ManualUnread != nil {
-		token := bytes.TrimSpace(body.ManualUnread)
-		switch {
-		case bytes.Equal(token, []byte("true")):
-			markManual = true
-		case bytes.Equal(token, []byte("false")):
-			rev, ok := parseNonNegativeInt(body.ManualUnreadRevision)
-			if !ok {
-				return c.Status(400).JSON(fiber.Map{"error": "manual_unread_revision 必須是非負整數"})
-			}
-			clearManual = true
-			clearRevision = rev
-		default:
-			return c.Status(400).JSON(fiber.Map{"error": "manual_unread 必須是 true 或 false"})
-		}
+	markManual, clearManual, clearRevision, status, msg := readManualUnreadIntent(body.ManualUnread, body.ManualUnreadRevision)
+	if status != 0 {
+		return c.Status(status).JSON(fiber.Map{"error": msg})
 	}
-	if body.ReadMessageIDs != nil {
-		if clearManual {
-			if len(*body.ReadMessageIDs) > 1000 {
-				return c.Status(400).JSON(fiber.Map{"error": "read_message_ids 最多 1000 個"})
-			}
-			for _, id := range *body.ReadMessageIDs {
-				if id <= 0 {
-					return c.Status(400).JSON(fiber.Map{"error": "訊息 ID 必須為正整數"})
-				}
-			}
-		} else if body.MarkRead == nil || !*body.MarkRead || len(*body.ReadMessageIDs) == 0 || len(*body.ReadMessageIDs) > 1000 {
-			return c.Status(400).JSON(fiber.Map{"error": "read_message_ids 需搭配 mark_read 並包含 1 到 1000 個訊息 ID"})
-		} else {
-			for _, id := range *body.ReadMessageIDs {
-				if id <= 0 {
-					return c.Status(400).JSON(fiber.Map{"error": "訊息 ID 必須為正整數"})
-				}
-			}
-		}
+	if status, msg = validateReadMessageIDs(body.ReadMessageIDs, body.MarkRead, clearManual); status != 0 {
+		return c.Status(status).JSON(fiber.Map{"error": msg})
 	}
 	if body.Name == nil && body.CliExtraArgs == nil && body.MarkRead == nil && body.Pinned == nil && !setCategory && !markManual && !clearManual {
 		return c.Status(400).JSON(fiber.Map{"error": "name、cli_extra_args、mark_read 或 pinned 至少指定一項"})
@@ -413,41 +381,8 @@ func (h *SessionHandler) Patch(c *fiber.Ctx) error {
 			h.db.OnSessionChange() // 通知其他裝置／側欄
 		}
 	}
-	if markManual {
-		if err := h.db.MarkSessionManualUnread(id); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return c.Status(404).JSON(fiber.Map{"error": "session 不存在"})
-			}
-			return c.Status(500).JSON(fiber.Map{"error": "手動標記資料庫錯誤"})
-		}
-		if h.db.OnSessionChange != nil {
-			h.db.OnSessionChange()
-		}
-	}
-	if clearManual {
-		var ids []int64
-		if body.ReadMessageIDs != nil {
-			ids = *body.ReadMessageIDs
-		}
-		res, err := h.db.ApplyObservedReads([]db.ObservedRead{{
-			ID: id, Revision: clearRevision, MessageIDs: ids,
-		}})
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return c.Status(404).JSON(fiber.Map{"error": "session 不存在"})
-			}
-			return c.Status(500).JSON(fiber.Map{"error": "手動標記資料庫錯誤"})
-		}
-		if res.Changed && h.db.OnSessionChange != nil {
-			h.db.OnSessionChange()
-		}
-		if res.Conflict {
-			state := res.States[0]
-			return c.Status(409).JSON(fiber.Map{
-				"error": "manual_unread_revision 已變更",
-				"id":    state.ID, "manual_unread": state.ManualUnread, "manual_unread_revision": state.Revision,
-			})
-		}
+	if done, err := h.writeManualUnread(c, id, markManual, clearManual, clearRevision, body.ReadMessageIDs); done || err != nil {
+		return err
 	}
 	s, err := h.db.GetSession(id)
 	if err != nil {
@@ -501,74 +436,6 @@ func (h *SessionHandler) ReadAll(c *fiber.Ctx) error {
 		return c.Status(409).JSON(payload)
 	}
 	return c.JSON(payload)
-}
-
-func parseNonNegativeInt(raw json.RawMessage) (int64, bool) {
-	raw = bytes.TrimSpace(raw)
-	// Go 1.26 的 json.Number 會接受數字形狀的字串。revision 只收 JSON 數字字面量。
-	if len(raw) == 0 || raw[0] < '0' || raw[0] > '9' {
-		return 0, false
-	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	var n json.Number
-	if err := dec.Decode(&n); err != nil || dec.More() {
-		return 0, false
-	}
-	i, err := n.Int64()
-	if err != nil || i < 0 {
-		return 0, false
-	}
-	return i, true
-}
-
-func parseObservedReadAll(raw []byte) ([]db.ObservedRead, string) {
-	var top map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &top); err != nil {
-		return nil, "sessions 必須是觀察清單"
-	}
-	sessions, ok := top["sessions"]
-	if !ok || bytes.Equal(bytes.TrimSpace(sessions), []byte("null")) {
-		return nil, "sessions 必須是觀察清單"
-	}
-	var rows []map[string]json.RawMessage
-	if err := json.Unmarshal(sessions, &rows); err != nil || rows == nil {
-		return nil, "sessions 必須是觀察清單"
-	}
-	if rows == nil {
-		return nil, "sessions 必須是觀察清單"
-	}
-	seen := map[string]struct{}{}
-	out := make([]db.ObservedRead, 0, len(rows))
-	for _, row := range rows {
-		var id string
-		if json.Unmarshal(row["id"], &id) != nil || strings.TrimSpace(id) == "" {
-			return nil, "sessions.id 必須是非空字串"
-		}
-		if _, dup := seen[id]; dup {
-			return nil, "sessions.id 不可重複"
-		}
-		seen[id] = struct{}{}
-		rev, ok := parseNonNegativeInt(row["manual_unread_revision"])
-		if !ok {
-			return nil, "manual_unread_revision 必須是非負整數"
-		}
-		idsRaw, ok := row["read_message_ids"]
-		if !ok || bytes.Equal(bytes.TrimSpace(idsRaw), []byte("null")) {
-			return nil, "read_message_ids 必須是訊息 ID 陣列"
-		}
-		var ids []int64
-		if json.Unmarshal(idsRaw, &ids) != nil || len(ids) > 1000 {
-			return nil, "read_message_ids 必須是最多 1000 個正整數"
-		}
-		for _, msgID := range ids {
-			if msgID <= 0 {
-				return nil, "訊息 ID 必須為正整數"
-			}
-		}
-		out = append(out, db.ObservedRead{ID: id, Revision: rev, MessageIDs: ids})
-	}
-	return out, ""
 }
 
 func (h *SessionHandler) Messages(c *fiber.Ctx) error {

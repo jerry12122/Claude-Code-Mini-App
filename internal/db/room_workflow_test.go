@@ -369,24 +369,40 @@ func TestRoomJobRecordsLegacyMigration(t *testing.T) {
 	defer raw.Close()
 	d := &DB{DB: raw}
 	requireRoomTestOK(t, d.runMigrations(migrations[:4]))
-	pm := roomSession(t, d, "PM", "claude")
-	worker := roomSession(t, d, "現在的名稱", "claude")
-	room, err := d.CreateRoom("old", []RoomMember{{SessionID: pm.ID, Role: RoomRolePM}, {SessionID: worker.ID, Role: RoomRoleWorker}})
+	// schema 4 尚無 category_id。用當時合法的 INSERT 種舊列，再跑真正的後續遷移。
+	_, err = d.Exec(`INSERT INTO sessions (id, name, agent_type) VALUES ('pm', 'PM', 'claude'), ('worker', '現在的名稱', 'claude')`)
+	requireRoomTestOK(t, err)
+	_, err = d.Exec(`INSERT INTO rooms (id, name) VALUES ('old', 'old')`)
+	requireRoomTestOK(t, err)
+	_, err = d.Exec(`INSERT INTO room_members (room_id, session_id, role, position) VALUES ('old', 'pm', 'pm', 0), ('old', 'worker', 'worker', 1)`)
 	requireRoomTestOK(t, err)
 	for _, id := range []int{11, 12, 13} {
-		_, err := d.Exec(`INSERT INTO room_jobs(id,room_id,pm_id,worker_id,outcome,reported) VALUES(?,?,?,?,'done',1)`, id, room.ID, pm.ID, worker.ID)
+		_, err = d.Exec(`INSERT INTO room_jobs(id,room_id,pm_id,worker_id,outcome,reported) VALUES(?,?,?,?,'done',1)`, id, "old", "pm", "worker")
 		requireRoomTestOK(t, err)
 	}
-	requireRoomTestOK(t, d.AddMessage(worker.ID, "user", "歷史原派工", "room-job:11"))
-	reply, err := d.CreatePendingMessage(worker.ID)
+	_, err = d.Exec(`INSERT INTO messages (session_id, role, content, status, author) VALUES ('worker', 'user', '歷史原派工', 'done', 'room-job:11')`)
 	requireRoomTestOK(t, err)
-	requireRoomTestOK(t, d.AppendMessageContent(reply, "歷史結果"))
+	res, err := d.Exec(`INSERT INTO messages (session_id, role, content, status) VALUES ('worker', 'claude', '歷史結果', 'done')`)
+	requireRoomTestOK(t, err)
+	reply, err := res.LastInsertId()
+	requireRoomTestOK(t, err)
 	_, err = d.Exec("UPDATE room_jobs SET assistant_id=? WHERE id=11", reply)
 	requireRoomTestOK(t, err)
-	_, err = d.EnqueueMessage(worker.ID, "仍在佇列的原派工", "room-job:12")
+	_, err = d.Exec(`INSERT INTO queued_messages (session_id, content, author) VALUES ('worker', '仍在佇列的原派工', 'room-job:12')`)
 	requireRoomTestOK(t, err)
 	requireRoomTestOK(t, d.runMigrations(migrations))
-	board, err := d.RoomBoard(room.ID)
+	var version int
+	requireRoomTestOK(t, d.QueryRow(`PRAGMA user_version`).Scan(&version))
+	if version != len(migrations) {
+		t.Fatalf("升級後 user_version=%d，want %d", version, len(migrations))
+	}
+	var category sql.NullString
+	var manual, revision int
+	requireRoomTestOK(t, d.QueryRow(`SELECT category_id, manual_unread, manual_unread_revision FROM sessions WHERE id='worker'`).Scan(&category, &manual, &revision))
+	if category.Valid || manual != 0 || revision != 0 {
+		t.Fatalf("升級後新欄預設 category=%v manual=%d revision=%d", category, manual, revision)
+	}
+	board, err := d.RoomBoard("old")
 	requireRoomTestOK(t, err)
 	if len(board.Jobs) != 3 || board.Jobs[0].TaskText != "" || board.Jobs[1].TaskText != "仍在佇列的原派工" || board.Jobs[2].TaskText != "歷史原派工" || board.Jobs[2].ResultText != "歷史結果" {
 		t.Fatalf("舊資料回填錯誤：%+v", board.Jobs)

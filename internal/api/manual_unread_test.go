@@ -354,18 +354,18 @@ func listManualRaw(t *testing.T, app *fiber.App) string {
 }
 
 type manualView struct {
-	ID                     string  `json:"id"`
-	Name                   string  `json:"name"`
-	AgentType              string  `json:"agent_type"`
-	WorkDir                string  `json:"work_dir"`
-	LastActive             string  `json:"last_active"`
-	LastReadAt             string  `json:"last_read_at"`
-	Status                 string  `json:"status"`
-	Pinned                 bool    `json:"pinned"`
-	CategoryID             *string `json:"category_id"`
-	UnreadCount            int     `json:"unread_count"`
-	ManualUnread           bool    `json:"manual_unread"`
-	ManualUnreadRevision   int     `json:"manual_unread_revision"`
+	ID                   string  `json:"id"`
+	Name                 string  `json:"name"`
+	AgentType            string  `json:"agent_type"`
+	WorkDir              string  `json:"work_dir"`
+	LastActive           string  `json:"last_active"`
+	LastReadAt           string  `json:"last_read_at"`
+	Status               string  `json:"status"`
+	Pinned               bool    `json:"pinned"`
+	CategoryID           *string `json:"category_id"`
+	UnreadCount          int     `json:"unread_count"`
+	ManualUnread         bool    `json:"manual_unread"`
+	ManualUnreadRevision int     `json:"manual_unread_revision"`
 }
 
 func decodeManual(t *testing.T, body []byte) manualView {
