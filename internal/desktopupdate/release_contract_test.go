@@ -1,12 +1,16 @@
 package desktopupdate
 
 import (
+	"archive/tar"
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -120,6 +124,14 @@ func TestReleaseDistContract(t *testing.T) {
 		t.Error("ZIP 內沒有 claude-miniapp-desktop.exe")
 	}
 
+	problems, _, err := linuxArchiveModeProblems(filepath.Join(dir, tgzName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, problem := range problems {
+		t.Error(problem)
+	}
+
 	// provider 端：用真實 checksums.txt 走 Check → Download
 	f := newFixture(t)
 	f.setLatest(stableRelease(ver,
@@ -151,4 +163,139 @@ func TestReleaseDistContract(t *testing.T) {
 	if !bytes.Equal(buf.Bytes(), exeBytes) {
 		t.Errorf("下載位元組與 dist 的 %s 不同", exeName)
 	}
+}
+
+type linuxArchiveMember struct {
+	Name  string
+	Mode  int64
+	Size  int64
+	Magic []byte
+}
+
+// linuxArchiveModeProblems 只讀 tar header。目錄維持 0755，頂層 claude-miniapp 必須 0755 且為 ELF；
+// 其他一般檔不得帶執行位。不把成員解到磁碟。
+func linuxArchiveModeProblems(tgzPath string) ([]string, linuxArchiveMember, error) {
+	f, err := os.Open(tgzPath)
+	if err != nil {
+		return nil, linuxArchiveMember{}, err
+	}
+	defer f.Close()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return nil, linuxArchiveMember{}, err
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	var problems []string
+	var binary linuxArchiveMember
+	found := 0
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, linuxArchiveMember{}, err
+		}
+		if hdr.Typeflag == tar.TypeXHeader || hdr.Typeflag == tar.TypeXGlobalHeader || hdr.Typeflag == tar.TypeGNULongName || hdr.Typeflag == tar.TypeGNULongLink {
+			continue
+		}
+		perm := hdr.Mode & 0o777
+		name := path.Clean(hdr.Name)
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if perm != 0o755 {
+				problems = append(problems, fmt.Sprintf("目錄 %s mode %04o，要 0755", name, perm))
+			}
+		case tar.TypeReg, tar.TypeRegA:
+			isBinary := strings.Count(name, "/") == 1 && path.Base(name) == "claude-miniapp"
+			if isBinary {
+				found++
+				magic := make([]byte, 4)
+				if _, err := io.ReadFull(tr, magic); err != nil {
+					return nil, linuxArchiveMember{}, err
+				}
+				binary = linuxArchiveMember{Name: name, Mode: perm, Size: hdr.Size, Magic: magic}
+				if perm != 0o755 {
+					problems = append(problems, fmt.Sprintf("Linux binary %s mode %04o，要 0755", name, perm))
+				}
+				if !bytes.HasPrefix(magic, []byte{0x7f, 'E', 'L', 'F'}) {
+					problems = append(problems, fmt.Sprintf("Linux binary %s 不是 ELF", name))
+				}
+				continue
+			}
+			if perm&0o111 != 0 {
+				problems = append(problems, fmt.Sprintf("非執行檔 %s mode %04o 不該有執行位", name, perm))
+			}
+		}
+	}
+	if found != 1 {
+		problems = append(problems, fmt.Sprintf("頂層 claude-miniapp 應恰有一個，實際 %d", found))
+	}
+	return problems, binary, nil
+}
+
+func TestLinuxArchiveHeaderModes(t *testing.T) {
+	write := func(t *testing.T, binaryMode, docMode int64) string {
+		t.Helper()
+		target := filepath.Join(t.TempDir(), "sample.tar.gz")
+		f, err := os.Create(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		gz := gzip.NewWriter(f)
+		tw := tar.NewWriter(gz)
+		add := func(hdr *tar.Header, body []byte) {
+			t.Helper()
+			if err := tw.WriteHeader(hdr); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := tw.Write(body); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := tw.WriteHeader(&tar.Header{Name: "pkg/", Mode: 0o755, Typeflag: tar.TypeDir}); err != nil {
+			t.Fatal(err)
+		}
+		if err := tw.WriteHeader(&tar.Header{Name: "pkg/docs/", Mode: 0o755, Typeflag: tar.TypeDir}); err != nil {
+			t.Fatal(err)
+		}
+		add(&tar.Header{Name: "pkg/claude-miniapp", Mode: binaryMode, Typeflag: tar.TypeReg, Size: 4}, []byte{0x7f, 'E', 'L', 'F'})
+		add(&tar.Header{Name: "pkg/README.md", Mode: docMode, Typeflag: tar.TypeReg, Size: 4}, []byte("docs"))
+		add(&tar.Header{Name: "pkg/config.example.yaml", Mode: 0o644, Typeflag: tar.TypeReg, Size: 3}, []byte("cfg"))
+		if err := tw.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := gz.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return target
+	}
+	t.Run("0755 binary keeps docs unexecutable", func(t *testing.T) {
+		problems, binary, err := linuxArchiveModeProblems(write(t, 0o755, 0o644))
+		if err != nil || len(problems) != 0 || binary.Mode != 0o755 || binary.Size != 4 {
+			t.Fatalf("err=%v problems=%v binary=%+v", err, problems, binary)
+		}
+	})
+	t.Run("0644 binary is rejected from the real header", func(t *testing.T) {
+		problems, binary, err := linuxArchiveModeProblems(write(t, 0o644, 0o644))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(problems) == 0 || binary.Mode != 0o644 {
+			t.Fatalf("缺執行位仍通過：%v %+v", problems, binary)
+		}
+	})
+	t.Run("executable doc is rejected", func(t *testing.T) {
+		problems, _, err := linuxArchiveModeProblems(write(t, 0o755, 0o755))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(problems) != 1 || !strings.Contains(problems[0], "README.md") {
+			t.Fatalf("文件被設成可執行時應拒絕：%v", problems)
+		}
+	})
 }

@@ -77,7 +77,22 @@ go version -m "$out/$desktop_name" | grep -q "vcs.revision=$sha" \
 # Linux：純 Go server，不含桌面
 stage "$l"
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "$stage_root/$l/claude-miniapp" ./cmd/server
-tar -czf "$out/$tgz_name" -C "$stage_root" "$l"
+# Windows 的 tar 會把 NTFS 一般檔記成 0644。tarfile 一次寫出 header：目錄 0755、目標 binary 0755、其餘一般檔 0644。
+MSYS_NO_PATHCONV=1 python - "$(winpath "$out/$tgz_name")" "$(winpath "$stage_root/$l")" "$l" <<'PY'
+import sys, tarfile
+dest, src, arc = sys.argv[1], sys.argv[2], sys.argv[3]
+
+def filt(info):
+    name = info.name.rstrip("/")
+    if info.isdir():
+        info.mode = 0o755
+    elif info.isreg():
+        info.mode = 0o755 if name.count("/") == 1 and name.endswith("/claude-miniapp") else 0o644
+    return info
+
+with tarfile.open(dest, "w:gz") as archive:
+    archive.add(src, arcname=arc, filter=filt)
+PY
 
 # checksums.txt 涵蓋所有程式資產（ZIP、tar.gz、桌面 EXE、Setup）
 (cd "$out" && sha256sum --text "$zip_name" "$tgz_name" "$desktop_name" "$setup_name" > checksums.txt)
