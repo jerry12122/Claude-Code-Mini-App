@@ -492,6 +492,11 @@ func runNormal(ctx context.Context, cfg *config.Config, ext ...isolatedExternal)
 		return c.JSON(fiber.Map{"failed": syncModelOptions(database)})
 	})
 	app.Get("/work-dirs", authMiddleware, sh.ListWorkDirs)
+	ch := api.NewSessionCategoryHandler(database)
+	app.Get("/session-categories", authMiddleware, ch.List)
+	app.Post("/session-categories", authMiddleware, ch.Create)
+	app.Patch("/session-categories/:id", authMiddleware, ch.Rename)
+	app.Delete("/session-categories/:id", authMiddleware, ch.Delete)
 
 	// 臨時共享聊天室：擁有者端走 authMiddleware；訪客加入頁與 join 不需驗證（join 靠 PIN＋限流＋鎖定）。
 	app.Post("/sessions/:id/shares", authMiddleware, shareH.Create)

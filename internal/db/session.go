@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"encoding/json"
 	"strings"
 
@@ -57,6 +58,14 @@ type Session struct {
 	LastErrorAt   string `json:"last_error_at,omitempty"`
 	// Pinned 為側欄釘選旗標；前端據此將 session 置頂分組。
 	Pinned bool `json:"pinned"`
+	// CategoryID 是此工作目錄內的單層分類；nil 表示未分類。訪客投影不帶這個欄位。
+	CategoryID *string `json:"category_id"`
+	// ManualUnread 是獨立於訊息收據的待回看標記。false 也要出現在 owner JSON。
+	ManualUnread bool `json:"manual_unread"`
+	// ManualUnreadRevision 由伺服器在每次成功標記時加 1。客戶端不能指定。
+	ManualUnreadRevision int `json:"manual_unread_revision"`
+	// ReadMessageIDs 是這次查詢裡已完成、尚未確認的訊息 ID。不落庫。
+	ReadMessageIDs []int64 `json:"read_message_ids"`
 }
 
 func (db *DB) CreateSession(name, description, workDir, permissionMode, agentType string, cliExtraArgs []string, inputMode string, disguiseAgent ...string) (*Session, error) {
@@ -113,7 +122,8 @@ func (db *DB) CreateSessionWithInstructions(name, description, workDir, permissi
 func (db *DB) GetSession(id string) (*Session, error) {
 	row := db.QueryRow(
 		`SELECT s.id, s.agent_type, s.agent_session_id, s.name, s.description, s.work_dir, s.permission_mode, s.allowed_tools, s.pending_denials, s.last_active, s.status, s.cli_extra_args, s.input_mode, s.shell_pending, s.active_model, s.active_model_source, s.active_model_at, s.model, s.effort, s.last_read_at, s.disguise_agent, s.last_error_text, s.last_error_at, s.pinned, s.system_instruction,
-		       s.global_instruction_text, s.global_instruction_mode,
+		       s.global_instruction_text, s.global_instruction_mode, s.category_id, s.manual_unread, s.manual_unread_revision,
+		       COALESCE((SELECT json_group_array(m.id ORDER BY m.id) FROM messages m WHERE m.session_id = s.id AND m.is_read = 0 AND m.status != 'pending' AND m.role != 'user' AND s.agent_type != 'telegram'), '[]'),
 		       (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.is_read = 0 AND m.status != 'pending' AND m.role != 'user' AND s.agent_type != 'telegram') AS unread_count
 		 FROM sessions s WHERE s.id = ?`, id,
 	)
@@ -123,7 +133,8 @@ func (db *DB) GetSession(id string) (*Session, error) {
 func (db *DB) ListSessions() ([]*Session, error) {
 	rows, err := db.Query(
 		`SELECT s.id, s.agent_type, s.agent_session_id, s.name, s.description, s.work_dir, s.permission_mode, s.allowed_tools, s.pending_denials, s.last_active, s.status, s.cli_extra_args, s.input_mode, s.shell_pending, s.active_model, s.active_model_source, s.active_model_at, s.model, s.effort, s.last_read_at, s.disguise_agent, s.last_error_text, s.last_error_at, s.pinned, s.system_instruction,
-		       s.global_instruction_text, s.global_instruction_mode,
+		       s.global_instruction_text, s.global_instruction_mode, s.category_id, s.manual_unread, s.manual_unread_revision,
+		       COALESCE((SELECT json_group_array(m.id ORDER BY m.id) FROM messages m WHERE m.session_id = s.id AND m.is_read = 0 AND m.status != 'pending' AND m.role != 'user' AND s.agent_type != 'telegram'), '[]'),
 		       (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.is_read = 0 AND m.status != 'pending' AND m.role != 'user' AND s.agent_type != 'telegram') AS unread_count
 		 FROM sessions s ORDER BY s.last_active DESC`,
 	)
@@ -352,11 +363,13 @@ func scanSession(s scanner) (*Session, error) {
 	var sess Session
 	var allowedTools string
 	var extraJSON string
+	var categoryID sql.NullString
+	var unreadIDs sql.NullString
 	err := s.Scan(
 		&sess.ID, &sess.AgentType, &sess.AgentSessionID, &sess.Name, &sess.Description,
 		&sess.WorkDir, &sess.PermissionMode, &allowedTools, &sess.PendingDenials, &sess.LastActive, &sess.Status, &extraJSON, &sess.InputMode, &sess.ShellPending,
 		&sess.ActiveModel, &sess.ActiveModelSource, &sess.ActiveModelAt, &sess.Model, &sess.Effort, &sess.LastReadAt, &sess.DisguiseAgent, &sess.LastErrorText, &sess.LastErrorAt, &sess.Pinned, &sess.SystemInstruction,
-		&sess.GlobalInstruction.Text, &sess.GlobalInstruction.Mode, &sess.UnreadCount,
+		&sess.GlobalInstruction.Text, &sess.GlobalInstruction.Mode, &categoryID, &sess.ManualUnread, &sess.ManualUnreadRevision, &unreadIDs, &sess.UnreadCount,
 	)
 	if err != nil {
 		return nil, err
@@ -380,6 +393,19 @@ func scanSession(s scanner) (*Session, error) {
 	}
 	if sess.InputMode == "" {
 		sess.InputMode = "agent"
+	}
+	if categoryID.Valid {
+		id := categoryID.String
+		sess.CategoryID = &id
+	}
+	sess.ReadMessageIDs = []int64{}
+	if unreadIDs.Valid && unreadIDs.String != "" && unreadIDs.String != "null" {
+		if err := json.Unmarshal([]byte(unreadIDs.String), &sess.ReadMessageIDs); err != nil {
+			return nil, err
+		}
+	}
+	if sess.ReadMessageIDs == nil {
+		sess.ReadMessageIDs = []int64{}
 	}
 	return &sess, nil
 }

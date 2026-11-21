@@ -23,6 +23,8 @@ var migrations = []migration{
 	{name: "queue_batches", upTx: migrateQueueBatches},
 	{name: "workflow_guards", upTx: migrateWorkflowGuards},
 	{name: "room_job_records", upTx: migrateRoomJobRecords},
+	{name: "session_categories", upTx: migrateSessionCategories},
+	{name: "manual_unread", upTx: migrateManualUnread},
 }
 
 // runMigrations 把資料庫從目前的 user_version 升到 len(list)。

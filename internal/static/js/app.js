@@ -132,6 +132,10 @@ function App() {
     return null;
   }, [secondarySessionId, knownSessionsMap, sidebarSortedSessions]);
 
+  const focusedId = activePane === 'secondary' ? secondarySessionId : primarySessionId;
+  const focusedSession = activePane === 'secondary' ? secondarySession : session;
+  noteManualUnreadFocus(focusedId, focusedSession && focusedSession.id === focusedId ? focusedSession.manual_unread_revision : undefined);
+
   // 外觀設定：先套本機快取避免 FOUC；登入後再 GET 伺服器 hydrate（必要時種子遷移）。
   useEffect(() => {
     applyAppearance(readStoredAppearance());
@@ -184,7 +188,7 @@ function App() {
     setMobileSessionList(false);
 
     if (s.id) {
-      setKnownSessionsMap((prev) => ({ ...prev, [s.id]: s }));
+      setKnownSessionsMap((prev) => ({ ...prev, [s.id]: mergeSessionRecord(prev[s.id], s) }));
     }
 
     if (targetPane === 'secondary') {
@@ -212,7 +216,7 @@ function App() {
     (tabGroups.groups[0].tabs.length > 0 && !tabGroups.groups[0].tabs.includes(s.id));
   const openInOtherPane = (s, sourceGroup = tabGroups.focused) => {
     if (!s?.id || !canOpenOtherPane(s)) return;
-    setKnownSessionsMap(previous => ({ ...previous, [s.id]: { ...previous[s.id], ...s } }));
+    setKnownSessionsMap(previous => ({ ...previous, [s.id]: mergeSessionRecord(previous[s.id], s) }));
     if (tabGroups.groups.length === 1) {
       dispatchTabGroups({ type: 'splitDrop', sessionId: s.id, edge: 'right' });
       return;
@@ -423,7 +427,7 @@ function App() {
     setKnownSessionsMap((prev) => {
       const next = { ...prev };
       for (const s of list) {
-        next[s.id] = s;
+        next[s.id] = mergeSessionRecord(prev[s.id], s);
       }
       return next;
     });

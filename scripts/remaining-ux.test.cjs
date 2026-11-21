@@ -81,8 +81,11 @@ async function main() {
     AbortController, Set,
     mountedRef: { current: true }, loadGenerationRef: { current: 0 }, loadControllerRef: { current: null },
     pendingDelRef: { current: new Set() }, onLoadedRef: { current: () => callbacks++ },
+    collapsedRef: { current: true },
     setListLoading: value => { loading = value; }, setListLoaded: value => { loaded = value; },
-    setListError: value => { error = value; }, setSessions: value => { rows = value; },
+    setListError: value => { error = value; },
+    setSessions: value => { rows = typeof value === 'function' ? value(rows) : value; },
+    mergeListedSessions: (_prev, next) => next,
     notifyStatusChanges() {}, sortSessionsByWorkDirThenName: value => value,
     apiFetch: (_url, options) => new Promise(resolve => { requests.push({ resolve, options }); }),
   });

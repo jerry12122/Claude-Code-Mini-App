@@ -20,7 +20,7 @@ styles = "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", html, re.S))
 config = re.search(r"<script>\s*(tailwind.config = .*?)</script>", html, re.S)[1]
 source = "\n".join((root / "js" / name).read_text(encoding="utf-8") for name in [
     "hooks/messageRows.js", "ui/uiAtoms.js", "ui/ContextMenu.js", "chat/MessageActions.js",
-    "ui/SessionTabs.js", "session/SessionView.js",
+    "ui/SessionTabs.js", "session/SessionCategories.js", "session/manualUnread.js", "session/SessionView.js",
 ])
 harness = r"""
 const {useState,useEffect,useLayoutEffect,useRef,useCallback,useMemo}=React;

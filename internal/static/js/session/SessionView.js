@@ -6,6 +6,11 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
   const closeSessionMenu = useCallback(() => setSessionMenu(null), []);
   useEffect(() => setSessionMenu(null), [activeSessionId, collapsed]);
   const [sessions, setSessions]   = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [dirMenu, setDirMenu] = useState(null);
+  const [categoryMenu, setCategoryMenu] = useState(null);
+  const [categoryName, setCategoryName] = useState(null);
+  const [categoryDelete, setCategoryDelete] = useState(null);
   const [sessionSearch, setSessionSearch] = useState('');
   const [sessionSort, setSessionSort]     = useState('last_active_desc');
   const [groupByDir] = useState(true); // RemoteAgent：固定依工作目錄分組
@@ -41,6 +46,8 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
   const loadControllerRef = useRef(null);
   const loadGenerationRef = useRef(0);
   const mountedRef = useRef(true);
+  const collapsedRef = useRef(collapsed);
+  collapsedRef.current = collapsed;
   const onLoadedRef = useRef(onSessionsLoaded);
   onLoadedRef.current = onSessionsLoaded;
   const load = async () => {
@@ -58,9 +65,23 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
       if (controller.signal.aborted || generation !== loadGenerationRef.current || !mountedRef.current) return;
       const sorted = sortSessionsByWorkDirThenName(data).filter(s => !pendingDelRef.current.has(s.id));
       notifyStatusChanges(sorted);
-      setSessions(sorted);
+      if (controller.signal.aborted || generation !== loadGenerationRef.current || !mountedRef.current) return;
+      setSessions((prev) => mergeListedSessions(prev, sorted));
       setListLoaded(true);
-      setListError('');
+      // 收合 rail 不畫分類。展開後才讀 work-dirs 與分類，避免收合狀態多打 API。
+      if (!collapsedRef.current) {
+        const dirs = await categorySourceDirs(sorted, controller.signal);
+        try {
+          const nextCategories = dirs.length ? await fetchSessionCategories(dirs, controller.signal) : [];
+          if (controller.signal.aborted || generation !== loadGenerationRef.current || !mountedRef.current) return;
+          setCategories(nextCategories);
+          setListError('');
+        } catch (err) {
+          if (!controller.signal.aborted && generation === loadGenerationRef.current && mountedRef.current) {
+            setListError(err.message || '分類載入失敗');
+          }
+        }
+      }
       onLoadedRef.current?.(sorted);
     } catch (err) {
       if (!controller.signal.aborted && generation === loadGenerationRef.current && mountedRef.current) {
@@ -115,6 +136,12 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
       if (ws) ws.close();
     };
   }, []);
+
+  const sawCollapsedRef = useRef(collapsed);
+  useEffect(() => {
+    if (sawCollapsedRef.current && !collapsed) load();
+    sawCollapsedRef.current = collapsed;
+  }, [collapsed]);
 
   useEffect(() => {
     if (renamingId) renameInputRef.current?.focus();
@@ -322,6 +349,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(s);
     }
+    appendUnseenCategoryDirs(map, categories, sessionSearch.trim().length > 0);
     return [...map.entries()].sort((a, b) => {
       const ka = String(a[0]);
       const kb = String(b[0]);
@@ -339,7 +367,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
       }
       return ka.localeCompare(kb, undefined, { numeric: true, sensitivity: 'base' });
     });
-  }, [groupByDir, displaySessions, sessionSort]);
+  }, [groupByDir, displaySessions, sessionSort, categories, sessionSearch]);
 
   const sessionSearchActive = sessionSearch.trim().length > 0;
 
@@ -359,7 +387,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
   };
 
   const unreadCount = useMemo(
-    () => (Array.isArray(sessions) ? sessions : []).filter(s => sessionUnreadCount(s) > 0).length,
+    () => (Array.isArray(sessions) ? sessions : []).reduce((sum, s) => sum + sessionUnreadCount(s), 0),
     [sessions]
   );
   const hasUnread = unreadCount > 0;
@@ -371,11 +399,19 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
   useEffect(() => () => { document.title = 'MiniApp'; }, []);
 
   const handleReadAll = () => {
-    // Optimistic：點了就消掉；背景打 API，不等回應、失敗不回滾，下次 5 秒 poll 覆蓋掉也沒差。
-    const nowStr = formatSqliteNow();
-    setSessions((prev) => prev.map((s) => ({ ...s, last_read_at: nowStr, unread_count: 0 })));
-    apiFetch('/sessions/read-all', { method: 'POST' }).catch((err) => {
-      console.warn('[sessions] read-all error', err);
+    const snapshot = sessions.map((row) => ({ ...row, read_message_ids: observedReadIds(row) }));
+    submitObservedReadAll(snapshot).then((result) => {
+      if (!result.ok) announceManualUnread(result.message);
+      load();
+    });
+  };
+  const markManual = (row, unread) => {
+    const task = unread
+      ? sendManualUnread(row.id)
+      : sendObservedClear(row.id, row.manual_unread_revision, observedReadIds(row));
+    task.then((result) => {
+      if (!result.ok) announceManualUnread(result.message);
+      load();
     });
   };
 
@@ -404,7 +440,6 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
     const agentLabel = AGENT_LABEL[displayAgent] || displayAgent || 'claude';
     const unreadCountNum = sessionUnreadCount(s);
     const unread = unreadCountNum > 0;
-    const unreadBadgeText = unreadCountNum > 99 ? '99+' : String(unreadCountNum);
     const statusClass = sessionStatusDotClass(s);
     const rowTitle = [agentLabel, s.git_branch, extraArgN > 0 ? `+${extraArgN} CLI 引數` : '']
       .filter(Boolean)
@@ -467,7 +502,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
               </span>
               {s.pinned && <span className="shrink-0 text-[13px] leading-none" title="已釘選" aria-description="已釘選">📌</span>}
               <button type="button" data-context-surface aria-label={`更多操作：${s.name || '未命名'}`} aria-haspopup="menu"
-                className="shrink-0 min-w-[32px] min-h-[32px] rounded-lg text-ra-t4 hover:bg-ra-raised hover:text-ra-t1 focus-visible:ring-2 focus-visible:ring-violet-400"
+                className="shrink-0 min-w-[32px] min-h-[32px] max-sm:min-h-11 max-sm:min-w-11 rounded-lg text-ra-t4 hover:bg-ra-raised hover:text-ra-t1 focus-visible:ring-2 focus-visible:ring-violet-400"
                 onClick={event => { event.stopPropagation(); setSessionMenu(openContextPayload(event, { sessionId: s.id }, !isWideScreen)); }}>⋯</button>
               {statusClass ? (
                 <span
@@ -476,15 +511,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
                   aria-label={sessionStatusLabel(s)}
                 />
               ) : null}
-              {unread ? (
-                <span
-                  className="ra-unread-badge sm:group-hover/card:opacity-0 transition-opacity"
-                  title={`未讀訊息 ${unreadBadgeText} 則`}
-                  aria-label={`未讀訊息 ${unreadBadgeText} 則`}
-                >
-                  {unreadBadgeText}
-                </span>
-              ) : null}
+              <ManualUnreadBadge session={s} />
             </div>
         )}
       </div>
@@ -508,10 +535,40 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
     { separator: true },
     { label: '刪除會話…', danger: true, disabled: !!menuBusy, reason: '請先停止任務，再刪除會話',
       onSelect: () => del(menuSession.id) },
+    ...sessionCategoryMenuItems(menuSession, categories, (session, categoryId) => {
+      assignSessionCategory(session.id, categoryId).then(() => load()).catch((err) => showToast(err.message || '歸類失敗', { error: true, duration: 5000 }));
+    }),
+    { separator: true },
+    { label: '標示未讀', onSelect: () => markManual(menuSession, true) },
+    { label: '標示已讀', onSelect: () => markManual(menuSession, false) },
   ] : [];
   const menuElement = (
     <>
       <ContextMenu menu={menuSession ? sessionMenu : null} items={menuItems} onClose={closeSessionMenu} label="會話操作" />
+      <ContextMenu menu={dirMenu} items={[{ label: '建立分類', onSelect: () => setCategoryName({ mode: 'create', workDir: dirMenu.dirKey }) }]} onClose={() => setDirMenu(null)} label="分類操作" />
+      <ContextMenu menu={categoryMenu} items={categoryMenu ? [
+        { label: '重新命名…', onSelect: () => setCategoryName({ mode: 'rename', category: categoryMenu.category }) },
+        { label: '刪除分類', danger: true, onSelect: () => setCategoryDelete(categoryMenu.category) },
+      ] : []} onClose={() => setCategoryMenu(null)} label="分類操作" />
+      {categoryName && (
+        <CategoryNameDialog
+          mode={categoryName.mode}
+          initial={categoryName.category?.name || ''}
+          onClose={() => setCategoryName(null)}
+          onSubmit={async (name) => {
+            if (categoryName.mode === 'rename') await renameSessionCategory(categoryName.category.id, name);
+            else await createSessionCategory(categoryName.workDir, name);
+            await load();
+          }}
+        />
+      )}
+      {categoryDelete && (
+        <CategoryDeleteDialog
+          category={categoryDelete}
+          onClose={() => setCategoryDelete(null)}
+          onConfirm={async () => { await deleteSessionCategory(categoryDelete.id); await load(); }}
+        />
+      )}
       <FileBrowserModal session={browseSession} onClose={() => setBrowseSession(null)} />
     </>
   );
@@ -532,6 +589,9 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
           {hasUpdate && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-500" aria-hidden="true" />}
         </button>
   );
+
+  const showDirectoryGroups = groupByDir && groupedSessions && groupedSessions.length > 0 &&
+    !(sessionSearchActive && displaySessions.length === 0);
 
   const renderFullPanel = () => (
     <div className="flex flex-col h-app min-w-0 overflow-hidden">
@@ -627,64 +687,23 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
       <div className="flex-1 overflow-y-auto app-scroll px-3.5 pb-5">
         {(listLoading || listError) && listStatus}
         {onOpenRoom && <RoomsSection sessions={sessions} activeRoomId={activeRoomId} onOpenRoom={onOpenRoom} onRoomDeleted={onRoomDeleted || (() => {})} touch={!isWideScreen} />}
-        {!listLoaded ? null : sessions.length === 0 ? (
-          <div className="text-center text-ra-t5 mt-24 text-sm px-4">尚無 Session，點 + 建立</div>
-        ) : displaySessions.length === 0 ? (
+        {!listLoaded ? null : showDirectoryGroups ? (
+          <SessionDirectoryGroups
+            groups={groupedSessions}
+            searching={sessionSearchActive}
+            collapsedDirs={collapsedDirs}
+            onToggleDir={toggleDirCollapsed}
+            onCreateInDir={openNewSessionForDir}
+            categories={categories}
+            renderSession={renderSessionRow}
+            isWideScreen={isWideScreen}
+            onOpenDirMenu={(payload) => { setSessionMenu(null); setCategoryMenu(null); setDirMenu(payload); }}
+            onOpenCategoryMenu={(payload) => { setSessionMenu(null); setDirMenu(null); setCategoryMenu(payload); }}
+          />
+        ) : sessionSearchActive && displaySessions.length === 0 ? (
           <div className="text-center text-gray-600 mt-24 text-sm px-4">沒有符合搜尋條件的 Session</div>
-        ) : groupByDir && groupedSessions ? (
-          groupedSessions.map(([dirKey, dirSessions]) => {
-            const expanded = sessionSearchActive || !collapsedDirs.has(dirKey);
-            const shortLabel = workDirGroupShortLabel(dirKey);
-            // 同一 work_dir 即同一 git working tree，分支必然相同，取第一筆即可
-            const isPinGroup = dirKey === PIN_GROUP; // 虛擬群組：混合多個目錄，無單一分支、不能在此建立 session
-            const dirBranch = isPinGroup ? '' : (dirSessions.find((s) => s.git_branch) || {}).git_branch;
-            return (
-              <div key={dirKey} className="space-y-0">
-                <div className="group/dir flex w-full min-w-0 items-center gap-1 px-2 py-1.5 mt-2 transition-colors hover:bg-violet-500/[0.06]">
-                  <button
-                    type="button"
-                    onClick={() => toggleDirCollapsed(dirKey)}
-                    className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-ra-sunken"
-                  >
-                    <span className="shrink-0 text-ra-t5 w-3 text-center text-[10px]" aria-hidden>
-                      {expanded ? '▾' : '▸'}
-                    </span>
-                    <span className="shrink-0 text-[13px] leading-none" aria-hidden>{isPinGroup ? '📌' : '📁'}</span>
-                    <span
-                      className="min-w-0 flex-1 truncate text-[12.5px] text-ra-t3 font-bold"
-                      title={dirKey + (expanded ? '' : `（${dirSessions.length}）`)}
-                    >
-                      {shortLabel}
-                    </span>
-                  </button>
-                  {dirBranch ? (
-                    <span
-                      className="ra-mono shrink-0 max-w-[8rem] truncate text-[11px] text-ra-t5"
-                      title={dirBranch}
-                    >
-                      {dirBranch}
-                    </span>
-                  ) : null}
-                  {!isPinGroup && (
-                    <button
-                      type="button"
-                      onClick={() => openNewSessionForDir(dirKey)}
-                      aria-label="在此目錄建立新 Session"
-                      title="在此目錄建立新 Session"
-                      className="shrink-0 rounded-md px-1.5 py-1 text-[13px] leading-none font-semibold text-violet-400 hover:bg-violet-500/10 hover:text-violet-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 sm:opacity-0 sm:group-hover/dir:opacity-100 transition-opacity"
-                    >
-                      ＋
-                    </button>
-                  )}
-                </div>
-                {expanded && (
-                  <div className="ml-[18px] border-l border-ra-line-soft pl-2.5">
-                    {dirSessions.map((s) => renderSessionRow(s))}
-                  </div>
-                )}
-              </div>
-            );
-          })
+        ) : sessions.length === 0 ? (
+          <div className="text-center text-ra-t5 mt-24 text-sm px-4">尚無 Session，點 + 建立</div>
         ) : (
           displaySessions.map((s) => renderSessionRow(s))
         )}
@@ -747,8 +766,6 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
                 const active = activeSessionId != null && s.id === activeSessionId;
                 const displayAgent = sessionDisplayAgent(s);
                 const agentLabel = AGENT_LABEL[displayAgent] || displayAgent || 'claude';
-                const unreadCountNum = sessionUnreadCount(s);
-                const unreadBadgeText = unreadCountNum > 99 ? '99+' : String(unreadCountNum);
                 const statusClass = sessionStatusDotClass(s);
                 const statusLabel = sessionStatusLabel(s);
                 return (
@@ -792,14 +809,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
                         aria-hidden="true"
                       />
                     ) : null}
-                    {unreadCountNum > 0 && (
-                      <span
-                        className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-violet-600 text-white text-[10px] font-bold flex items-center justify-center leading-none pointer-events-none ring-2 ring-ra-bg"
-                        aria-label={`未讀訊息 ${unreadBadgeText} 則`}
-                      >
-                        {unreadBadgeText}
-                      </span>
-                    )}
+                    <ManualUnreadBadge session={s} rail />
                   </button>
                 );
               })}

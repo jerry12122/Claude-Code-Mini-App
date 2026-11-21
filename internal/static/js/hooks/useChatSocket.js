@@ -181,6 +181,48 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
     };
   }, [session.id, messages, histLoaded, isFocused, isGuest, isTG, scrollRef]);
 
+  // 離開後再進入時綁定那一次 activation 與當時的 revision。之後的新標記讓這份資格失效，不改拿最新 revision。
+  useEffect(() => {
+    if (isGuest || isTG || !histLoaded || !isFocused || !session.manual_unread) return;
+    const grant = manualUnreadRevisitGrant(session.id);
+    if (!grant || grant.revision !== session.manual_unread_revision) {
+      if (grant) dropManualUnreadRevisit(session.id);
+      return;
+    }
+    let cancelled = false;
+    let sent = false;
+    const tryClear = () => {
+      if (cancelled || sent || document.hidden || !document.hasFocus()) return;
+      const scroller = scrollRef?.current;
+      if (scroller && scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight > 2) return;
+      const loaded = messages.filter((m) => m.role !== 'user' && m.status !== 'pending' && !m.streaming &&
+        Number.isSafeInteger(m.id) && m.id > 0).map((m) => m.id);
+      if (!loaded.length) return;
+      const known = observedReadIds(session);
+      const loadedSet = new Set(loaded);
+      if (known.some((id) => !loadedSet.has(id))) return;
+      const current = manualUnreadRevisitGrant(session.id);
+      if (!current || current.activation !== grant.activation || current.revision !== grant.revision) return;
+      sent = true;
+      dropManualUnreadRevisit(session.id);
+      sendObservedClear(session.id, grant.revision, known.filter((id) => loadedSet.has(id))).then((result) => {
+        if (!result.ok) announceManualUnread(result.message);
+        window.dispatchEvent(new CustomEvent('miniapp:sessions-refresh'));
+      });
+    };
+    tryClear();
+    document.addEventListener('visibilitychange', tryClear);
+    window.addEventListener('focus', tryClear);
+    const scroller = scrollRef?.current;
+    scroller?.addEventListener('scroll', tryClear);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', tryClear);
+      window.removeEventListener('focus', tryClear);
+      scroller?.removeEventListener('scroll', tryClear);
+    };
+  }, [session.id, session.manual_unread, session.manual_unread_revision, session.read_message_ids, messages, histLoaded, isFocused, isGuest, isTG, scrollRef]);
+
   // 載入歷史 + 建立 WS
   useEffect(() => {
     connGenRef.current += 1;
