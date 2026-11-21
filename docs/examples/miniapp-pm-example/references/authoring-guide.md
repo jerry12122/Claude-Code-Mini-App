@@ -62,7 +62,7 @@ $env:MINIAPP_PM_SKILL = 'D:\Skills\miniapp-pm-example'
 | 重置本室成員 | `reset_session` | 沒有對應同名 room 工具 |
 | 刪除此工作室 | `room_delete` | 沒有對應同名 room 工具 |
 
-PM 專用連線綁定現任 PM 與工作室，通常可省略 room_id；全域 room 工具請明確帶 room_id。全域另有 `send_message`、`ask_session`、`get_status`、`get_queue`、`resume_queue`、`delete_session` 等工具；它們不是 PM 專用 server 的完整能力。工具不可用時說明缺少的能力，不自行猜名稱、組 token 或換 raw SQL 繞過。
+PM 專用連線綁定現任 PM 與工作室，通常可省略 room_id；全域 room 工具請明確帶 room_id。全域另有 `send_message`、`ask_session`、`post_message`、`get_status`、`get_queue`、`resume_queue`、`delete_session` 等工具；它們不是 PM 專用 server 的完整能力。工具不可用時說明缺少的能力，不自行猜名稱、組 token 或換 raw SQL 繞過。
 
 ## 4. 先讀看板，再做變更
 
@@ -127,6 +127,29 @@ get_quota 是快取，percent 表示已用比例。stale、未知時間或「歷
 
 這只確認自動入口，不會把 text 當第二份交付或另喚醒 PM；不會替正在跑的工作強制完工。舊相容欄位 completion_job_id 與上面的 completion/job_id 二擇一，不能和 question 混用。一般使用只留最後答覆即可，不需要多呼叫一次。
 
+### 任務完成通知（可選）
+
+由 skill 決定何時通知、文字寫什麼。MCP 不讀 skill、不判斷整份任務是否完成，也不把 `post_message` 限制成只能在結束時呼叫。沒有新的自動 event hook；不呼叫就不會通知。使用者可自行改時機與文字。
+
+要通知時用全域 `post_message`（名稱以實際連線為準）：
+
+```json
+{
+  "session_id": "<自己的PM_ID>",
+  "text": "登入返回已驗收。剩一項：真機未測。",
+  "author": "PM",
+  "notify": true
+}
+```
+
+`author` 可省略。這裡的 `session_id` 選自己的 PM 會話，只是本範例要把紀錄留在 PM 對話；工具會寫入你給的那個既有會話，程式沒有「只能寫 PM」的限制。前後空白會去掉，其餘文字原樣寫進氣泡。`notify` 為 true 且服務已有 Bot token 時，同一段文字透過既有 Telegram 設定，送給目前已註冊的使用者。
+
+回傳 `ok` 只表示這則聊天紀錄寫入成功。通知函式回錯、沒有 token，或沒有註冊使用者時，寫入仍回 `ok`，結果不會標明推播失敗，也不會重試。`notify` 為 false 或省略時只寫會話、不推播。寫入不等目標那一輪結束，也不啟動它的 agent；對方正在執行時也可以寫。停用的 agent 類型仍會被現有寫入檢查拒絕。
+
+這次呼叫不額外操作任務，也不另做已讀或未讀標記。它留下一則正常訊息（預設角色寫成 claude、狀態 done，`is_read` 維持新訊息的未讀）。非 Telegram 會話的未讀數會把這種訊息算進去，所以可能增加未讀計數。不要把 `ok` 理解成已讀數不變，也不要假設另有手動未讀標記可清掉它。
+
+不要用這次呼叫代替正式 job 的自動完工回報，也不要用它再喚醒正在跑的 worker。
+
 ### done 還不是驗收通過
 
 queued/running 表示待執行／執行中；blocked/slow 是注意訊號，不等於失敗；done/failed/interrupted 是執行結果。PM 自行核對需求、來源版本與有效證據，再在 memo 記錄驗收或退修；目前沒有獨立的「accept job」工具。
@@ -165,6 +188,7 @@ from_session_id/intent 是協定宣告，不是 OS 身分證明。共用 owner �
 - 過期版本、漏標識訊息與重複完工不造成未預期寫入；正常詢問仍可送。
 - worker 回 done 但驗證失敗時，PM 退修新 job，沒有宣稱完成。
 - 沒有清理確認或工具不可用時保留資料，沒有改走 shell 刪除。
+- 自訂通知只在 skill 決定要發時呼叫 `post_message`；`ok` 只代表會話已寫入，沒有 token、沒有收件者或推播失敗時不當成通知成功。留下的正常訊息可能增加該非 Telegram 會話的未讀計數。
 
 本範例已做格式與原始碼契約核對；未替你建立工作室、安裝技能或在真 worker 上實跑。不同執行器的工具與檔案可讀性仍需在自己的環境確認。
 

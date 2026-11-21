@@ -2,9 +2,13 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+
+	gomcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
 )
@@ -176,6 +180,143 @@ func TestPostMessageInvalidSession(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatalf("expected error for non-existent session, got nil")
+	}
+}
+
+// 註冊 schema 與通知閘門：ok 只代表寫入；false、無 token、無使用者、通知錯誤都不啟動 agent。
+func TestPostMessageSchemaAndNotifyGate(t *testing.T) {
+	database := setupTestDB(t)
+	sess, err := database.CreateSession("pm", "desc", t.TempDir(), "default", "claude", nil, "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.AddUser(42, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	text := "自訂完成：登入已驗收。\n真機未測。"
+	var calls atomic.Int32
+	var got string
+	d := &deps{
+		db:       database,
+		botToken: "test_bot_token",
+		notifier: func(_ string, _ int64, body string) error {
+			calls.Add(1)
+			got = body
+			return errors.New("telegram down")
+		},
+	}
+	server := gomcp.NewServer(&gomcp.Implementation{Name: "post", Version: "1"}, nil)
+	registerTools(server, d)
+	ct, st := gomcp.NewInMemoryTransports()
+	ss, err := server.Connect(t.Context(), st, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ss.Close() })
+	client, err := gomcp.NewClient(&gomcp.Implementation{Name: "c", Version: "1"}, nil).Connect(t.Context(), ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+
+	var tool *gomcp.Tool
+	for item, err := range client.Tools(t.Context(), nil) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if item.Name == "post_message" {
+			tool = item
+		}
+	}
+	if tool == nil {
+		t.Fatal("post_message 未註冊")
+	}
+	raw, err := json.Marshal(tool.InputSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatal(err)
+	}
+	props, _ := schema["properties"].(map[string]any)
+	for _, key := range []string{"session_id", "text", "author", "notify"} {
+		if _, ok := props[key]; !ok {
+			t.Fatalf("schema 缺 %s", key)
+		}
+	}
+
+	call := func(notify bool) *gomcp.CallToolResult {
+		t.Helper()
+		res, err := client.CallTool(t.Context(), &gomcp.CallToolParams{
+			Name: "post_message",
+			Arguments: map[string]any{
+				"session_id": sess.ID,
+				"text":       text,
+				"author":     "PM",
+				"notify":     notify,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.IsError {
+			t.Fatalf("notify=%v 呼叫失敗: %+v", notify, res)
+		}
+		return res
+	}
+
+	call(false)
+	if calls.Load() != 0 {
+		t.Fatalf("notify false 仍推播 %d 次", calls.Load())
+	}
+
+	call(true)
+	if calls.Load() != 1 || got != text {
+		t.Fatalf("通知文字=%q 次數=%d", got, calls.Load())
+	}
+	refreshed, err := database.GetSession(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refreshed.Status != db.SessionStatusIdle {
+		t.Fatalf("狀態被改成 %s", refreshed.Status)
+	}
+	msgs, err := database.ListMessages(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 2 || msgs[0].Content != text || msgs[1].Content != text {
+		t.Fatalf("寫入內容不符: %+v", msgs)
+	}
+
+	d.botToken = ""
+	call(true)
+	if calls.Load() != 1 {
+		t.Fatalf("無 token 仍推播，次數 %d", calls.Load())
+	}
+
+	bare := setupTestDB(t)
+	quiet, err := bare.CreateSession("quiet", "desc", t.TempDir(), "default", "claude", nil, "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bareCalls atomic.Int32
+	bareDeps := &deps{
+		db:       bare,
+		botToken: "test_bot_token",
+		notifier: func(string, int64, string) error {
+			bareCalls.Add(1)
+			return nil
+		},
+	}
+	if _, _, err := bareDeps.postMessage(context.Background(), nil, postMessageIn{
+		SessionID: quiet.ID, Text: text, Notify: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if bareCalls.Load() != 0 {
+		t.Fatalf("沒有註冊使用者仍推播 %d 次", bareCalls.Load())
 	}
 }
 

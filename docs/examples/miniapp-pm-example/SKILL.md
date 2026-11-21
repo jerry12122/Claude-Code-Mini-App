@@ -26,6 +26,7 @@ description: 在 MiniApp 工作室擔任 PM，依使用者指定的範圍協調 
 ## 執行與回報
 
 - worker 最後答覆由系統按 job 自動回報。派工文字要求只保留一份最後交付，不另外手動通知完工。
+- 使用者若要自訂通知時機與文字，由本 skill 決定後再呼叫全域 `post_message`：`session_id` 可用自己的 PM 會話，`text` 自訂，`author` 可省略，`notify` 為 true。這只在指定會話留下正常訊息，並沿用既有 Telegram 設定與收件者；不額外操作任務或已讀／未讀，該訊息可能增加未讀計數。不是第二份完工回報，也不新增自動 hook。契約與失敗時仍回 ok 的限制見撰寫指南。
 - 正式 worker 向現任 PM 非同步提問須帶 from_session_id、intent=question、job_id；缺工具時明確回報。同步 ask_session 只用於實際詢問，對方須可接收。
 - 把 worker 結果視為待驗收交付。核對檔案版本與必要檢查，通過才記錄「PM 已驗收」；job 的 done 只表示執行結束。
 - 新成果版本或退修另派新 job，不覆寫已交付 manifest。相同 job 的重複回報不重驗、不回覆收到。
