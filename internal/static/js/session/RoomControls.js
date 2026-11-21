@@ -42,13 +42,13 @@ function RoomQueuePanel({ queue, error, busy, ready, batchReady, edit, editPrese
   const reasonId = 'room-batch-reason-' + (queue[0] ? queue[0].id : 'none');
   const reason = batchReady === false ? '這幾則中間有其他來源訊息，無法一起送；會依原順序執行' : '無法確認能否一起送，請重新同步';
   if (!queue.length && !edit && !error && !locals.length) return null;
-  return <section role="region" aria-label="排隊中的訊息" className="shrink-0 border-t border-ra-line-soft bg-ra-card px-3 py-2 text-xs" style={{ maxHeight: '40vh', overflowY: 'auto' }}>
+  return <section role="region" aria-label="排隊中的訊息" className="room-queue-panel shrink-0 border-t border-ra-line-soft bg-ra-card px-3 text-xs" style={{ maxHeight: '40vh', overflowY: 'auto' }}>
     <div className="flex items-center justify-between gap-2 text-ra-t3">
       <span>佇列（{queue.length}）· 完成後依序執行</span>
-      <button type="button" onClick={onRefresh} disabled={busy} className="min-h-11 px-2">重新同步</button>
-      {batch ? <button type="button" disabled={busy || !!edit || !ready} onClick={() => onBatch(batch)} className="min-h-11 px-2">取消批次</button> : queue.length >= 2 && batchReady === true ?
-        <button type="button" disabled={busy || !!edit || !ready} onClick={() => onBatch('')} className="min-h-11 px-2">一起送</button> : blocked ?
-        <button type="button" aria-disabled="true" aria-describedby={reasonId} className="min-h-11 px-2"
+      <button type="button" onClick={onRefresh} disabled={busy} className="room-queue-btn px-2">重新同步</button>
+      {batch ? <button type="button" disabled={busy || !!edit || !ready} onClick={() => onBatch(batch)} className="room-queue-btn px-2">取消批次</button> : queue.length >= 2 && batchReady === true ?
+        <button type="button" disabled={busy || !!edit || !ready} onClick={() => onBatch('')} className="room-queue-btn px-2">一起送</button> : blocked ?
+        <button type="button" aria-disabled="true" aria-describedby={reasonId} className="room-queue-btn px-2"
           onClick={(event) => event.preventDefault()}
           onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); } }}>一起送</button> : null}
     </div>
@@ -58,11 +58,11 @@ function RoomQueuePanel({ queue, error, busy, ready, batchReady, edit, editPrese
     {error ? <p role="alert" className="text-rose-400">{error}</p> : null}
     <ol>{queue.map((q, i) => <li key={q.id}>
       {edit?.msgId === q.id && edit.expectedPm === q.pm_id ? <RoomQueueEditor edit={edit} api={editApi} /> :
-        <article data-queued="true" data-queue-id={q.id} className="flex min-w-0 items-center gap-1.5 text-ra-t2" style={{ minHeight: 28 }}>
+        <article data-queued="true" data-queue-id={q.id} className="room-queue-item flex min-w-0 items-center gap-1.5 text-ra-t2">
           <span>{i + 1}.</span><span className="min-w-0 flex-1 truncate" title={q.content}>{q.content || '（附件）'}</span>
           {q.attachments?.map(a => <span key={a.id} className="truncate">{a.name || '附件'}</span>)}
           <button type="button" aria-label="編輯排隊訊息" title="編輯排隊訊息" disabled={!!edit || busy || !!q.batch_id || !ready} onClick={() => editApi.onBegin(q)}
-            style={{ width: 24, height: 24, minWidth: 24, minHeight: 24 }} className="inline-flex shrink-0 items-center justify-center rounded border border-ra-line-strong text-ra-t2 disabled:opacity-40">
+            className="room-queue-edit-btn inline-flex shrink-0 items-center justify-center rounded border border-ra-line-strong text-ra-t2 disabled:opacity-40">
             <svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="m16 3 5 5M4 20l4-1L21 6l-5-5L3 14l-1 7Z" /></svg>
           </button>
         </article>}

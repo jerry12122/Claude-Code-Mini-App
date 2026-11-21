@@ -70,9 +70,40 @@
     .room-list-card button.room-list-open,
     .room-list-card button.room-list-menu { position: relative; }
     .room-list-card button.room-list-menu::after { content: none; }
+    .room-queue-panel { padding-block: 0.25rem; }
+    .room-queue-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-block-size: 26px;
+      line-height: 1;
+    }
+    .room-queue-item {
+      min-block-size: 28px;
+    }
+    .room-queue-edit-btn {
+      width: 24px;
+      height: 24px;
+      min-width: 24px;
+      min-height: 24px;
+    }
     @media (pointer: coarse) {
       .room-list-card button.room-list-open,
       .room-list-card button.room-list-menu { min-block-size: 44px; }
+      .room-queue-panel { padding-block: 0.5rem; }
+      .room-queue-btn {
+        min-block-size: 44px;
+        min-inline-size: 44px;
+      }
+      .room-queue-item {
+        min-block-size: 44px;
+      }
+      .room-queue-edit-btn {
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        min-height: 44px;
+      }
     }
     .room-header { padding-inline: 0.875rem; }
     .room-timeline { padding-inline: 1rem; }
