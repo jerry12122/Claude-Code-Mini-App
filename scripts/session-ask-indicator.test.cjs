@@ -30,8 +30,10 @@ test('CSS：待處理符號是帶「？」的圓形徽章，與未讀數字徽�
   assert.doesNotMatch(html, /\.ra-status-dot\.awaiting/);
 });
 
-test('窄版圖示欄也顯示待處理符號', () => {
+test('窄版圖示欄沿用共用狀態，執行中與待處理都畫', () => {
   const view = read('js/session/SessionView.js');
-  const rail = view.slice(view.indexOf('dirSessions.map((s) => {'));
-  assert.match(rail.slice(0, 3500), /ra-status-ask/);
+  const rail = view.slice(view.indexOf('dirSessions.map((s) => {'), view.indexOf('return renderFullPanel'));
+  assert.match(rail, /sessionStatusDotClass\(s\)/);
+  assert.match(rail, /sessionStatusLabel\(s\)/);
+  assert.doesNotMatch(rail, /=== 'ra-status-ask'/);
 });

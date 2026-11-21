@@ -75,11 +75,14 @@ function ContextMenu({ menu, items, onClose, label = '操作選單' }) {
       setPosition(previous => previous?.left === next.left && previous?.top === next.top ? previous : next);
     };
     measure();
-    element.querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     observer?.observe(element);
     return () => observer?.disconnect();
   }, [menu]);
+  useLayoutEffect(() => {
+    if (!menu || !position) return;
+    ref.current?.querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
+  }, [menu, !!position]);
   useEffect(() => {
     if (!menu) return;
     const outside = event => { if (!ref.current?.contains(event.target)) close(); };

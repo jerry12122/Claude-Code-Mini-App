@@ -465,7 +465,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
               >
                 {s.name || '未命名'}
               </span>
-              {s.pinned && <span className="shrink-0 text-[10px] text-violet-400" title="已釘選">釘選</span>}
+              {s.pinned && <span className="shrink-0 text-[13px] leading-none" title="已釘選" aria-description="已釘選">📌</span>}
               <button type="button" data-context-surface aria-label={`更多操作：${s.name || '未命名'}`} aria-haspopup="menu"
                 className="shrink-0 min-w-[32px] min-h-[32px] rounded-lg text-ra-t4 hover:bg-ra-raised hover:text-ra-t1 focus-visible:ring-2 focus-visible:ring-violet-400"
                 onClick={event => { event.stopPropagation(); setSessionMenu(openContextPayload(event, { sessionId: s.id }, !isWideScreen)); }}>⋯</button>
@@ -749,6 +749,8 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
                 const agentLabel = AGENT_LABEL[displayAgent] || displayAgent || 'claude';
                 const unreadCountNum = sessionUnreadCount(s);
                 const unreadBadgeText = unreadCountNum > 99 ? '99+' : String(unreadCountNum);
+                const statusClass = sessionStatusDotClass(s);
+                const statusLabel = sessionStatusLabel(s);
                 return (
                   <button
                     key={s.id}
@@ -774,6 +776,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
                     }}
                     onClick={() => handleEnter(s)}
                     aria-label={s.name || agentLabel}
+                    aria-description={statusLabel || undefined}
                     title={(s.name || '未命名') + ' · ' + agentLabel}
                     className={
                       'relative flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] transition-colors ' +
@@ -782,13 +785,13 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
                     }
                   >
                     <AgentBadgeIcon agentType={displayAgent} session={s} />
-                    {sessionStatusDotClass(s) === 'ra-status-ask' && (
+                    {statusClass ? (
                       <span
-                        className="ra-status-ask absolute -top-1 -left-1 pointer-events-none ring-2 ring-ra-bg"
-                        title={sessionStatusLabel(s)}
-                        aria-label={sessionStatusLabel(s)}
+                        className={statusClass + ' absolute -top-1 -left-1 pointer-events-none ring-2 ring-ra-bg'}
+                        title={statusLabel || undefined}
+                        aria-hidden="true"
                       />
-                    )}
+                    ) : null}
                     {unreadCountNum > 0 && (
                       <span
                         className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-violet-600 text-white text-[10px] font-bold flex items-center justify-center leading-none pointer-events-none ring-2 ring-ra-bg"
