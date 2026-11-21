@@ -1,0 +1,53 @@
+name: browser-webkit-diagnostic
+
+on:
+  push:
+    branches:
+      - 'codex/bsdiag-webkit-20261121-b0a99f1'
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: '1'
+
+jobs:
+  webkit-diagnostic:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      UI_PROFILE: 'webkit'
+      CMA_UI_DIAGNOSTICS: '1'
+      BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
+      BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 確認憑證已設定
+        shell: python
+        run: |
+          import os
+          missing = [key for key in ('BROWSERSTACK_USERNAME', 'BROWSERSTACK_ACCESS_KEY') if not os.environ.get(key)]
+          if missing:
+              raise SystemExit('缺少 repository secrets：' + ', '.join(missing))
+      - run: python -m pip install -r scripts/browser/requirements-visual.txt
+      - name: 測試代理限制與報告憑證遮罩
+        run: python scripts/browser/check_fixtures.py
+      - name: WebKit 專案 UI 診斷觀測執行
+        run: python -m pytest scripts/browser/test_ui_review.py -q --junitxml=test-results/ui.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-webkit-diagnostic
+          path: |
+            test-results/ui.xml
+            test-results/ui/
+          retention-days: 7
