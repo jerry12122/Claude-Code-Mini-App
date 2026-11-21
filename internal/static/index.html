@@ -536,6 +536,41 @@
     .ra-mobile-session-details > summary { list-style: none; }
     .ra-mobile-session-details > summary::-webkit-details-marker { display: none; }
     .ra-mobile-session-details[open] .ra-mobile-header-chevron { transform: rotate(180deg); }
+    .ra-chat-header-desktop {
+      display: none;
+      box-sizing: border-box;
+    }
+    @media (min-width: 1024px) {
+      .ra-chat-header-desktop {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px 12px;
+        padding: 6px 1.75rem;
+        min-height: 44px;
+      }
+      .ra-chat-header-desktop h2 {
+        max-width: 100%;
+      }
+      .ra-chat-header-desktop .ra-subline {
+        max-width: 14rem;
+      }
+    }
+    @media (pointer: coarse) {
+      .ra-chat-header button {
+        min-height: 44px;
+        min-width: 44px;
+        box-sizing: border-box;
+      }
+      .ra-chat-header .ra-git-trigger,
+      .ra-chat-header .ra-share-btn,
+      .ra-chat-header .ra-quota-refresh {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+    }
     @media (max-width: 639px), (max-width: 1023px) and (max-height: 500px) and (pointer: coarse) {
       body .ra-chat-header.bg-ra-bg,
       body section[aria-label="即時執行狀態"].bg-ra-bg,
