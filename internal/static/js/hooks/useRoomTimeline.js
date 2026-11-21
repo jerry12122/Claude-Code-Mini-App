@@ -19,18 +19,38 @@ function roomQueueHintForScope(snapshot, scope) {
   return typeof snapshot.batchReady === 'boolean' ? snapshot.batchReady : null;
 }
 
+// pendingToken 是使用者按下重新同步的世代。較舊的回應不覆蓋；失敗留下 token，讓隨後成功的那次清掉舊錯誤。
+function roomQueueManualOutcome(pendingToken, mine, ok) {
+  const pending = pendingToken || 0;
+  if (!pending || mine < pending) return { notice: '', clearError: false, pending, refreshing: pending > mine };
+  if (!ok) return { notice: '', clearError: false, pending, refreshing: false };
+  return { notice: '已重新同步', clearError: true, pending: 0, refreshing: false };
+}
+
 function useRoomQueue(roomId, pmId) {
   const scope = roomId + ':' + pmId;
   const current = useRef(scope); current.current = scope;
   const generation = useRef(0);
   const requestRef = useRef(null);
   const handoffNotified = useRef('');
-  const [snapshot, setSnapshot] = useState({ scope, rows: [], error: '', ready: false });
-  const refresh = useCallback(async () => {
+  const manualPending = useRef(0);
+  const [snapshot, setSnapshot] = useState({ scope, rows: [], error: '', ready: false, refreshing: false, notice: '' });
+  const refresh = useCallback(async (manual) => {
     if (!pmId) return;
     const mine = ++generation.current;
+    manual = manual === true;
+    if (manual) manualPending.current = mine;
     requestRef.current?.abort();
     const controller = new AbortController(); requestRef.current = controller;
+    if (manual) setSnapshot((s) => ({ ...s, scope, refreshing: true, notice: '' }));
+    const apply = (ok, rows, hint, message) => {
+      if (controller.signal.aborted || current.current !== scope || mine !== generation.current) return null;
+      const outcome = roomQueueManualOutcome(manualPending.current, mine, ok);
+      manualPending.current = outcome.pending;
+      if (ok) setSnapshot((s) => ({ scope, rows, error: '', ready: true, batchReady: hint, refreshing: outcome.refreshing, notice: outcome.notice || (s.scope === scope ? s.notice : '') || '' }));
+      else setSnapshot((s) => ({ scope, rows: s.scope === scope ? s.rows : [], error: message, ready: false, batchReady: null, refreshing: outcome.refreshing, notice: '' }));
+      return outcome;
+    };
     try {
       let after = 0, rows = [], more, hint = null, firstPage = true;
       do {
@@ -49,19 +69,20 @@ function useRoomQueue(roomId, pmId) {
         if (more && !(data.next_after_id > after)) throw new Error('佇列分頁無法繼續，請重新同步');
         after = data.next_after_id;
       } while (more);
-      setSnapshot({ scope, rows, error: '', ready: true, batchReady: hint });
-      return rows;
+      return apply(true, rows, hint);
     } catch (err) {
-      if (!controller.signal.aborted && current.current === scope && mine === generation.current) setSnapshot(s => ({ scope, rows: s.scope === scope ? s.rows : [], error: err.message, ready: false, batchReady: null }));
+      return apply(false, null, null, err.message || '無法載入佇列，請重新同步');
     }
   }, [roomId, pmId, scope]);
   useEffect(() => {
+    manualPending.current = 0;
     refresh();
     const stop = startRoomPoller({ tick: refresh });
     window.addEventListener(ROOMS_CHANGED_EVENT, refresh);
     return () => { ++generation.current; requestRef.current?.abort(); stop(); window.removeEventListener(ROOMS_CHANGED_EVENT, refresh); };
   }, [refresh]);
-  return { rows: snapshot.scope === scope ? snapshot.rows : [], error: snapshot.scope === scope ? snapshot.error : '', ready: snapshot.scope === scope && snapshot.ready, batchReady: roomQueueHintForScope(snapshot, scope), refresh };
+  const shown = snapshot.scope === scope ? snapshot : { rows: [], error: '', ready: false, refreshing: false, notice: '' };
+  return { rows: shown.rows, error: shown.error, ready: shown.ready === true, refreshing: !!shown.refreshing, notice: shown.notice || '', batchReady: roomQueueHintForScope(snapshot, scope), refresh };
 }
 
 async function roomApiError(res, fallback) {

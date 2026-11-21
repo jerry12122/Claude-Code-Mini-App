@@ -804,7 +804,7 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
                     <AgentBadgeIcon agentType={displayAgent} session={s} />
                     {statusClass ? (
                       <span
-                        className={statusClass + ' absolute -top-1 -left-1 pointer-events-none ring-2 ring-ra-bg'}
+                        className={statusClass + ' session-rail-status absolute -top-1 -left-1 ring-2 ring-ra-bg'}
                         title={statusLabel || undefined}
                         aria-hidden="true"
                       />

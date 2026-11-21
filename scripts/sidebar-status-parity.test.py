@@ -51,11 +51,12 @@ function Harness(){
   const [active,setActive]=useState(null);
   window.applyRows=(next)=>{rows=next.map(s=>({...s})); setList(rows.map(s=>({...s}))); window.dispatchEvent(new Event('miniapp:sessions-refresh'));};
   window.sidebarSnapshot=()=>({requests:[...requests], timers:[...timerDelays], enters:[...enters], active});
+  const rail = new URLSearchParams(location.search).get('rail') === '1';
   return <div style={{display:'flex',height:'100vh',background:'#111'}}>
-    <div style={{width:88}}><SessionView collapsed activeSessionId={active} isWideScreen
+    <div style={{width: rail ? 88 : 320}}><SessionView collapsed={rail} activeSessionId={active} isWideScreen={rail}
       onEnter={(s)=>{enters.push(s.id); setActive(s.id);}} onToggleSidebar={()=>{}} onCreateNew={()=>{}} /></div>
-    <div style={{flex:1,minWidth:0}}><SessionTabBar tabs={['A','B']} activeTab={active} allSessions={list} isWideScreen
-      onSelectTab={(id)=>{enters.push('tab:'+id); setActive(id);}} /></div>
+    {rail ? <div style={{flex:1,minWidth:0}}><SessionTabBar tabs={['A','B']} activeTab={active} allSessions={list} isWideScreen
+      onSelectTab={(id)=>{enters.push('tab:'+id); setActive(id);}} /></div> : null}
   </div>;
 }
 ReactDOM.createRoot(document.getElementById('root')).render(<Harness/>);
@@ -79,6 +80,26 @@ LABELS = {
 }
 
 
+def assert_rail_box(info, running):
+    side, button = info["side"], info["button"]
+    assert side and button, info
+    ring = side.get("ring") or 0
+    assert ring == 2, side
+    assert side["x"] - ring >= button["x"] - 0.51, info
+    assert side["y"] - ring >= button["y"] - 0.51, info
+    assert side["x"] + side["w"] + ring <= button["x"] + button["w"] + 0.51, info
+    assert side["y"] + side["h"] + ring <= button["y"] + button["h"] + 0.51, info
+    assert side["x"] + side["w"] / 2 > button["x"] + button["w"] / 2, info
+    assert side["y"] + side["h"] / 2 < button["y"] + button["h"] / 2, info
+    if running:
+        assert side["cssW"] == "11px" and side["cssH"] == "11px", side
+    else:
+        assert side["cssW"] == "16px" and side["cssH"] == "16px", side
+        assert side["font"] == "11px", side
+        assert side["after"] in ('"?"', "'?'"), side
+    assert info["hitButton"] and info["hitIsMark"] is False
+
+
 def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(channel="msedge", headless=True)
@@ -87,7 +108,7 @@ def main():
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.route("https://**", lambda route: route.abort())
         page.route("http://**", lambda route: route.abort())
-        page.goto(fixture.as_uri())
+        page.goto(fixture.as_uri() + "?rail=1")
         page.add_script_tag(path=str(root / "js/vendor/tailwind.js"))
         page.add_script_tag(content=config)
         for name in ["react.production.min.js", "react-dom.production.min.js"]:
@@ -109,8 +130,8 @@ def main():
                           "])", status)
             return before
 
-        def measure(status):
-            return page.evaluate("""(status) => {
+        def measure(status, target=None):
+            return (target or page).evaluate("""(status) => {
               const button = document.querySelector('button[aria-label="會話A"]');
               const other = document.querySelector('button[aria-label="會話B"]');
               const tab = document.querySelector('[data-session-tab-id="A"]');
@@ -119,11 +140,14 @@ def main():
                 if (!el) return null;
                 const r = el.getBoundingClientRect();
                 const cs = getComputedStyle(el);
-                return {x:r.x,y:r.y,w:r.width,h:r.height,cssW:cs.width,cssH:cs.height,anim:cs.animationName,dur:cs.animationDuration,cls:el.className};
+                const shadow = cs.boxShadow || '';
+                const rings = [...shadow.matchAll(/0px 0px 0px ([0-9.]+)px/g)].map((m) => Number(m[1]));
+                return {x:r.x,y:r.y,w:r.width,h:r.height,cssW:cs.width,cssH:cs.height,anim:cs.animationName,dur:cs.animationDuration,font:cs.fontSize,ring: rings.length ? Math.max(...rings) : 0, after:getComputedStyle(el,'::after').content};
               };
               const pick = (root, sel) => root ? root.querySelector(sel) : null;
               const unreadEl = [...(button ? button.querySelectorAll('span') : [])].find(el => el.textContent.trim() === '3') || null;
               const mark = pick(button, status === 'running' ? '.ra-status-dot.running' : '.ra-status-ask');
+              const icon = button ? button.querySelector('svg') : null;
               const hit = mark && button ? document.elementFromPoint(
                 Math.min(mark.getBoundingClientRect().right, button.getBoundingClientRect().right) - 1,
                 Math.min(mark.getBoundingClientRect().bottom, button.getBoundingClientRect().bottom) - 1
@@ -133,6 +157,7 @@ def main():
                 tab: box(pick(tab, status === 'running' ? '.ra-status-dot.running' : '.ra-status-ask')),
                 unread: box(unreadEl),
                 button: box(button),
+                icon: box(icon),
                 buttonAnim: getComputedStyle(button).animationName,
                 description: button.getAttribute('aria-description'),
                 otherAsk: !!pick(other, '.ra-status-ask'),
@@ -145,7 +170,7 @@ def main():
               };
             }""", "running" if status.lower() == "running" else status)
 
-        def expect_pair(status):
+        def expect_pair(status, reduced=False):
             label = LABELS.get(status.lower(), "")
             busy = status.lower() == "running" or status.lower() in LABELS and status.lower() != "running"
             running = status.lower() == "running"
@@ -174,20 +199,26 @@ def main():
             assert info["otherRun"] is False and info["otherAsk"] is False and info["tabBRun"] is False and info["tabBAsk"] is False
             if info["unread"] and info["side"]:
                 a, b = info["unread"], info["side"]
-                overlap_x = min(a["x"] + a["w"], b["x"] + b["w"]) - max(a["x"], b["x"])
-                overlap_y = min(a["y"] + a["h"], b["y"] + b["h"]) - max(a["y"], b["y"])
-                assert overlap_x <= 0 or overlap_y <= 0, (a, b)
+                ring = b.get("ring") or 0
+                overlap_x = min(a["x"] + a["w"], b["x"] + b["w"] + ring) - max(a["x"], b["x"] - ring)
+                overlap_y = min(a["y"] + a["h"], b["y"] + b["h"] + ring) - max(a["y"], b["y"] - ring)
+                assert overlap_x <= 0.5 or overlap_y <= 0.5, (a, b)
+            if info["icon"] and info["side"]:
+                a, b = info["icon"], info["side"]
+                ring = b.get("ring") or 0
+                overlap_x = min(a["x"] + a["w"], b["x"] + b["w"] + ring) - max(a["x"], b["x"] - ring)
+                overlap_y = min(a["y"] + a["h"], b["y"] + b["h"] + ring) - max(a["y"], b["y"] - ring)
+                assert overlap_x <= 0.5 or overlap_y <= 0.5, (a, b)
             assert info["order"] == ["會話A", "會話B"]
             assert info["buttonAnim"] in ("none", "")
+            if running or label:
+                assert_rail_box(info, running)
             if running:
-                assert info["side"]["cssW"] == "7px" and info["side"]["cssH"] == "7px", info["side"]
                 assert info["tab"]["cssW"] == "7px" and info["tab"]["cssH"] == "7px"
-                assert "pulse-dot" in info["side"]["anim"] and info["side"]["dur"].startswith("1.2s")
-                assert info["hitButton"] and info["hitIsMark"] is False
-                assert info["side"]["x"] + info["side"]["w"] / 2 < info["button"]["x"] + info["button"]["w"] / 2
-            elif label:
-                assert info["side"]["cssW"] == "16px" and info["side"]["cssH"] == "16px", info["side"]
-                assert info["hitButton"] and info["hitIsMark"] is False
+                if reduced:
+                    assert info["side"]["anim"] in ("none", "")
+                else:
+                    assert "pulse-dot" in info["side"]["anim"] and info["side"]["dur"].startswith("1.2s")
             return busy
 
         try:
@@ -199,6 +230,16 @@ def main():
                 seen = apply(status)
                 assert seen == [], status
                 expect_pair(status)
+            apply("running")
+            for zoom in (1, 1.25, 1.5):
+                page.evaluate("(z) => { document.documentElement.style.zoom = String(z); }", zoom)
+                expect_pair("running")
+            page.evaluate("() => { document.documentElement.style.zoom = '1'; }")
+            side.hover()
+            expect_pair("running")
+            side.focus()
+            expect(side).to_be_focused()
+            expect_pair("running")
             snap = page.evaluate("() => sidebarSnapshot()")
             assert all(item == "GET /sessions" for item in snap["requests"]), snap["requests"]
             assert snap["timers"] == [30000], snap["timers"]
@@ -209,8 +250,42 @@ def main():
             expect(page.locator('button[aria-label="會話A"]').locator("text=3")).to_be_visible()
             expect(page.locator('button[aria-label="會話A"]')).to_have_class(re.compile(r"ring-violet-500"))
             expect(page.locator('button[aria-label="會話B"]')).not_to_have_class(re.compile(r"ring-violet-500"))
+            apply("running")
+            expect_pair("running")
             assert not errors, errors
             page.screenshot(path=str(out / f"{phase}-idle-after-click.png"))
+            def boot(target, rail):
+                target.route("https://**", lambda route: route.abort())
+                target.route("http://**", lambda route: route.abort())
+                target.goto(fixture.as_uri() + ("?rail=1" if rail else ""))
+                target.add_script_tag(path=str(root / "js/vendor/tailwind.js"))
+                target.add_script_tag(content=config)
+                for name in ["react.production.min.js", "react-dom.production.min.js"]:
+                    target.add_script_tag(path=str(root / "js/vendor" / name))
+                target.add_script_tag(content=compiled)
+
+            for width, height, name in ((390, 844, "390"), (768, 1024, "768")):
+                narrow = browser.new_page(viewport={"width": width, "height": height})
+                narrow.on("pageerror", lambda error: errors.append(str(error)))
+                boot(narrow, False)
+                expect(narrow.locator(".ra-session-card", has_text="會話A")).to_be_visible()
+                assert narrow.locator('button[aria-label="會話A"]').count() == 0, name
+                listed = narrow.locator(".ra-session-card .ra-status-dot.running")
+                expect(listed).to_be_visible()
+                assert listed.evaluate("el => getComputedStyle(el).width") == "7px", name
+                assert narrow.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth") <= 1, name
+                narrow.screenshot(path=str(out / f"{phase}-list-{name}.png"))
+                narrow.close()
+            motion = browser.new_page(viewport={"width": 1100, "height": 800})
+            motion.emulate_media(reduced_motion="reduce")
+            motion.on("pageerror", lambda error: errors.append(str(error)))
+            boot(motion, True)
+            expect(motion.locator('button[aria-label="會話A"] .ra-status-dot.running')).to_be_visible()
+            info = measure("running", motion)
+            assert info["side"]["anim"] in ("none", ""), info["side"]
+            assert_rail_box(info, True)
+            motion.screenshot(path=str(out / f"{phase}-reduced.png"))
+            motion.close()
         finally:
             (out / f"{phase}-measure.json").write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding="utf-8")
             browser.close()

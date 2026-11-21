@@ -22,6 +22,7 @@ const g = vm.runInContext(`({
   roomMentionChoices, roomMentionBody, roomComposerEnterAction,
   roomFilterTarget, roomTimelineScope, roomTimelineReset, roomTimelineAccept, roomFilterVisible, roomFilterEmptyText,
   roomQueueEditUrl, roomUtf8Bytes, roomQueueEditTarget, roomQueueEditInvalid, roomQueueEditFailure, roomQueueEditNetworkError, ROOM_QUEUE_EDIT_MAX_BYTES,
+  chatQueueEditRoute, chatQueueEditRequest,
 })`, ctx);
 vm.runInContext('function sessionDisplayAgent(s) { return (s && (s.disguise_agent || s.agent_type)) || ""; }', ctx);
 const mentionSrc = read('chat/MentionMenu.js');
@@ -589,9 +590,57 @@ function batchHintChecks() {
   assert.ok(/aria-disabled="true"/.test(controls) && /aria-describedby=\{reasonId\}/.test(controls), '原因要能被聚焦讀到');
 }
 
+function queueUiChecks() {
+  const route = g.chatQueueEditRoute;
+  const req = g.chatQueueEditRequest;
+  const roomUser = { id: 4, content: '收斂worker', author: 'room-user:room-1', source_session_id: '' };
+  const priv = { id: 9, content: '私人', author: '', source_session_id: '' };
+  assert.equal(route(roomUser, false).kind, 'room');
+  assert.equal(route(roomUser, false).roomId, 'room-1');
+  assert.equal(route(priv, false).kind, 'private');
+  assert.equal(route(roomUser, true), null);
+  assert.equal(route({ ...roomUser, source_session_id: 'worker-1' }, false), null);
+  assert.equal(route({ ...roomUser, batch_id: 'b' }, false), null);
+  assert.equal(route({ ...roomUser, author: 'room-job:1' }, false), null);
+  assert.equal(route({ ...roomUser, author: 'room-report:room-1' }, false), null);
+  assert.equal(route({ ...roomUser, author: 'room-user:' }, false), null);
+  assert.equal(route({ ...priv, id: 0 }, false), null);
+  const http = req(route(roomUser, false), 'pm-1', '收斂worker', '新文');
+  assert.equal(http.channel, 'http');
+  assert.equal(http.url, '/rooms/room-1/messages/4');
+  assert.deepEqual(plain(http.body), { expected_pm_id: 'pm-1', previous: '收斂worker', content: '新文' });
+  const ws = req(route(priv, false), 'pm-1', '私人', '改');
+  assert.equal(ws.channel, 'ws');
+  assert.equal(ws.body.type, 'queue_edit');
+  assert.equal(ws.body.id, 9);
+  const chat = read('chat/ChatView.js');
+  assert.equal(chat.includes('立刻執行會中斷目前執行中的動作。'), false);
+  assert.equal(chat.includes('aria-describedby={helpId}'), false);
+  assert.ok(chat.includes('chatQueueEditRoute'), '聊天室編輯要走來源判斷');
+  const src = read('hooks/useRoomTimeline.js');
+  const start = src.indexOf('function roomQueueManualOutcome');
+  const end = src.indexOf('function useRoomQueue');
+  assert.ok(start >= 0 && end > start, '重新同步還沒有可測的結果判斷');
+  vm.runInContext(src.slice(start, end), ctx);
+  const out = vm.runInContext('roomQueueManualOutcome', ctx);
+  const outcome = (...args) => plain(out(...args));
+  assert.deepEqual(outcome(0, 2, true), { notice: '', clearError: false, pending: 0, refreshing: false });
+  assert.deepEqual(outcome(3, 3, true), { notice: '已重新同步', clearError: true, pending: 0, refreshing: false });
+  assert.deepEqual(outcome(3, 4, true), { notice: '已重新同步', clearError: true, pending: 0, refreshing: false });
+  assert.deepEqual(outcome(3, 3, false), { notice: '', clearError: false, pending: 3, refreshing: false });
+  assert.equal(out(5, 4, true).refreshing, true);
+  assert.equal(out(5, 4, false).clearError, false);
+  const view = read('session/RoomView.js');
+  const controls = read('session/RoomControls.js');
+  assert.ok(view.includes('queueState.notice'), '成功同步要清掉舊批次錯誤');
+  assert.ok(controls.includes('重新同步中') && controls.includes('正在重新同步佇列'), '按鈕要有等待與狀態文字');
+  assert.ok(!src.includes('batchReady: true'), '不得猜批次能力為 true');
+}
+
 (async () => {
   queueEditChecks();
   batchHintChecks();
+  queueUiChecks();
   await pollerScenarios();
   staticChecks();
   console.log('rooms checks passed');

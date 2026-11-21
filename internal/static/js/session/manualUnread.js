@@ -82,7 +82,7 @@ function ManualUnreadBadge({ session, rail = false }) {
   const view = manualUnreadLabel(session);
   if (!view) return null;
   const className = rail
-    ? 'absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-violet-600 text-white text-[10px] font-bold flex items-center justify-center leading-none pointer-events-none ring-2 ring-ra-bg'
+    ? 'session-rail-unread absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-violet-600 text-white text-[10px] font-bold flex items-center justify-center leading-none pointer-events-none ring-2 ring-ra-bg'
     : 'ra-unread-badge sm:group-hover/card:opacity-0 transition-opacity';
   return <span className={className} title={view.label} aria-label={view.label}>{view.text}</span>;
 }
