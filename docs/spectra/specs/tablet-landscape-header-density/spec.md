@@ -1,19 +1,26 @@
 # tablet-landscape-header-density Specification
 
+2026-11-21 使用者更正：桌面與平板橫向要恢復第二列（工作目錄、模型、額度、重新整理）。把資訊壓成一列不再是成功條件。上方多餘 gap 與列數分開；沒有原 iPad inset 量測不得宣稱 gap 已修。本檔是現行契約，封存的 change 不改、舊驗收不回溯改寫。
+
 ## Purpose
 
-Provide a compact, usable conversation header on landscape tablets while preserving host safety clearances, touch interactions, and conversation space across viewport changes.
+Keep the desktop and landscape-tablet conversation header readable in two rows, while preserving host safety clearances, touch interactions, and the existing phone layout.
 
 ## Requirements
 
-### Requirement: Compact landscape header preserves conversation space
+### Requirement: Desktop and landscape tablet header keeps a second information row
 
-The system SHALL reduce avoidable application header space on landscape tablets and make the recovered space available to the conversation, while preserving session identity, state, and existing header actions. Moving the same empty space into another application container SHALL NOT satisfy this requirement.
+The system SHALL place the session title, state, Git badge, and primary actions on the first row, and the work directory, model, quota, and quota refresh on a second row beneath it, for desktop and tablet landscape. Collapsing that secondary information onto the first row SHALL NOT satisfy this requirement. An unnecessary top gap is a separate defect and SHALL be claimed fixed only when measured padding or inset evidence identifies an offset the host does not require.
 
-#### Scenario: Landscape conversation remains usable
+#### Scenario: Secondary information stays below the title row
 
-- **WHEN** an owner views a conversation on a landscape tablet with the same content and host clearances before and after the change
-- **THEN** the conversation has more visible space, header information and actions remain available, and the composer remains operable
+- **WHEN** an owner views a conversation on a desktop or landscape tablet with a work directory, model, and quota
+- **THEN** the title row contains the title, state, Git, and primary actions, and the work directory, model, quota, and refresh are on a row whose top is below the first row
+
+#### Scenario: Top gap is not inferred from row count
+
+- **WHEN** no original iPad inset and padding capture is available
+- **THEN** the implementation does not treat a shorter or taller header as proof that the top gap is fixed
 
 
 <!-- @trace
@@ -39,6 +46,7 @@ code:
   - scripts/release/package.sh
   - internal/static/js/ui/ContextMenu.js
 tests:
+  - scripts/chat-header-rows.test.py
   - internal/mcp/post_message_test.go
   - internal/desktopupdate/release_contract_test.go
 -->
@@ -86,6 +94,7 @@ code:
   - scripts/release/package.sh
   - internal/static/js/ui/ContextMenu.js
 tests:
+  - scripts/chat-header-rows.test.py
   - internal/mcp/post_message_test.go
   - internal/desktopupdate/release_contract_test.go
 -->

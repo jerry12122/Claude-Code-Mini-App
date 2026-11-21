@@ -470,11 +470,10 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
           }
         }}
         onDragEnd={() => {
-          if (typeof window !== 'undefined') {
-            window.__miniapp_drag_source = null;
-          }
+          markSessionDrag();
+          if (typeof window !== 'undefined') window.__miniapp_drag_source = null;
         }}
-        onClick={() => renamingId !== s.id && handleEnter(s)}
+        onClick={() => { if (!recentSessionDrag() && renamingId !== s.id) handleEnter(s); }}
         className={'ra-session-card group/card' + (active ? ' active' : '') + (unread ? ' unread' : '')}
       >
           {renamingId === s.id ? (
@@ -699,6 +698,10 @@ function SessionView({ onEnter, onSessionsLoaded, onSortedSessionsChange, active
             isWideScreen={isWideScreen}
             onOpenDirMenu={(payload) => { setSessionMenu(null); setCategoryMenu(null); setDirMenu(payload); }}
             onOpenCategoryMenu={(payload) => { setSessionMenu(null); setDirMenu(null); setCategoryMenu(payload); }}
+            canAssign={!isGuestMode}
+            onAssignCategory={assignSessionCategory}
+            onReload={() => load()}
+            onReject={(message) => showToast(message || '歸類失敗', { error: true, duration: 5000 })}
           />
         ) : sessionSearchActive && displaySessions.length === 0 ? (
           <div className="text-center text-gray-600 mt-24 text-sm px-4">沒有符合搜尋條件的 Session</div>

@@ -543,19 +543,30 @@
     @media (min-width: 1024px) {
       .ra-chat-header-desktop {
         display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        justify-content: space-between;
-        gap: 6px 12px;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 4px;
         padding: 6px 1.75rem;
         min-height: 44px;
       }
-      .ra-chat-header-desktop h2 {
+      .ra-header-primary,
+      .ra-header-secondary {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
         max-width: 100%;
       }
-      .ra-chat-header-desktop .ra-subline {
-        max-width: 14rem;
+      .ra-header-primary { justify-content: space-between; }
+      .ra-chat-header-desktop h2,
+      .ra-chat-header-desktop .ra-subline,
+      .ra-header-quota {
+        min-width: 0;
+        max-width: 100%;
       }
+      .ra-chat-header-desktop .ra-subline { flex: 1 1 8rem; }
+      .ra-header-quota { flex: 0 1 auto; }
     }
     @media (pointer: coarse) {
       .ra-chat-header button {
@@ -638,6 +649,33 @@
     }
     .ra-session-card.unread:hover {
       background: oklch(0.62 0.19 275 / 24%);
+    }
+    .session-dir-row { padding-block: 0; margin-top: 4px; }
+    .session-dir-row,
+    .session-category-row { min-block-size: 44px; }
+    .session-dir-row > button:first-child { align-self: stretch; }
+    .session-dir-row > .session-org-hit,
+    .session-category-row > .session-org-hit { min-block-size: 44px; min-inline-size: 44px; }
+    .session-drop-active { background: oklch(0.62 0.19 275 / 15%); outline: 2px solid oklch(0.72 0.17 275 / 75%); outline-offset: 1px; }
+    .session-dir-sections > :first-child { margin-top: 4px; }
+    @media (pointer: fine) and (any-pointer: fine) {
+      .session-dir-row,
+      .session-category-row { min-block-size: 24px; min-height: 24px; line-height: 1.3; }
+      .session-dir-row > button:first-child { padding-block: 0; min-height: 24px; }
+      .session-dir-row > .session-org-hit,
+      .session-category-row > .session-org-hit { min-block-size: 24px; min-inline-size: 24px; min-height: 24px; min-width: 24px; }
+      .ra-session-card { padding: 3px 8px; }
+      .ra-session-card > .flex { gap: 4px; }
+      .ra-session-card button[aria-haspopup="menu"] { height: auto; min-height: 24px; min-width: 24px; }
+      .ra-session-card button[aria-haspopup="menu"]::after { inset: 0; }
+    }
+    @media (pointer: coarse), (any-pointer: coarse) {
+      .session-dir-row,
+      .session-category-row { min-block-size: 44px; min-height: 44px; }
+      .session-dir-row > .session-org-hit,
+      .session-category-row > .session-org-hit { min-block-size: 44px; min-inline-size: 44px; min-height: 44px; min-width: 44px; }
+      .ra-session-card button[aria-haspopup="menu"] { height: auto; min-height: 44px; min-width: 44px; }
+      .ra-session-card button[aria-haspopup="menu"]::after { inset: 0; }
     }
     .ra-status-dot {
       width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;

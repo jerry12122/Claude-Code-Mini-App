@@ -190,35 +190,16 @@ function ChatSessionHeader({
         </details>
       </div>
 
-      {/* 桌面／平板橫向：緊湊響應式配置，左側標題與狀態／分支／副標，右側用量／分享與操作控制 */}
+      {/* 桌面／平板橫向：第一列標題、狀態、Git 與主操作；第二列工作目錄、模型、額度與重新整理。 */}
       <div className="ra-chat-header-desktop">
-        <div className="flex flex-1 flex-wrap items-center gap-2 min-w-0">
-          <h2 className="min-w-0 max-w-full truncate text-base font-bold text-ra-t1" title={session.name || '未命名'}>{session.name || '未命名'}</h2>
-          <SessionStateChip state={state} className="shrink-0" />
-          {gitBadge}
-          {isGuest && <GuestRoleChip guest={guest} />}
-          {subLine ? (
-            <span className="ra-subline min-w-0 text-xs text-ra-t3 ra-mono truncate" title={[!isGuest && session.work_dir, modelOk && modelLabel].filter(Boolean).join(' · ')}>{subLine}</span>
-          ) : null}
-        </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2 justify-end">
-          {quotaBars || quotaText ? (
-            <span className="inline-flex items-center gap-2 text-xs ra-mono">
-              {quotaBars ? <QuotaUsage quota={quota} agentType={agentType} /> : (
-                <span className="min-w-0 truncate" title={quotaText}><QuotaSegments quota={quota} text={quotaText} /></span>
-              )}
-              <button
-                type="button"
-                onClick={onQuotaRefresh}
-                disabled={quotaRefreshing}
-                className={'ra-quota-refresh shrink-0 text-xs ra-mono ' + (quotaRefreshing ? 'text-violet-400 animate-spin motion-reduce:animate-none' : 'text-ra-t3 hover:text-violet-300')}
-                title="刷新帳戶用量"
-                aria-label="刷新帳戶用量"
-              >
-                ↻
-              </button>
-            </span>
-          ) : null}
+        <div className="ra-header-primary" data-header-row="primary">
+          <div className="flex flex-1 flex-wrap items-center gap-2 min-w-0">
+            <h2 className="min-w-0 max-w-full truncate text-base font-bold text-ra-t1" title={session.name || '未命名'}>{session.name || '未命名'}</h2>
+            <SessionStateChip state={state} className="shrink-0" />
+            {gitBadge}
+            {isGuest && <GuestRoleChip guest={guest} />}
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2 justify-end">
           {!isGuest && isSplit && onToggleSplitOrientation && (
             <SplitOrientationButton
               orientation={splitOrientation}
@@ -246,7 +227,33 @@ function ChatSessionHeader({
               <OpenInHostButton sessionId={session.id} kind="folder" />
             </div>
           ) : null}
+          </div>
         </div>
+        {(subLine || quotaBars || quotaText) ? (
+          <div className="ra-header-secondary" data-header-row="secondary">
+            {subLine ? (
+              <span className="ra-subline min-w-0 text-xs text-ra-t3 ra-mono truncate" title={[!isGuest && session.work_dir, modelOk && modelLabel].filter(Boolean).join(' · ')}>{subLine}</span>
+            ) : null}
+            {quotaBars || quotaText ? (
+              <span className="ra-header-quota inline-flex items-center gap-2 text-xs ra-mono">
+                {quotaBars ? <QuotaUsage quota={quota} agentType={agentType} /> : (
+                  <span className="min-w-0 truncate" title={quotaText}><QuotaSegments quota={quota} text={quotaText} /></span>
+                )}
+                <button
+                  type="button"
+                  onClick={onQuotaRefresh}
+                  disabled={quotaRefreshing}
+                  style={{ width: 24, height: 24 }}
+                  className={'ra-quota-refresh shrink-0 text-xs ra-mono ' + (quotaRefreshing ? 'text-violet-400 animate-spin motion-reduce:animate-none' : 'text-ra-t3 hover:text-violet-300')}
+                  title="刷新帳戶用量"
+                  aria-label="刷新帳戶用量"
+                >
+                  ↻
+                </button>
+              </span>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       {!isGuest && git.error && <p role="alert" className="max-h-24 overflow-y-auto app-scroll whitespace-pre-wrap break-all px-3 pb-2 text-xs text-red-400 sm:px-7">{git.error}</p>}
       {!isGuest && !git.error && git.result && <p role="status" className="px-3 pb-2 text-xs text-emerald-400 sm:px-7">Git 操作完成</p>}

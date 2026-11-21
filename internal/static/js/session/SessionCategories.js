@@ -139,10 +139,93 @@ function categorySections(dirKey, dirSessions, categories, searching) {
   return sections;
 }
 
+function markSessionDrag() {
+  if (typeof window !== 'undefined') window.__miniapp_drag_ended_at = Date.now();
+}
+
+function recentSessionDrag() {
+  return typeof window !== 'undefined' && Date.now() - (window.__miniapp_drag_ended_at || 0) < 400;
+}
+
+function sessionById(groups, id) {
+  if (!id) return null;
+  for (const [, rows] of groups || []) {
+    const hit = (rows || []).find((row) => row.id === id);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function resolveCategoryDrop({ guest, session, categories, targetDir, targetCategoryId }) {
+  if (guest) return { action: 'reject', reason: 'guest' };
+  if (!session || !session.id) return { action: 'ignore', reason: 'missing' };
+  const dir = String(session.work_dir ?? '').trim();
+  if (!dir || virtualCategoryDir(targetDir) || (session.agent_type === 'telegram' && !session.disguise_agent)) {
+    return { action: 'ignore', reason: 'virtual' };
+  }
+  if (targetDir !== dir) return { action: 'reject', reason: 'cross-directory', message: '不能改到別的工作目錄' };
+  const next = targetCategoryId || null;
+  if (next) {
+    const category = (categories || []).find((item) => item.id === next);
+    if (!category || category.work_dir !== dir) return { action: 'reject', reason: 'foreign', message: '分類已不存在' };
+  }
+  if ((session.category_id || null) === next) return { action: 'noop', reason: 'same' };
+  return { action: 'assign', sessionId: session.id, categoryId: next };
+}
+
+function settleCategoryAssignment(start, reload) {
+  return Promise.resolve()
+    .then(start)
+    .then(() => reload())
+    .catch((err) => Promise.resolve().then(reload).then(() => Promise.reject(err)));
+}
+
 function SessionDirectoryGroups({
   groups, searching, collapsedDirs, onToggleDir, onCreateInDir, categories,
   renderSession, isWideScreen, onOpenDirMenu, onOpenCategoryMenu,
+  canAssign = false, onAssignCategory, onReload, onReject,
 }) {
+  const [dragSessionId, setDragSessionId] = useState(null);
+  const [overKey, setOverKey] = useState('');
+  useEffect(() => {
+    if (!canAssign) return undefined;
+    const start = (event) => {
+      if (!isSessionDragTypes(event.dataTransfer?.types)) return;
+      setDragSessionId(window.__miniapp_drag_source?.sessionId || null);
+    };
+    const clear = () => { setDragSessionId(null); setOverKey(''); };
+    document.addEventListener('dragstart', start);
+    document.addEventListener('dragend', clear);
+    return () => {
+      document.removeEventListener('dragstart', start);
+      document.removeEventListener('dragend', clear);
+    };
+  }, [canAssign]);
+  const dragSession = sessionById(groups, dragSessionId);
+  const acceptDrag = (event, dirKey) => canAssign && !virtualCategoryDir(dirKey) && isSessionDragTypes(event.dataTransfer?.types);
+  const over = (event, dirKey, key) => {
+    if (!acceptDrag(event, dirKey)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'move';
+    const next = dirKey + ':' + key;
+    if (overKey !== next) setOverKey(next);
+  };
+  const drop = (event, dirKey, categoryId) => {
+    if (!acceptDrag(event, dirKey)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    markSessionDrag();
+    const parsed = parseSessionDragData(event.dataTransfer);
+    const session = sessionById(groups, parsed?.sessionId || window.__miniapp_drag_source?.sessionId);
+    setDragSessionId(null);
+    setOverKey('');
+    const plan = resolveCategoryDrop({ guest: false, session, categories, targetDir: dirKey, targetCategoryId: categoryId });
+    if (plan.action === 'reject') { onReject?.(plan.message); return; }
+    if (plan.action !== 'assign') return;
+    settleCategoryAssignment(() => onAssignCategory(plan.sessionId, plan.categoryId), onReload)
+      .catch((err) => onReject?.(err?.message || '歸類失敗'));
+  };
   return groups.map(([dirKey, dirSessions]) => {
     const expanded = searching || !collapsedDirs.has(dirKey);
     const virtual = virtualCategoryDir(dirKey);
@@ -151,10 +234,10 @@ function SessionDirectoryGroups({
     const sections = virtual ? [] : categorySections(dirKey, dirSessions, categories, searching);
     return (
       <div key={dirKey} className="space-y-0">
-        <div className="group/dir flex w-full min-w-0 items-center gap-1 px-2 py-1.5 mt-2 transition-colors hover:bg-violet-500/[0.06]">
+        <div data-dir-header className="session-dir-row group/dir flex w-full min-w-0 items-center gap-1 px-2 mt-1 transition-colors hover:bg-violet-500/[0.06]">
           <button
             type="button"
-            onClick={() => onToggleDir(dirKey)}
+            onClick={() => { if (!recentSessionDrag()) onToggleDir(dirKey); }}
             className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50"
           >
             <span className="shrink-0 text-ra-t5 w-3 text-center text-[10px]" aria-hidden>{expanded ? '▾' : '▸'}</span>
@@ -167,38 +250,59 @@ function SessionDirectoryGroups({
               type="button"
               aria-label={`管理 ${dirKey} 的分類`}
               title="管理分類"
-              className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md px-2 text-[12px] font-semibold text-violet-300 hover:bg-violet-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50"
-              onClick={(event) => onOpenDirMenu(openContextPayload(event, { dirKey }, !isWideScreen))}
+              className="session-org-hit inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md px-2 text-[12px] font-semibold text-violet-300 hover:bg-violet-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50"
+              onClick={(event) => { if (recentSessionDrag()) return; onOpenDirMenu(openContextPayload(event, { dirKey }, !isWideScreen)); }}
             >分類</button>
           )}
           {dirKey !== CATEGORY_PIN_GROUP && (
             <button
               type="button"
-              onClick={() => onCreateInDir(dirKey)}
+              onClick={() => { if (!recentSessionDrag()) onCreateInDir(dirKey); }}
               aria-label="在此目錄建立新 Session"
               title="在此目錄建立新 Session"
-              className="shrink-0 rounded-md px-1.5 py-1 text-[13px] leading-none font-semibold text-violet-400 hover:bg-violet-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 sm:opacity-0 sm:group-hover/dir:opacity-100 transition-opacity"
+              className="session-org-hit inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md px-1.5 text-[13px] leading-none font-semibold text-violet-400 hover:bg-violet-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 sm:opacity-0 sm:group-hover/dir:opacity-100 transition-opacity"
             >＋</button>
           )}
         </div>
         {expanded && (
-          <div className="ml-[18px] border-l border-ra-line-soft pl-2.5">
-            {virtual ? dirSessions.map((s) => renderSession(s)) : sections.map((section) => (
-              <div key={section.key} className="mt-1">
-                <div className="flex min-w-0 items-center gap-1 px-1">
+          <div className="session-dir-sections ml-[18px] border-l border-ra-line-soft pl-2.5">
+            {virtual ? dirSessions.map((s) => renderSession(s)) : sections.map((section) => {
+              const dropId = section.category ? section.category.id : null;
+              const active = overKey === dirKey + ':' + section.key;
+              return (
+              <div key={section.key} className="mt-1"
+                onDragOver={(event) => over(event, dirKey, section.key)}
+                onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOverKey(''); }}
+                onDrop={(event) => drop(event, dirKey, dropId)}
+              >
+                <div data-category-header className={`session-category-row flex min-w-0 items-center gap-1 rounded-md px-1 ${active ? 'session-drop-active' : ''}`} data-category-drop={section.category ? section.category.id : 'uncategorized'} aria-label={`放到${section.label}`}>
                   <span data-category-label={section.label} className="min-w-0 flex-1 truncate text-[12px] font-semibold text-ra-t4">{section.label}</span>
                   {section.category && (
                     <button
                       type="button"
                       aria-label={`分類操作：${section.label}`}
-                      className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-ra-t4 hover:bg-ra-raised focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50"
-                      onClick={(event) => onOpenCategoryMenu(openContextPayload(event, { category: section.category }, !isWideScreen))}
+                      className="session-org-hit inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-ra-t4 hover:bg-ra-raised focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50"
+                      onClick={(event) => {
+                        if (recentSessionDrag()) return;
+                        onOpenCategoryMenu(openContextPayload(event, { category: section.category }, !isWideScreen));
+                      }}
                     >⋯</button>
                   )}
                 </div>
                 {section.sessions.map((s) => renderSession(s))}
               </div>
-            ))}
+              );
+            })}
+            {!virtual && dragSession && String(dragSession.work_dir ?? '').trim() === dirKey && dragSession.category_id && !sections.some((section) => !section.category) && (
+              <div
+                className={`session-category-row mt-1 truncate rounded-md px-1 text-[12px] font-semibold text-ra-t4 ${overKey === dirKey + ':loose' ? 'session-drop-active' : ''}`}
+                data-category-drop="uncategorized"
+                aria-label="放到未分類"
+                onDragOver={(event) => over(event, dirKey, 'loose')}
+                onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOverKey(''); }}
+                onDrop={(event) => drop(event, dirKey, null)}
+              >放到未分類</div>
+            )}
           </div>
         )}
       </div>

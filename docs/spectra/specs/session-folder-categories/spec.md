@@ -30,6 +30,7 @@ code:
   - internal/api/session.go
   - internal/api/session_category.go
   - scripts/session-category-ui.test.py
+  - scripts/session-category-drop.test.cjs
   - internal/static/js/hooks/useChatSocket.js
   - internal/static/index.html
   - internal/db/manual_unread.go
@@ -86,6 +87,7 @@ code:
   - internal/api/session.go
   - internal/api/session_category.go
   - scripts/session-category-ui.test.py
+  - scripts/session-category-drop.test.cjs
   - internal/static/js/hooks/useChatSocket.js
   - internal/static/index.html
   - internal/db/manual_unread.go
@@ -134,6 +136,22 @@ The expanded directory group SHALL display named categories in ascending name or
 - **THEN** both devices SHALL show the same stored categories and membership
 - **AND** a guest attempt to read category metadata or mutate organization SHALL be denied without mutation
 
+### Requirement: Drag a session onto a category
+
+The owner SHALL be able to drag a session row, including a pinned session, onto an existing category in that session's own work directory, or back to unclassified. The unclassified drop target SHALL appear during the drag when that directory has no visible unclassified section, and SHALL NOT be a permanent panel. A drop on the same category SHALL NOT write. A drop SHALL NOT open the session, move it across directories, or clear manual unread. Cancelling, dropping external text or files, or dropping a missing, foreign, or virtual-group item SHALL leave membership unchanged. A failed assignment SHALL reload stored membership and keep the error visible. Guests SHALL NOT assign by drag. Keyboard and touch SHALL still assign through the existing menu.
+
+#### Scenario: Move within one directory
+
+- **WHEN** the owner drags an uncategorized or pinned session onto a category of the same work directory, or drags a categorized session to another category or to unclassified
+- **THEN** the stored category SHALL match the drop target after reload
+- **AND** pin, unread, manual reminder, sort, active session, and queue state SHALL remain unchanged
+
+#### Scenario: Rejected drops
+
+- **WHEN** the drag is cancelled, comes from outside the session list, targets another directory or a deleted category, or the assignment request fails
+- **THEN** the session SHALL remain in its stored category
+- **AND** a failed request SHALL NOT leave the row visually moved
+
 <!-- @trace
 source: session-organization
 updated: 2026-11-21
@@ -141,6 +159,7 @@ code:
   - internal/api/session.go
   - internal/api/session_category.go
   - scripts/session-category-ui.test.py
+  - scripts/session-category-drop.test.cjs
   - internal/static/js/hooks/useChatSocket.js
   - internal/static/index.html
   - internal/db/manual_unread.go
