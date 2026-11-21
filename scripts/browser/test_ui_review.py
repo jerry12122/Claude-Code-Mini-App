@@ -95,6 +95,23 @@ def final_snapshot(page, request):
     page.screenshot(path=str(folder / "99-final.png"), animations="disabled")
 
 
+def _android_viewport_diag(viewport):
+    return os.environ.get("CMA_ANDROID_DIAGNOSTICS") == "1" and PROFILE == "android" and viewport is None
+
+
+def _viewport_observer():
+    module = getattr(_viewport_observer, "module", None)
+    if module is not None:
+        return module
+    import importlib.util
+    path = Path(__file__).with_name("observe_viewport.py")
+    spec = importlib.util.spec_from_file_location("cma_observe_viewport", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    _viewport_observer.module = module
+    return module
+
+
 def capture(page, folder, stage, issues, control=None):
     page.screenshot(path=str(folder / (stage + ".png")), animations="disabled")
     metrics = page.evaluate("""() => ({
@@ -166,10 +183,22 @@ def test_ui_review(page, app, viewport):
     draft.wait_for(state="visible")
     page.wait_for_function("document.querySelector('textarea[data-chat-input]')?.disabled === false")
     page.get_by_text("載入對話中…", exact=True).wait_for(state="hidden", timeout=30000)
-    page.evaluate("() => document.activeElement?.blur()")
+    # 旗標開啟時，blur 與被動收樣在同一次 evaluate，立刻返回。baseline 截圖前不加等待、不打第二個 RPC。
+    # ARM 不同步讀版面；已排定的 rAF 仍可能在 capture 之前讀到版面。
+    diag = _android_viewport_diag(viewport)
+    observer = _viewport_observer() if diag else None
+    if observer:
+        page.evaluate(observer.ARM_JS)
+    else:
+        page.evaluate("() => document.activeElement?.blur()")
     capture(page, folder, "08-chat-empty-dark", issues, draft)
     if page.evaluate("innerWidth < 1024") and not page.get_by_role("button", name="回到會話列表", exact=True).is_visible():
         issues.append("08-chat-empty-dark: 單欄聊天缺少返回會話列表按鈕")
+    if observer:
+        try:
+            observer.write_report(folder, page.evaluate(observer.COLLECT_JS))
+        except Exception:
+            observer.write_failure(folder, "collect-failed")
     draft.click()
     draft.fill("這是一份應保留的多行草稿\n第二行測試中文輸入")
     capture(page, folder, "09-chat-draft-keyboard", issues, draft)
@@ -192,6 +221,11 @@ def test_ui_review(page, app, viewport):
     page.get_by_text("需要授權", exact=True).wait_for(state="hidden")
     page.wait_for_function("[...document.querySelectorAll('button')].some(b => b.getAttribute('aria-label') === '送出' && b.disabled)", timeout=15000)
     capture(page, folder, "13-chat-history-dark", issues, draft)
+    if observer:
+        try:
+            observer.add_stage13(folder, page.evaluate(observer.STAGE13_JS))
+        except Exception:
+            observer.mark_stage13_unread(folder)
     details = page.locator("details.ra-mobile-session-details")
     if details.is_visible():
         details.locator("summary").click()

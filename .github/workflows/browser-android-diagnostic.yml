@@ -1,0 +1,54 @@
+name: browser-android-diagnostic
+
+on:
+  push:
+    branches:
+      - codex/bsdiag-android-20261121-b0a99f1
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: '1'
+
+jobs:
+  ui-android-native:
+    if: github.ref == 'refs/heads/codex/bsdiag-android-20261121-b0a99f1'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      UI_PROFILE: android
+      CMA_ANDROID_DIAGNOSTICS: '1'
+      BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
+      BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r scripts/browser/requirements-visual.txt
+      - name: 確認憑證已設定
+        shell: python
+        run: |
+          import os
+          missing = [key for key in ('BROWSERSTACK_USERNAME', 'BROWSERSTACK_ACCESS_KEY') if not os.environ.get(key)]
+          if missing:
+              raise SystemExit('缺少 repository secrets：' + ', '.join(missing))
+      - name: Android 原 native 單案與 08 視窗觀測
+        run: python -m pytest scripts/browser/test_ui_review.py -q --junitxml=test-results/ui.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-android-observation
+          path: |
+            test-results/ui.xml
+            test-results/ui/**/*.png
+            test-results/ui/**/08-viewport-observation.json
+          if-no-files-found: warn
+          retention-days: 7
