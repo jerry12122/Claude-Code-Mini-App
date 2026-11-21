@@ -278,6 +278,28 @@ const ROOM_QUEUE_EDIT_MAX_BYTES = 64000; // 與後端一致：UTF-8 bytes，不�
 
 function roomQueueEditUrl(roomId, queueId) { return `/rooms/${encodeURIComponent(roomId)}/messages/${queueId}`; }
 
+// 一般 PM 聊天室裡的佇列：私人訊息走原 WS；room-user 走既有工作室 PATCH。其他來源不放行。
+function chatQueueEditRoute(item, guest) {
+  if (guest || !item || item.batch_id || item.source_session_id) return null;
+  const id = Number(item.id);
+  if (!Number.isSafeInteger(id) || id <= 0) return null;
+  const author = item.author || '';
+  if (!author) return { kind: 'private', id };
+  const prefix = 'room-user:';
+  if (!author.startsWith(prefix)) return null;
+  const roomId = author.slice(prefix.length);
+  if (!roomId) return null;
+  return { kind: 'room', id, roomId };
+}
+
+function chatQueueEditRequest(route, sessionId, previous, content) {
+  if (!route) return null;
+  if (route.kind === 'room') {
+    return { channel: 'http', url: roomQueueEditUrl(route.roomId, route.id), body: { expected_pm_id: sessionId, previous, content } };
+  }
+  return { channel: 'ws', body: { type: 'queue_edit', id: route.id, previous, content } };
+}
+
 function roomUtf8Bytes(text) { return new TextEncoder().encode(String(text ?? '')).length; }
 
 /**

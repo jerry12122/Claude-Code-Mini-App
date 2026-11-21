@@ -184,10 +184,12 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   const queueEditApi = useMemo(() => ({
     onBegin: (q) => {
       if (queueEditRef.current || queueOperationPending()) return;
-      if (isGuest || !q || !Number.isSafeInteger(q.id) || q.id <= 0 || q.author || q.source_session_id || q.batch_id) return;
+      const route = chatQueueEditRoute(q, isGuest);
+      if (!route) return;
       const hasAttachments = !!((q.attachment_ids && q.attachment_ids.length > 0) || (q.attachments && q.attachments.length > 0));
       const initial = {
         id: q.id,
+        route,
         draft: q.content || '',
         previous: q.content || '',
         hasAttachments,
@@ -235,7 +237,18 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       queueEditRef.current = { ...cur, status: 'saving' };
       setQueueEdit({ ...cur, status: 'saving', error: '', invalid: false });
       try {
-        await editQueuedMessage(cur.id, cur.previous, cur.draft);
+        const spec = chatQueueEditRequest(cur.route, session.id, cur.previous, cur.draft);
+        if (spec && spec.channel === 'http') {
+          const res = await apiFetch(spec.url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(spec.body) });
+          if (!res.ok) {
+            const detail = res.status === 400 ? await roomApiError(res, '') : '';
+            const err = new Error(roomQueueEditFailure(res.status, detail));
+            if (res.status === 409) err.code = 'conflict';
+            throw err;
+          }
+        } else {
+          await editQueuedMessage(cur.id, cur.previous, cur.draft);
+        }
         if (token === queueSaveSeq.current) {
           queueEditRef.current = null;
           setQueueEdit(null);
@@ -278,7 +291,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         setQueueEdit(next);
       }
     },
-  }), [isGuest, editQueuedMessage, queueBatching, queueRunNowId]);
+  }), [isGuest, session.id, editQueuedMessage, queueBatching, queueRunNowId]);
   const focusedPaneRef = useRef(isFocused);
   focusedPaneRef.current = isFocused;
   const slashInputWrapRef = useRef(null);
@@ -1674,7 +1687,6 @@ function QueuedMessageEditor({ edit, isDequeued, api }) {
 
 /** 排隊中的訊息：每則可原地編輯或移除；暫停（前一輪失敗／中斷／拒絕授權）時需手動繼續。 */
 function QueuedMessages({ items, paused, canResume, canRunNow, pendingId, connected, onRunNow, onRemove, onResume, sessionId, edit, editApi, isGuest, onBatch, onCancelBatch, batching }) {
-  const helpId = React.useId();
   const queueItems = Array.isArray(items) ? items : [];
   const isEditing = !!edit;
   const boundary = queueItems.findIndex(q => q.author || q.source_session_id || q.batch_id);
@@ -1716,13 +1728,12 @@ function QueuedMessages({ items, paused, canResume, canRunNow, pendingId, connec
           </button>
         </div>
       )}
-      {canRunNow && <p id={helpId} className="mb-1 text-ra-t4">立刻執行會中斷目前執行中的動作。</p>}
       {pendingId != null && <p role="status" className="mb-1 text-ra-t4">立刻執行請求處理中…</p>}
       {queueItems.length > 0 && (
         <ol className="space-y-0.5">
           {queueItems.map((q, i) => {
             const editingThis = edit && edit.id === q.id;
-            const canEdit = !isGuest && Number.isSafeInteger(q.id) && q.id > 0 && !q.author && !q.source_session_id;
+            const canEdit = !!chatQueueEditRoute(q, isGuest);
             if (editingThis) {
               return (
                 <li key={q.id} className="text-ra-t2">
@@ -1736,7 +1747,7 @@ function QueuedMessages({ items, paused, canResume, canRunNow, pendingId, connec
                 <span className="min-w-0 flex-1 truncate" title={attachmentQueueSummary(q, sessionId)}>{attachmentQueueSummary(q, sessionId)}</span>
                 {canRunNow && (
                   <button type="button" onClick={() => onRunNow(q.id)}
-                    onMouseDown={(e) => e.preventDefault()} aria-describedby={helpId}
+                    onMouseDown={(e) => e.preventDefault()}
                     disabled={!connected || pendingId != null || isEditing || batching || !!q.batch_id}
                     style={{ minHeight: 24, minWidth: 24, height: 24, width: 24 }}
                     aria-label="立刻執行" title="立刻執行"

@@ -102,6 +102,7 @@ function RoomView({ roomId, sessions, onClose, onOpenSession }) {
   const queueBusy = useRef(false);
   const [batchBusy, setBatchBusy] = useState(false);
   const [batchError, setBatchError] = useState('');
+  useEffect(() => { if (queueState.notice) setBatchError(''); }, [queueState.notice]);
   useEffect(() => {
     queueBusy.current = false; setBatchBusy(false); setBatchError('');
     setEdit(e => e && e.expectedPm !== pmIdRef.current ? { ...e, status: 'editing', error: 'PM 已交接，原草稿已保留，不會改投新 PM。' } : e);
@@ -419,7 +420,8 @@ function RoomView({ roomId, sessions, onClose, onOpenSession }) {
             ) : null}
           </div>
           {pm && !gone ? <RoomQueuePanel queue={queueRows} error={queueState.error || batchError} busy={batchBusy} ready={queueState.ready} batchReady={queueState.batchReady}
-            edit={edit} editPresent={editPresent} editApi={editApi} onBatch={changeBatch} onRefresh={refreshQueue}
+            edit={edit} editPresent={editPresent} editApi={editApi} onBatch={changeBatch} onRefresh={() => refreshQueue(true)}
+            refreshing={queueState.refreshing} notice={queueState.notice}
             locals={state.messages.filter(m => m.local && m.delivery !== 'queued' && !queueRows.some(q => q.input_request_id === m.input_request_id))} /> : null}
           {pm && !gone ? <RoomComposer roomId={roomId} pm={pm} members={members} sessions={sessions} onDelivery={admitLocal} onDeliveryPatch={patchLocal}
             onAccepted={() => { if (stickRef.current) jumpToBottom(); refresh(); refreshQueue(); }} /> : (

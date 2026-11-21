@@ -36,22 +36,23 @@ function roomLocalAttachment(item) {
   };
 }
 
-function RoomQueuePanel({ queue, error, busy, ready, batchReady, edit, editPresent, editApi, onBatch, onRefresh, locals }) {
+function RoomQueuePanel({ queue, error, busy, ready, batchReady, edit, editPresent, editApi, onBatch, onRefresh, refreshing, notice, locals }) {
   const batch = queue.find(q => q.batch_id)?.batch_id;
   const blocked = !batch && queue.length >= 2 && batchReady !== true;
   const reasonId = 'room-batch-reason-' + (queue[0] ? queue[0].id : 'none');
   const reason = batchReady === false ? '這幾則中間有其他來源訊息，無法一起送；會依原順序執行' : '無法確認能否一起送，請重新同步';
-  if (!queue.length && !edit && !error && !locals.length) return null;
+  if (!queue.length && !edit && !error && !locals.length && !refreshing && !notice) return null;
   return <section role="region" aria-label="排隊中的訊息" className="room-queue-panel shrink-0 border-t border-ra-line-soft bg-ra-card px-3 text-xs" style={{ maxHeight: '40vh', overflowY: 'auto' }}>
     <div className="flex items-center justify-between gap-2 text-ra-t3">
       <span>佇列（{queue.length}）· 完成後依序執行</span>
-      <button type="button" onClick={onRefresh} disabled={busy} className="room-queue-btn px-2">重新同步</button>
+      <button type="button" onClick={onRefresh} disabled={busy || refreshing} aria-busy={refreshing ? 'true' : undefined} className="room-queue-btn px-2">{refreshing ? '重新同步中' : '重新同步'}</button>
       {batch ? <button type="button" disabled={busy || !!edit || !ready} onClick={() => onBatch(batch)} className="room-queue-btn px-2">取消批次</button> : queue.length >= 2 && batchReady === true ?
         <button type="button" disabled={busy || !!edit || !ready} onClick={() => onBatch('')} className="room-queue-btn px-2">一起送</button> : blocked ?
         <button type="button" aria-disabled="true" aria-describedby={reasonId} className="room-queue-btn px-2"
           onClick={(event) => event.preventDefault()}
           onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); } }}>一起送</button> : null}
     </div>
+    {refreshing ? <p role="status">正在重新同步佇列…</p> : (notice ? <p role="status">{notice}</p> : null)}
     {blocked ? <p id={reasonId} role="status">{reason}</p> : null}
     {batch ? <p role="status" className="text-violet-400">已安排本輪結束後一起送；先取消批次才能修改</p> : null}
     {busy ? <p role="status">等待伺服器確認…</p> : null}
