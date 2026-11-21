@@ -323,9 +323,24 @@ function GeneralSection() {
       setRefreshingModels(false);
     }
   };
+  const [deliveryDraft, setDeliveryDraft] = useState(general.queueDelivery === 'batch' ? 'batch' : 'each');
+  useEffect(() => { setDeliveryDraft(general.queueDelivery === 'batch' ? 'batch' : 'each'); }, [general.queueDelivery]);
+  const saveDelivery = (event) => {
+    event.preventDefault();
+    saveGeneral({ ...general, queueDelivery: deliveryDraft });
+  };
 
   return (
     <div className={settingsStackCls}>
+      <form onSubmit={saveDelivery}>
+        <fieldset className="min-w-0" style={{ border: 0, padding: 0 }}>
+          <legend className={settingsLabelCls}>佇列送出方式</legend>
+          <p className={settingsHintCls}>聊天室與 Room 共用。只在回到閒置、即將取出下一輪時生效，不中斷執行中的回合，也不拆開已快照的批次。</p>
+          <label htmlFor="queue-delivery-each" className="flex items-center gap-2 py-1 text-[15px]" style={{ minHeight: 44, minWidth: 44 }}><input id="queue-delivery-each" type="radio" name="queueDelivery" value="each" checked={deliveryDraft === 'each'} disabled={loading || saving} onChange={() => setDeliveryDraft('each')} />逐筆送出</label>
+          <label htmlFor="queue-delivery-batch" className="flex items-center gap-2 py-1 text-[15px]" style={{ minHeight: 44, minWidth: 44 }}><input id="queue-delivery-batch" type="radio" name="queueDelivery" value="batch" checked={deliveryDraft === 'batch'} disabled={loading || saving} onChange={() => setDeliveryDraft('batch')} />一起送</label>
+        </fieldset>
+        <button type="submit" disabled={loading || saving} className="rounded border border-ra-line-strong px-3 py-2 text-[15px]" style={{ marginTop: 8, minHeight: 44, minWidth: 44 }}>儲存佇列送出方式</button>
+      </form>
       <GlobalInstructionSettings />
       <GeneralCheckbox
         title="開啟 VSCode"

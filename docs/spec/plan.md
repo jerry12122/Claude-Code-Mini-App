@@ -56,6 +56,9 @@ Telegram Mini App (WebView)
 > SQLite `sessions.permission_mode` 欄位記錄當前模式，每次執行 resume 時帶入。
 
 ### 3.3 聊天室狀態機 (Chatroom State Machine)
+
+`general.queueDelivery` 為 `each`（預設，逐筆 FIFO）或 `batch`（一起送），聊天室與 Room 共用並存在一般設定。只有回到 idle、通過既有暫停／忙碌／額度守門且即將取出時，才把當時連續、同會話、同來源的合法待送項做成固定批次；晚到留到下一輪，單筆不等待。既有批次不受之後切換設定影響，仍可取消。每則照片以 queue id 與 attachment id 標在該則之後，一般檔案不標成照片，路徑不另複製。
+
 系統必須嚴格遵守以下狀態轉換，以確保 UI 與 CLI 同步：
 
 | 狀態 (State) | 觸發條件 | UI 行為 |

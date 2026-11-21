@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
@@ -60,6 +61,9 @@ func (h *SettingsHandler) PutGeneral(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	res, err := h.db.PutGeneralSettings(c.Body())
+	if errors.Is(err, db.ErrInvalidQueueDelivery) {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}

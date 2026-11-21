@@ -359,6 +359,21 @@ func TestPutGeneralOffBroadcastsQueueUpdate(t *testing.T) {
 	requireResume(t, database, s.ID, db.QuotaResumeNone, "", 0)
 }
 
+func TestPutGeneralRejectsIllegalQueueDelivery(t *testing.T) {
+	app, database := newGeneralApp(t, 90)
+	if _, err := database.PutGeneralSettings([]byte(`{"quotaGuardEnabled":true,"quotaGuardPercent":80,"queueDelivery":"batch"}`)); err != nil {
+		t.Fatal(err)
+	}
+	code, raw := doGeneral(t, app, "PUT", `{"quotaGuardEnabled":true,"quotaGuardPercent":80,"queueDelivery":"all"}`)
+	if code != 400 || !strings.Contains(string(raw), "queueDelivery") {
+		t.Fatalf("非法 enum 應 400: %d %s", code, raw)
+	}
+	stored, err := database.GetGeneralSettings()
+	if err != nil || stored.QueueDelivery != db.QueueDeliveryBatch {
+		t.Fatalf("拒絕後不可改值: %+v %v", stored, err)
+	}
+}
+
 func jsonNumber(v float64) string {
 	b, _ := json.Marshal(v)
 	return string(b)

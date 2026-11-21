@@ -1744,7 +1744,7 @@ function QueuedMessages({ items, paused, canResume, canRunNow, pendingId, connec
             return (
               <li key={q.id} className="flex items-center gap-1.5 text-ra-t2 py-0.5">
                 <span className="shrink-0 font-mono text-[10px] text-ra-t5">{i + 1}.</span>
-                <span className="min-w-0 flex-1 truncate" title={attachmentQueueSummary(q, sessionId)}>{attachmentQueueSummary(q, sessionId)}</span>
+                <span className="min-w-0 flex-1 truncate" title={[attachmentQueueSummary(q, sessionId), queueAttachmentCaption(q, i + 1)].filter(Boolean).join(' ')}>{[attachmentQueueSummary(q, sessionId), queueAttachmentCaption(q, i + 1)].filter(Boolean).join(' ')}</span>
                 {canRunNow && (
                   <button type="button" onClick={() => onRunNow(q.id)}
                     onMouseDown={(e) => e.preventDefault()}

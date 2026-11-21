@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,6 +11,13 @@ import (
 
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
 )
+
+func idleDeliveryError(err error) string {
+	if errors.Is(err, db.ErrQueueBatchInvalid) {
+		return "連續可一起送的訊息超過 100 筆或 16 MiB，已暫停且未送出"
+	}
+	return err.Error()
+}
 
 const runNowNotice = "上一輪回覆已被使用者中途打斷，以下為新指示。"
 
@@ -172,7 +180,22 @@ func (d *sessionDispatcher) drainLocked(guarded bool) {
 			return
 		}
 	}
-	q := items[0]
+	session, sessionErr := d.database.GetSession(d.sessionID)
+	var q db.QueuedMessage
+	if sessionErr == nil && queueBatchSupported(session) {
+		q, err = d.database.ApplyIdleDelivery(context.Background(), d.sessionID)
+		if err != nil {
+			_ = d.database.SetQueuePaused(d.sessionID, true)
+			_ = d.database.SetSessionLastError(d.sessionID, err.Error())
+			d.broadcast(serverMsg{Type: "error", Content: idleDeliveryError(err)})
+			return
+		}
+		if q.ID == 0 {
+			return
+		}
+	} else {
+		q = items[0]
+	}
 	if err := d.start(clientMsg{Data: q.Content, AttachmentIDs: q.AttachmentIDs}, &q); err != nil {
 		_ = d.database.SetQueuePaused(d.sessionID, true)
 		d.broadcast(serverMsg{Type: "error", Content: err.Error()})

@@ -22,7 +22,16 @@ type GeneralSettings struct {
 	// QuotaGuardEnabled／QuotaGuardPercent：額度守門。尚未儲存過時由 EffectiveGeneralSettings 依 config 百分比決定。
 	QuotaGuardEnabled bool    `json:"quotaGuardEnabled"`
 	QuotaGuardPercent float64 `json:"quotaGuardPercent"`
+	// QueueDelivery：佇列送出方式。each＝逐筆（預設），batch＝回到閒置並真正取出時一起送。
+	QueueDelivery string `json:"queueDelivery"`
 }
+
+const (
+	QueueDeliveryEach  = "each"
+	QueueDeliveryBatch = "batch"
+)
+
+var ErrInvalidQueueDelivery = errors.New("queueDelivery 只能是 each 或 batch")
 
 // AutoResumeOnQuota 讀取「額度用盡後自動繼續」開關；沒有設定列時為 false。
 func (db *DB) AutoResumeOnQuota() (bool, error) {
@@ -35,7 +44,9 @@ func (db *DB) GetGeneralSettings() (GeneralSettings, error) {
 	var value string
 	err := db.QueryRow(`SELECT value FROM settings WHERE key = ?`, SettingKeyGeneral).Scan(&value)
 	if err == sql.ErrNoRows {
-		return GeneralSettings{}, nil
+		s := GeneralSettings{}
+		s.normalizeQueueDelivery()
+		return s, nil
 	}
 	if err != nil {
 		return GeneralSettings{}, err
@@ -45,6 +56,7 @@ func (db *DB) GetGeneralSettings() (GeneralSettings, error) {
 		// DB 損壞時回預設，不視為錯誤（與 GetAppearance 一致的容錯策略）。
 		return GeneralSettings{}, nil
 	}
+	s.normalizeQueueDelivery()
 	return s, nil
 }
 
@@ -57,7 +69,7 @@ func (db *DB) PutGeneralSettings(raw []byte) (GeneralSettings, error) {
 	if err := json.Unmarshal(raw, &s); err != nil {
 		return GeneralSettings{}, err
 	}
-	encoded, err := json.Marshal(s)
+	delivery, deliverySet, err := queueDeliveryFromRaw(raw)
 	if err != nil {
 		return GeneralSettings{}, err
 	}
@@ -68,6 +80,17 @@ func (db *DB) PutGeneralSettings(raw []byte) (GeneralSettings, error) {
 	}
 	defer tx.Rollback()
 	current, err := readGeneralSettings(ctx, tx)
+	if err != nil {
+		return GeneralSettings{}, err
+	}
+	if deliverySet {
+		s.QueueDelivery = delivery
+	} else if current.QueueDelivery == QueueDeliveryBatch {
+		s.QueueDelivery = QueueDeliveryBatch
+	} else {
+		s.QueueDelivery = QueueDeliveryEach
+	}
+	encoded, err := json.Marshal(s)
 	if err != nil {
 		return GeneralSettings{}, err
 	}
@@ -100,7 +123,9 @@ func readGeneralSettings(ctx context.Context, q interface {
 	var value string
 	err := q.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, SettingKeyGeneral).Scan(&value)
 	if errors.Is(err, sql.ErrNoRows) {
-		return GeneralSettings{}, nil
+		s := GeneralSettings{}
+		s.normalizeQueueDelivery()
+		return s, nil
 	}
 	if err != nil {
 		return GeneralSettings{}, err
@@ -109,6 +134,7 @@ func readGeneralSettings(ctx context.Context, q interface {
 	if err := json.Unmarshal([]byte(value), &s); err != nil {
 		return GeneralSettings{}, nil
 	}
+	s.normalizeQueueDelivery()
 	return s, nil
 }
 
@@ -135,12 +161,35 @@ func (db *DB) EffectiveGeneralSettings(configGuardPercent float64) (GeneralSetti
 	if _, ok := keys["quotaGuardPercent"]; !ok {
 		s.QuotaGuardEnabled, s.QuotaGuardPercent = guardFromConfig(configGuardPercent)
 	}
+	s.normalizeQueueDelivery()
 	return s, nil
+}
+
+func (s *GeneralSettings) normalizeQueueDelivery() {
+	if s.QueueDelivery != QueueDeliveryBatch {
+		s.QueueDelivery = QueueDeliveryEach
+	}
+}
+
+func queueDeliveryFromRaw(raw []byte) (string, bool, error) {
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &keys); err != nil {
+		return "", false, err
+	}
+	value, ok := keys["queueDelivery"]
+	if !ok {
+		return "", false, nil
+	}
+	var delivery string
+	if err := json.Unmarshal(value, &delivery); err != nil || (delivery != QueueDeliveryEach && delivery != QueueDeliveryBatch) {
+		return "", true, ErrInvalidQueueDelivery
+	}
+	return delivery, true, nil
 }
 
 func generalSettingsFromConfig(configGuardPercent float64) GeneralSettings {
 	enabled, percent := guardFromConfig(configGuardPercent)
-	return GeneralSettings{QuotaGuardEnabled: enabled, QuotaGuardPercent: percent}
+	return GeneralSettings{QuotaGuardEnabled: enabled, QuotaGuardPercent: percent, QueueDelivery: QueueDeliveryEach}
 }
 
 func guardFromConfig(configGuardPercent float64) (enabled bool, percent float64) {

@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/agent"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/db"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/media"
 )
 
 // ChangeQueueBatch 僅安排／解組，不改 paused/quota，不取消或啟動任何回合。
@@ -25,7 +27,7 @@ func ChangeQueueBatch(ctx context.Context, database *db.DB, roomID, sessionID, r
 	if err != nil {
 		return "", db.ErrQueueBatchConflict
 	}
-	if s.InputMode == "shell" || s.AgentType == agent.TypeTelegram || agent.DisabledReason(s.AgentType) != "" {
+	if !queueBatchSupported(s) {
 		return "", db.ErrQueueBatchForbidden
 	}
 	if cancelID != "" {
@@ -85,11 +87,20 @@ func (h *wsConn) onQueueBatch(msg clientMsg) {
 }
 
 func (h *wsConn) startQueuedBatch(q *db.QueuedMessage) error {
-	text, ids, err := h.database.QueueBatchInput(h.sessionID, *q)
+	if _, _, err := h.database.QueueBatchInput(h.sessionID, *q); err != nil {
+		return err
+	}
+	rows, err := h.database.ListQueuedMessages(h.sessionID)
 	if err != nil {
 		return err
 	}
-	prompt, err := attachmentPrompt(h.database, h.sessionID, text, ids)
+	var batch []db.QueuedMessage
+	for _, row := range rows {
+		if row.BatchID == q.BatchID {
+			batch = append(batch, row)
+		}
+	}
+	prompt, err := batchDispatchPrompt(h.database, h.sessionID, batch)
 	if err != nil {
 		return err
 	}
@@ -106,6 +117,44 @@ func (h *wsConn) startQueuedBatch(q *db.QueuedMessage) error {
 	// 所有 user 原列均先提交，最後一筆是本輪回覆的原來源；不把合送文字寫進 history。
 	h.runAgent(prompt, nil, msgs[len(msgs)-1].ID, nil)
 	return nil
+}
+
+// batchDispatchPrompt 依佇列順序標出每則訊息與它自己的照片／檔案。路徑沿用既有上傳檔，不另複製。
+func batchDispatchPrompt(database *db.DB, sessionID string, rows []db.QueuedMessage) (string, error) {
+	if len(rows) < 2 {
+		return "", db.ErrQueueBatchConflict
+	}
+	var b strings.Builder
+	for i, row := range rows {
+		fmt.Fprintf(&b, "訊息%d\n%s\n", i+1, row.Content)
+		atts, err := database.ResolveAttachments(sessionID, row.AttachmentIDs)
+		if err != nil {
+			return "", err
+		}
+		photos, files := 0, 0
+		for _, att := range atts {
+			path, err := media.ExistingUploadPath(att.SessionID, att.StorageName)
+			if err != nil {
+				return "", err
+			}
+			if strings.HasPrefix(strings.ToLower(att.MimeType), "image/") {
+				photos++
+				fmt.Fprintf(&b, "照片%d-%d id=%s %s\n路徑：%s\n", i+1, photos, att.ID, att.Name, path)
+			} else {
+				files++
+				fmt.Fprintf(&b, "附件%d-%d id=%s %s\n路徑：%s\n", i+1, files, att.ID, att.Name, path)
+			}
+		}
+	}
+	return b.String(), nil
+}
+
+// queueBatchSupported 是手動一起送與 idle 自動取出共用的來源規則。shell、Telegram、已停用的 agent 維持逐筆。
+func queueBatchSupported(s *db.Session) bool {
+	if s == nil {
+		return false
+	}
+	return s.InputMode != "shell" && s.AgentType != agent.TypeTelegram && agent.DisabledReason(s.AgentType) == ""
 }
 
 func queueBatchBlocked(s *db.Session, sessionID string) bool {

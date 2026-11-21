@@ -38,6 +38,22 @@ function attachmentMessageCopy(message, sessionId) {
   return [...parts.attachments.map(a => `[附件] ${a.name}`), parts.text].filter(Boolean).join('\n');
 }
 
+function queueAttachmentCaption(message, messageNo) {
+  let photos = 0;
+  let files = 0;
+  const parts = [];
+  for (const attachment of message?.attachments || []) {
+    if (String(attachment.mime_type || '').toLowerCase().startsWith('image/')) {
+      photos += 1;
+      parts.push(`照片${messageNo}-${photos} ${attachment.id}`);
+    } else {
+      files += 1;
+      parts.push(`附件${messageNo}-${files} ${attachment.id}`);
+    }
+  }
+  return parts.join('、');
+}
+
 function attachmentQueueSummary(message, sessionId) {
   const parts = attachmentMessageParts({ ...message, role: 'user' }, sessionId);
   return [parts.text, parts.attachments.length ? `${parts.attachments.length} 個附件 · ${parts.attachments.map(a => a.name).join('、')}` : ''].filter(Boolean).join(' · ');

@@ -275,6 +275,7 @@ const GENERAL_DEFAULTS = {
   autoResumeOnQuota: false,
   quotaGuardEnabled: true,
   quotaGuardPercent: 90,
+  queueDelivery: 'each',
 };
 
 async function getGeneralSettings() {
@@ -299,6 +300,7 @@ async function putGeneralSettings(general) {
       autoResumeOnQuota: !!general.autoResumeOnQuota,
       quotaGuardEnabled: !!general.quotaGuardEnabled,
       quotaGuardPercent: Number(general.quotaGuardPercent),
+      queueDelivery: general.queueDelivery === 'batch' ? 'batch' : 'each',
     }),
   });
   if (!res.ok) {

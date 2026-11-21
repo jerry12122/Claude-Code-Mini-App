@@ -60,7 +60,7 @@ function RoomQueuePanel({ queue, error, busy, ready, batchReady, edit, editPrese
     <ol>{queue.map((q, i) => <li key={q.id}>
       {edit?.msgId === q.id && edit.expectedPm === q.pm_id ? <RoomQueueEditor edit={edit} api={editApi} /> :
         <article data-queued="true" data-queue-id={q.id} className="room-queue-item flex min-w-0 items-center gap-1.5 text-ra-t2">
-          <span>{i + 1}.</span><span className="min-w-0 flex-1 truncate" title={q.content}>{q.content || '（附件）'}</span>
+          <span>{i + 1}.</span><span className="min-w-0 flex-1 truncate" title={[q.content, queueAttachmentCaption(q, i + 1)].filter(Boolean).join(' ')}>{[q.content || '（附件）', queueAttachmentCaption(q, i + 1)].filter(Boolean).join(' ')}</span>
           {q.attachments?.map(a => <span key={a.id} className="truncate">{a.name || '附件'}</span>)}
           <button type="button" aria-label="編輯排隊訊息" title="編輯排隊訊息" disabled={!!edit || busy || !!q.batch_id || !ready} onClick={() => editApi.onBegin(q)}
             className="room-queue-edit-btn inline-flex shrink-0 items-center justify-center rounded border border-ra-line-strong text-ra-t2 disabled:opacity-40">

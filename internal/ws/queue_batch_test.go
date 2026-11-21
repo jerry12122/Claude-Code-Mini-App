@@ -46,11 +46,11 @@ func TestQueueBatchRealWSWaitsAndRunsOnce(t *testing.T) {
 	batch, later := x.plan("block"), x.plan("block")
 	a.release()
 	readyRunNow(t, batch)
-	if !strings.Contains(batch.opts.Prompt, "  B\n\n\nC  ") {
+	if !strings.Contains(batch.opts.Prompt, "訊息1\n  B\n") || !strings.Contains(batch.opts.Prompt, "訊息2\nC  \n") {
 		t.Fatalf("批次文字／FIFO／空白未保留：%q", batch.opts.Prompt)
 	}
-	if strings.Count(batch.opts.Prompt, attachmentPath) != 1 {
-		t.Fatalf("附件聯集應只出現一次：%q", batch.opts.Prompt)
+	if strings.Count(batch.opts.Prompt, attachmentPath) != 2 || strings.Contains(batch.opts.Prompt, "照片") {
+		t.Fatalf("一般檔案應標在各自訊息下且不標成照片：%q", batch.opts.Prompt)
 	}
 	history, err := x.database.ListMessages(x.s.ID)
 	if err != nil || len(history) < 4 || len(history[2].Attachments) != 1 || len(history[3].Attachments) != 1 {
