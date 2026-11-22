@@ -33,7 +33,8 @@ def main(path):
     if trigger is not None:
         expect(trigger.get("push", {}).get("tags") == ["v*"], "觸發條件應為 push tags v*")
 
-    expect(doc.get("permissions") == {"contents": "write"}, "頂層 permissions 應為 contents: write")
+    expect(doc.get("permissions") == {"contents": "write", "actions": "read"},
+           "頂層 permissions 應只有 contents: write 與 actions: read")
 
     job = doc.get("jobs", {}).get("release")
     expect(job is not None, "缺少 job release")
@@ -56,9 +57,12 @@ def main(path):
     i_go = index_of(lambda s: str(s.get("uses", "")).startswith("actions/setup-go"), "setup-go")
     i_py = index_of(lambda s: str(s.get("uses", "")).startswith("actions/setup-python"), "setup-python")
     i_ver = index_of(lambda s: "check-version.sh" in str(s.get("run", "")), "check-version.sh")
+    i_gates = index_of(lambda s: "check-main-gates.py" in str(s.get("run", "")), "check-main-gates.py")
     i_test = index_of(lambda s: str(s.get("run", "")).strip() == "go test ./internal/...", "go test ./internal/...")
     i_test_p = index_of(lambda s: str(s.get("run", "")).strip() == "go test -tags production ./internal/...",
                         "go test -tags production ./internal/...")
+    i_css = index_of(lambda s: "build-css.py --check" in str(s.get("run", "")), "build-css.py --check")
+    i_desktop = index_of(lambda s: "go test ./cmd/desktop" in str(s.get("run", "")), "go test ./cmd/desktop")
     i_pack = index_of(lambda s: "package.sh dist" in str(s.get("run", "")), "package.sh dist")
     i_scan = index_of(lambda s: "govulncheck ./cmd/server" in str(s.get("run", "")), "govulncheck")
     i_pub = index_of(lambda s: "publish.sh dist" in str(s.get("run", "")), "publish.sh dist")
@@ -70,10 +74,13 @@ def main(path):
     if i_tools >= 0:
         expect("4d11e8050b6185e0d49bd9e8cc661a7a59f44959a621d31d11033124c4e8a7b0" in str(steps[i_tools].get("run", "")), "Inno Setup 安裝器下載必須固定 SHA256")
 
-    expect(i_checkout < i_go < i_py, "順序應為 checkout → setup-go → setup-python")
-    expect(i_py < i_ver < i_test < i_test_p < i_pack < i_pub,
-           "順序應為 setup-python → check-version → go test → go test -tags production → package → publish")
-    expect(i_ver < i_scan < i_pack, "漏洞掃描必須在版本檢查後、打包前")
+    expect(i_checkout < i_go < i_py < i_ver < i_gates < i_test < i_test_p < i_css < i_tools < i_desktop < i_scan < i_pack < i_contract < i_smoke < i_pub,
+           "順序應為版本契約 → main gates → 普通/production 測試與 CSS → Inno → 桌面資源 → govuln → 打包 → 契約 → 安裝 → 公開")
+    if i_gates >= 0:
+        gate = steps[i_gates]
+        expect(gate.get("timeout-minutes") == 2, "main gates 查詢必須有 2 分鐘上限")
+        expect((gate.get("env") or {}).get("GH_TOKEN") == "${{ github.token }}", "main gates 的 GH_TOKEN 應為 github.token")
+        expect(not gate.get("continue-on-error"), "main gates 失敗必須阻擋發佈")
     if i_scan >= 0:
         scan = steps[i_scan]
         commands = str(scan.get("run", ""))

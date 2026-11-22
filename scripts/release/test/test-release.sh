@@ -56,8 +56,9 @@ expected=("claude-miniapp-$tag-windows-amd64.zip" "claude-miniapp-$tag-linux-amd
 for f in check-version.sh package.sh publish.sh; do
   check "bash -n $f" bash -n "$rel/$f"
 done
-check "python 語法：release_state.py、fake_gh.py、state_check.py" \
-  python -m py_compile "$rel/release_state.py" "$rel/test/fake_gh.py" "$sc"
+check "python 語法：release_state.py、fake_gh.py、state_check.py、main gates" \
+  python -m py_compile "$rel/release_state.py" "$rel/test/fake_gh.py" "$sc" \
+    "$rel/check-main-gates.py" "$rel/test/test-main-gates.py"
 
 # ── 2. 版本一致性（在暫存 git repo 內，不動真實 repo 的 tag）──────────
 vrepo="$work/vrepo"
@@ -189,6 +190,7 @@ check "TestReleaseDistContract：真實 checksums.txt 與桌面 EXE 通過 provi
 
 # ── 6. workflow 結構與 build.bat ─────────────────────────────────────
 check "release.yml 可解析且結構正確" python "$rel/test/check_workflow.py" "$root/.github/workflows/release.yml"
+check "main gates：只有兩條精確 success 放行" python "$rel/test/test-main-gates.py"
 check "build.bat 使用 production 標籤" grep -Eq -- '-tags[[:space:]]+"?production([,"]|[[:space:]]|$)' "$root/build.bat"
 
 echo

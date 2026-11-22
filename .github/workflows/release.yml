@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   release:
@@ -25,6 +26,21 @@ jobs:
 
       - name: tag、VERSION、version.go 與 commit 必須一致
         run: bash scripts/release/check-version.sh
+
+      - name: main 的 ci 與 browser-tests 必須已成功
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/release/check-main-gates.py
+
+      - name: 測試
+        run: go test ./internal/...
+
+      - name: 測試（production 標籤，前端嵌入）
+        run: go test -tags production ./internal/...
+
+      - name: Tailwind CSS 是否最新
+        run: python scripts/build-css.py --check
 
       - name: 固定版本 Inno Setup 與 Windows 版本資源
         shell: pwsh
@@ -50,15 +66,6 @@ jobs:
           govulncheck ./cmd/server
           govulncheck -tags production,devtools ./cmd/desktop
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 govulncheck ./cmd/server
-
-      - name: 測試
-        run: go test ./internal/...
-
-      - name: 測試（production 標籤，前端嵌入）
-        run: go test -tags production ./internal/...
-
-      - name: Tailwind CSS 是否最新
-        run: python scripts/build-css.py --check
 
       - name: 打包（產物與 checksums 到 dist/）
         run: bash scripts/release/package.sh dist
