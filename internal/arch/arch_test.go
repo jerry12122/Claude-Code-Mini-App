@@ -30,7 +30,7 @@ const (
 var layerOf = map[string]int{
 	// L0 基礎：不得 import 任何其他內部套件
 	"internal/agent": 0, "internal/auth": 0, "internal/config": 0, "internal/db": 0,
-	"internal/desktopupdate": 0, "internal/logging": 0, "internal/media": 0,
+	"internal/desktopupdate": 0, "internal/imediag": 0, "internal/logging": 0, "internal/media": 0,
 	"internal/proc": 0, "internal/static": 0, "internal/tg": 0, "internal/usage": 0,
 	"internal/version": 0,
 
@@ -90,7 +90,7 @@ var knownViolations = map[string][]string{
 		"internal/ws/conn_agent.go:wsConn.runAgent", // 617 行；原 NewHandler 巨型 closure（1524 行）拆解後的剩餘部分
 		"internal/server/server.go:runNormal",       // 450 行，內嵌路由 handler 應移往 api
 		"internal/kiroacp/runner.go:Runner.runOnce", // 313 行
-		"cmd/desktop/main_windows.go:main",          // 185 行，視窗與托盤組裝
+		"cmd/desktop/main_windows.go:main",          // 視窗、托盤與輸入法診斷組裝
 	},
 }
 

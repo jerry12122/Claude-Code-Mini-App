@@ -22,6 +22,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/updater"
 
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/desktopupdate"
+	"github.com/jerry12122/Claude-Code-Mini-App/internal/imediag"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/logging"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/server"
 	"github.com/jerry12122/Claude-Code-Mini-App/internal/static"
@@ -48,6 +49,7 @@ func main() {
 
 	syncLogs := logging.Init()
 	defer syncLogs()
+	diag := imediag.New()
 
 	started, err := server.Start(context.Background())
 	if err != nil {
@@ -104,6 +106,18 @@ func main() {
 		RawMessageHandler: func(w application.Window, msg string, origin *application.OriginInfo) {
 			if msg == "open-devtools" {
 				w.OpenDevTools()
+				return
+			}
+			if imediag.IsMessage(msg) {
+				in := imediag.Inbound{Body: msg, WindowName: w.Name(), Home: originOf(started.URL())}
+				if origin != nil {
+					in.Origin, in.TopOrigin = origin.Origin, origin.TopOrigin
+				}
+				go func() {
+					if err := diag.Accept(in); err != nil {
+						slog.Debug("輸入法診斷: " + err.Error())
+					}
+				}()
 				return
 			}
 			if bridge == nil {
@@ -183,6 +197,7 @@ func main() {
 		window.Hide()
 		e.Cancel()
 	})
+	attachImeDiag(window, diag, originOf(started.URL()))
 
 	if updates != nil {
 		// 狀態變更 → 主執行緒上以事件推送到前端（非首頁頁面因沒有 bridge 而不會派發）。
@@ -224,6 +239,9 @@ func main() {
 			}()
 		})
 	}
+	trayMenu.Add("匯出輸入法診斷").OnClick(func(*application.Context) {
+		exportImeDiag(window, diag)
+	})
 	trayMenu.AddSeparator()
 	trayMenu.Add("結束").OnClick(func(*application.Context) { app.Quit() })
 	tray.SetMenu(trayMenu)
