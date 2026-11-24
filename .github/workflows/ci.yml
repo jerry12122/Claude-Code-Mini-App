@@ -37,20 +37,20 @@ jobs:
       - name: go vet
         run: go vet ./internal/... ./cmd/...
 
+      - name: 前端分層檢查
+        run: node scripts/frontend-layering.test.cjs
+
+      # tailwind.css 是提交進 repo 的產生檔；改了 className／tailwind.config 卻沒重產會在這裡失敗
+      - name: Tailwind CSS 是否最新
+        run: python scripts/build-css.py --check
+
+      - name: 前端單元測試
+        run: node --test scripts/*.test.cjs
+
       - name: 後端測試（含 internal/arch 分層檢查）
         run: go test ./internal/... ./cmd/...
 
       - name: 後端測試（production 標籤，前端嵌入）
         run: go test -tags production ./internal/...
-
-      - name: 前端分層檢查
-        run: node scripts/frontend-layering.test.cjs
-
-      - name: 前端單元測試
-        run: node --test scripts/*.test.cjs
-
-      # tailwind.css 是提交進 repo 的產生檔；改了 className／tailwind.config 卻沒重產會在這裡失敗
-      - name: Tailwind CSS 是否最新
-        run: python scripts/build-css.py --check
 
       # scripts/*.test.py 需要 Playwright 與本機瀏覽器，不在 CI 跑（見 CONTRIBUTING.md）

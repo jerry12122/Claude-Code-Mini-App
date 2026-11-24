@@ -216,6 +216,8 @@ function width(alt){const img=document.querySelector('img[alt="'+alt+'"]');retur
 async function waitFor(alts){
   const start=Date.now();
   while(Date.now()-start<6000){
+    // 附件依原生可見性延後讀取；先實際呈現卡片，再驗圖片，不把離屏未載入當遺失。
+    for(const alt of alts)document.querySelector('button[aria-label="放大 '+alt+'"]')?.scrollIntoView({behavior:'instant',block:'center'});
     if(alts.every(alt=>width(alt)>0)) return;
     await new Promise(r=>setTimeout(r,50));
   }
