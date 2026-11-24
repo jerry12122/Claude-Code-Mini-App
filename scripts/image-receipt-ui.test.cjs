@@ -150,10 +150,41 @@ compiled.on('exit', (code) => {
 });
 
 const stubs = `
+// 僅記假資料的有界記憶體事件；失敗phase離開前取DOM，成功不輸出trace。
+let imagePhase='live', lastImageSync=null, imageEventsDropped=0;
+const imageEvents=[], imageFailures={};
+function imageEvent(event, fields){
+  if(imageEvents.length===16){imageEvents.shift();imageEventsDropped++;}
+  imageEvents.push({t:Math.round(performance.now()),phase:imagePhase,event,...fields});
+}
+const ImageSocket=window.WebSocket;
+window.WebSocket=class extends ImageSocket{constructor(...args){super(...args);this.addEventListener('message',e=>{
+  try{const m=JSON.parse(e.data);if(m.type==='sync')lastImageSync={phase:imagePhase,t:Math.round(performance.now()),rows:(Array.isArray(m.messages)?m.messages:[]).slice(0,4).map(r=>({id:Number.isSafeInteger(r.id)?r.id:null,role:['claude','system','user'].includes(r.role)?r.role:'other',attachments:Array.isArray(r.attachments)?r.attachments.length:0}))};}catch(_){}
+});}};
+function imageFailure(phase,names){
+  const box=el=>{if(!el)return null;const r=el.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};};
+  imageFailures[phase]={t:Math.round(performance.now()),viewport:{width:innerWidth,height:innerHeight,scrollY},sync:lastImageSync,events:imageEvents.slice(),eventsDropped:imageEventsDropped,cards:names.map(name=>{
+    const img=document.querySelector('img[alt="'+name+'"]');
+    const card=document.querySelector('button[aria-label="放大 '+name+'"]')?.parentElement;
+    const ancestors=[];for(let n=card;n&&ancestors.length<4;n=n.parentElement)ancestors.push({rect:box(n),scrollTop:n.scrollTop,clientHeight:n.clientHeight,scrollHeight:n.scrollHeight});
+    return {name,cardPresent:!!card,cardRect:box(card),imgPresent:!!img,imgRect:box(img),complete:img?.complete??null,naturalWidth:img?.naturalWidth??null,srcKind:img?(img.src.startsWith('blob:')?'blob':'other'):'none',cardError:!!card?.querySelector('[role="status"]'),ancestors};
+  })};
+}
+document.addEventListener('load',e=>{if(e.target.tagName==='IMG'&&['live.png','system.png','room.png'].includes(e.target.alt))imageEvent('image_load',{name:e.target.alt,naturalWidth:e.target.naturalWidth});},true);
+document.addEventListener('error',e=>{if(e.target.tagName==='IMG'&&['live.png','system.png','room.png'].includes(e.target.alt))imageEvent('image_error',{name:e.target.alt});},true);
+window.addEventListener('error',e=>imageEvent('window_error',{name:String(e.error?.name||'Error').slice(0,64)}));
+window.addEventListener('unhandledrejection',e=>imageEvent('unhandledrejection',{name:String(e.reason?.name||'unknown').slice(0,64)}));
+
 const {useState,useRef,useCallback,useMemo,useEffect,useLayoutEffect,useId,useReducer}=React;
 var isTelegram=false,isGuestMode=false,SHARE_TOKEN_FROM_URL='';
 function parseMarkdown(text){return text||''}
-function apiFetch(url,opts){return fetch(url,opts)}
+function apiFetch(url,opts){
+  const imagePath=String(url).split('?')[0];
+  const observed=['/sessions/demo/uploads/live','/sessions/demo/uploads/system','/sessions/demo/uploads/room'].includes(imagePath);
+  if(!observed)return fetch(url,opts);
+  imageEvent('image_request',{path:imagePath});
+  return fetch(url,opts).then(res=>{if(observed)imageEvent('image_response',{path:imagePath,status:res.status});return res;},err=>{if(observed)imageEvent('image_request_error',{path:imagePath,name:String(err.name||'Error').slice(0,64)});throw err;});
+}
 function wsURL(id){return (location.protocol==='https:'?'wss':'ws')+'://'+location.host+'/sessions/'+id+'/ws?history_limit=100'}
 function useMediaQuery(){return false}
 function useShareRemaining(){return null}
@@ -193,15 +224,25 @@ async function waitFor(alts){
   mountChat();
   await waitFor(['live.png','system.png']);
   const live={claude:width('live.png'),system:width('system.png')};
+  if(!(live.claude>0&&live.system>0))imageFailure('live',['live.png','system.png']);
+  imagePhase='history';
   root.render(null);
   await new Promise(r=>setTimeout(r,30));
   mountChat();
   await waitFor(['live.png','system.png']);
   const history={claude:width('live.png'),system:width('system.png')};
+  if(!(history.claude>0&&history.system>0))imageFailure('history',['live.png','system.png']);
+  imagePhase='room';
   root.render(React.createElement(RoomView,{roomId:'room-1',sessions:[],onClose(){},onOpenSession(){}}));
   await waitFor(['room.png']);
   const room=width('room.png');
-  out.textContent=JSON.stringify({live,history,room,errors});
+  if(!(room>0))imageFailure('room',['room.png']);
+  const result={live,history,room,errors};
+  if(Object.keys(imageFailures).length||imageEvents.some(e=>e.event==='window_error'||e.event==='unhandledrejection')){
+    result.diagnostic={phases:imageFailures,recent:imageEvents,eventsDropped:imageEventsDropped,limit:'16 events, 4 sync rows, 3 phase snapshots, 4 ancestors/card; receipt times, not atomic'};
+    if(JSON.stringify(result.diagnostic).length>12000)result.diagnostic={truncated:true,phases:Object.keys(imageFailures)};
+  }
+  out.textContent=JSON.stringify(result);
   fetch('/release');
 })();
 `;
