@@ -22,35 +22,47 @@ type runNowTurn struct {
 	opts                             agent.RunOptions
 	ready, finish, cancelled, exited chan struct{}
 	once                             sync.Once
+	diagnostic                       *runNowTurnDiagnostic
 }
 
 func (r *runNowTurn) release() { r.once.Do(func() { close(r.finish) }) }
 
 type runNowRunner struct {
-	plans   chan *runNowTurn
-	active  atomic.Int32
-	overlap atomic.Bool
+	plans      chan *runNowTurn
+	active     atomic.Int32
+	overlap    atomic.Bool
+	diagnostic *runNowDiagnostic
 }
 
 func (*runNowRunner) Name() string { return "run-now-fake-codex" }
 func (r *runNowRunner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventCallback) error {
+	entry := r.diagnostic.enter()
 	var p *runNowTurn
 	select {
 	case p = <-r.plans:
+		p.diagnostic.at[diagRunEntry].Store(entry)
+		p.diagnostic.mark(diagPlanTaken)
 	case <-ctx.Done():
 		return ctx.Err()
 	}
 	if r.active.Add(1) != 1 {
 		r.overlap.Store(true)
 	}
-	defer func() { r.active.Add(-1); close(p.exited) }()
+	defer func() { r.active.Add(-1); p.diagnostic.mark(diagReturned); close(p.exited) }()
 	p.opts = opts
+	p.diagnostic.mark(diagStartBefore)
 	cb(agent.Event{Type: agent.EventStreamStart})
+	p.diagnostic.mark(diagStartAfter)
+	p.diagnostic.mark(diagDeltaBefore)
 	cb(agent.Event{Type: agent.EventDelta, Text: "partial"})
+	p.diagnostic.mark(diagDeltaAfter)
 	if p.mode == "linger" {
+		p.diagnostic.mark(diagDoneBefore)
 		cb(agent.Event{Type: agent.EventDone})
+		p.diagnostic.mark(diagDoneAfter)
 	}
 	close(p.ready)
+	p.diagnostic.mark(diagReady)
 	select {
 	case <-p.finish:
 		if p.mode != "linger" {
@@ -102,7 +114,7 @@ func newRunNowRig(t *testing.T, sessionTypes ...string) *runNowRig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := &runNowRunner{plans: make(chan *runNowTurn, 16)}
+	r := newDiagnosticRunNowRunner(t)
 	agent.Register(agent.TypeCodex, func() agent.Runner { return r })
 	t.Cleanup(func() { agent.Register(agent.TypeCodex, func() agent.Runner { return original }) })
 	x := &runNowRig{database: database, s: s, r: r, replies: make(chan serverMsg, 100)}
@@ -134,6 +146,8 @@ func newRunNowRig(t *testing.T, sessionTypes ...string) *runNowRig {
 
 func (x *runNowRig) plan(mode string) *runNowTurn {
 	p := &runNowTurn{mode: mode, ready: make(chan struct{}), finish: make(chan struct{}), cancelled: make(chan struct{}), exited: make(chan struct{})}
+	p.diagnostic = &runNowTurnDiagnostic{owner: x.r.diagnostic, turn: len(x.turns) + 1}
+	p.diagnostic.mark(diagPlanned)
 	x.turns = append(x.turns, p)
 	x.r.plans <- p
 	return p
@@ -141,9 +155,11 @@ func (x *runNowRig) plan(mode string) *runNowTurn {
 
 func readyRunNow(t *testing.T, p *runNowTurn) {
 	t.Helper()
+	waitStarted := time.Now()
 	select {
 	case <-p.ready:
 	case <-time.After(time.Second):
+		logRunNowTimeout(t, p, waitStarted)
 		t.Fatal("指定 fake runner 未啟動")
 	}
 }

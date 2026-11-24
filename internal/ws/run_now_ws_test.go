@@ -25,7 +25,7 @@ func newRunNowWSRig(t *testing.T) (*runNowRig, func(string, string) string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := &runNowRunner{plans: make(chan *runNowTurn, 16)}
+	r := newDiagnosticRunNowRunner(t)
 	agent.Register(agent.TypeCodex, func() agent.Runner { return r })
 	t.Cleanup(func() { agent.Register(agent.TypeCodex, func() agent.Runner { return original }) })
 	x := &runNowRig{database: database, s: s, r: r}
