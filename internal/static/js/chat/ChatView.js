@@ -609,7 +609,11 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       const q = String(value).toLowerCase();
       const filtered = SLASH_COMMANDS.filter(
         (c) => (!c.modes || c.modes.includes(mode)) && c.command.toLowerCase().startsWith(q)
-      );
+      ).map((c) => {
+        if (c.command !== '/compact') return c;
+        const reason = compactRejectCopy(agentType, mode, isGuest, session.agent_session_id);
+        return reason ? { ...c, description: reason } : c;
+      });
       setSlashMenuItems(filtered);
       setSlashActiveIdx(0);
       setMentionOpen(false);
@@ -696,6 +700,21 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
       closeComposerMenus();
       return;
     }
+    if (trimmed === '/compact') {
+      if (state !== 'IDLE' && state !== 'SHELL_IDLE') {
+        showToast('請等目前工作結束再壓縮', { error: true });
+        return;
+      }
+      const reason = compactRejectCopy(agentType, inputMode, isGuest, session.agent_session_id);
+      if (reason) {
+        showToast(reason, { error: true });
+        return;
+      }
+      if (!sendOrToast({ type: 'compact' })) return;
+      if (String(input || '').trim().startsWith('/')) setInput('');
+      closeComposerMenus();
+      return;
+    }
     if (inputMode === 'shell') {
       if (state !== 'SHELL_IDLE' && state !== 'IDLE') return;
       if (!flushOrToast()) return;
@@ -747,6 +766,10 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
   };
 
   const handleSlashSelect = (command) => {
+    if (command === '/compact') {
+      handleSend('/compact');
+      return;
+    }
     setInput(command);
     closeComposerMenus();
     handleSend(command);

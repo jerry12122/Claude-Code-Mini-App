@@ -161,6 +161,8 @@ func (r *Runner) Run(ctx context.Context, opts agent.RunOptions, cb agent.EventC
 	scanner.Buffer(make([]byte, 1024*1024), 16*1024*1024)
 
 	var st streamState
+	st.compact = strings.TrimSpace(opts.Prompt) == "/compact"
+	st.expectSession = strings.TrimSpace(opts.SessionID)
 	lineCount := 0
 	sessionID := opts.SessionID
 	for scanner.Scan() {
@@ -227,10 +229,14 @@ type streamState struct {
 	toolNames   map[string]string
 	// blockedByRule 記錄被 permissions.deny 規則擋下的 tool_use_id（來自 user 事件的 tool_result_meta），result 時對應回 denial。
 	blockedByRule map[string]bool
+	// compact 只在 prompt 恰為 /compact 時為真。邊界與期望的 provider session 用來判斷原生成功，文字摘要不外送。
+	compact         bool
+	expectSession   string
+	boundarySession string
 }
 
 func (st *streamState) emitDelta(cb agent.EventCallback, text string) {
-	if text == "" {
+	if st.compact || text == "" {
 		return
 	}
 	if !st.streamStartSent {
@@ -245,6 +251,11 @@ func (st *streamState) emitDelta(cb agent.EventCallback, text string) {
 func (r *Runner) dispatch(e *StreamEvent, cb agent.EventCallback, st *streamState) {
 	switch e.Type {
 	case "system":
+		if e.Subtype == "compact_boundary" {
+			st.boundarySession = strings.TrimSpace(e.SessionID)
+			cb(agent.Event{Type: agent.EventCompactBoundary, SessionID: st.boundarySession})
+			return
+		}
 		if e.Subtype == "init" {
 			ev := agent.Event{Type: agent.EventSessionInit, SessionID: e.SessionID}
 			if m := strings.TrimSpace(e.Model); m != "" {
@@ -357,36 +368,47 @@ func (r *Runner) dispatch(e *StreamEvent, cb agent.EventCallback, st *streamStat
 		}
 
 	case "result":
-		if len(e.PermissionDenials) > 0 {
-			denials := make([]agent.PermissionDenial, 0, len(e.PermissionDenials))
-			for _, d := range e.PermissionDenials {
-				denials = append(denials, agent.PermissionDenial{
-					ToolName:      d.ToolName,
-					ToolUseID:     d.ToolUseID,
-					ToolInput:     d.ToolInput,
-					BlockedByRule: st.blockedByRule[d.ToolUseID],
-				})
-			}
-			cb(agent.Event{Type: agent.EventPermDenied, Denials: denials, SessionID: e.SessionID})
-		}
-		resultText := strings.TrimSpace(e.Result)
-		if e.IsError {
-			msg := resultText
-			if msg == "" {
-				msg = "claude reported error"
-			}
-			cb(agent.Event{Type: agent.EventError, Err: fmt.Errorf("claude: %s", msg), SessionID: e.SessionID})
-		}
-		// 多輪略過 assistant、或僅有 result 欄位時，避免前端／DB 空白。
-		if resultText != "" && !st.emittedAnyText {
-			st.emitDelta(cb, resultText)
-		}
-		cb(agent.Event{
-			Type:       agent.EventDone,
-			SessionID:  e.SessionID,
-			ResultText: resultText,
-		})
+		r.dispatchResult(e, cb, st)
 	}
+}
+
+func (r *Runner) dispatchResult(e *StreamEvent, cb agent.EventCallback, st *streamState) {
+	if len(e.PermissionDenials) > 0 {
+		denials := make([]agent.PermissionDenial, 0, len(e.PermissionDenials))
+		for _, d := range e.PermissionDenials {
+			denials = append(denials, agent.PermissionDenial{
+				ToolName:      d.ToolName,
+				ToolUseID:     d.ToolUseID,
+				ToolInput:     d.ToolInput,
+				BlockedByRule: st.blockedByRule[d.ToolUseID],
+			})
+		}
+		cb(agent.Event{Type: agent.EventPermDenied, Denials: denials, SessionID: e.SessionID})
+	}
+	resultText := strings.TrimSpace(e.Result)
+	if e.IsError {
+		msg := resultText
+		if msg == "" {
+			msg = "claude reported error"
+		}
+		cb(agent.Event{Type: agent.EventError, Err: fmt.Errorf("claude: %s", msg), SessionID: e.SessionID})
+	}
+	// /compact 的 result 文字是內部摘要，不送進對話。
+	if resultText != "" && !st.emittedAnyText && !st.compact {
+		st.emitDelta(cb, resultText)
+	}
+	native := st.compact && st.expectSession != "" && st.boundarySession == st.expectSession &&
+		(strings.TrimSpace(e.SessionID) == "" || e.SessionID == st.expectSession) &&
+		e.Subtype == "success" && !e.IsError
+	if st.compact {
+		resultText = ""
+	}
+	cb(agent.Event{
+		Type:          agent.EventDone,
+		SessionID:     e.SessionID,
+		ResultText:    resultText,
+		CompactNative: native,
+	})
 }
 
 // truncate 截斷過長字串，避免 log 爆炸

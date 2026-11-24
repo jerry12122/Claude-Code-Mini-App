@@ -75,6 +75,7 @@ func resolveShellWorkDir(session *db.Session) (absDir string, err error) {
 const (
 	StateIdle                 = "IDLE"
 	StateThinking             = "THINKING"
+	StateCompacting           = "COMPACTING"
 	StateStreaming            = "STREAMING"
 	StateAwaitingConfirm      = "AWAITING_CONFIRM"
 	StateAwaitingInput        = "AWAITING_INPUT"

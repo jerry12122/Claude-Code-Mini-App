@@ -117,6 +117,8 @@ func (h *wsConn) handleMsg(msg clientMsg) {
 		h.onSetModel(msg)
 	case "set_effort":
 		h.onSetEffort(msg)
+	case "compact":
+		h.onCompact()
 	case "reset_context":
 		h.onResetContext(msg)
 	case "interrupt":

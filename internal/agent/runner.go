@@ -58,16 +58,17 @@ type PermissionRequest struct {
 type EventType string
 
 const (
-	EventDelta         EventType = "delta"
-	EventThinking      EventType = "thinking" // 思考鏈 chunk（覆寫式，不累積）
-	EventDone          EventType = "done"
-	EventError         EventType = "error"
-	EventPermDenied    EventType = "permission_denied"
-	EventSessionInit   EventType = "session_init"
-	EventStreamStart   EventType = "stream_start"
-	EventActivity      EventType = "activity" // 目前活動快照，不寫入聊天紀錄
-	EventToolStarted   EventType = "tool_started"
-	EventToolCompleted EventType = "tool_completed"
+	EventDelta           EventType = "delta"
+	EventThinking        EventType = "thinking" // 思考鏈 chunk（覆寫式，不累積）
+	EventDone            EventType = "done"
+	EventError           EventType = "error"
+	EventPermDenied      EventType = "permission_denied"
+	EventSessionInit     EventType = "session_init"
+	EventStreamStart     EventType = "stream_start"
+	EventActivity        EventType = "activity" // 目前活動快照，不寫入聊天紀錄
+	EventToolStarted     EventType = "tool_started"
+	EventToolCompleted   EventType = "tool_completed"
+	EventCompactBoundary EventType = "compact_boundary" // 只代表頂層 native compact_boundary，不是成功
 )
 
 // PermissionDenial 是 Claude 特有的授權拒絕資訊，其他工具可忽略。
@@ -100,14 +101,15 @@ type ModelSnapshot struct {
 
 // Event 是 Runner 透過 callback 回傳的統一事件結構。
 type Event struct {
-	Type       EventType
-	Text       string             // delta 文字
-	SessionID  string             // session_init / done 時帶入
-	ResultText string             // 僅 done：CLI 最終 result 行若帶純文字摘要／輸出（stream-json 之 result 欄位）
-	Model      *ModelSnapshot     // session_init 時若 stream 帶 model
-	Denials    []PermissionDenial // 僅 Claude 有
-	Tool       *ToolCall          // tool_started / tool_completed 時帶入
-	Err        error              // error 時帶入
+	Type          EventType
+	Text          string             // delta 文字
+	SessionID     string             // session_init / done 時帶入
+	ResultText    string             // 僅 done：CLI 最終 result 行若帶純文字摘要／輸出（stream-json 之 result 欄位）
+	CompactNative bool               // 僅 done：這次是 /compact，且已看到同一 provider session 的頂層 compact_boundary 與成功結果
+	Model         *ModelSnapshot     // session_init 時若 stream 帶 model
+	Denials       []PermissionDenial // 僅 Claude 有
+	Tool          *ToolCall          // tool_started / tool_completed 時帶入
+	Err           error              // error 時帶入
 }
 
 // EventCallback 是 Runner 每收到一個事件都會呼叫一次的 callback。

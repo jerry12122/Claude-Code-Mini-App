@@ -516,6 +516,20 @@ function useChatSocket({ session, agentType, showPermModeSelect, showEffortSelec
           return;
         }
 
+        if (msg.type === 'compact') {
+          if (msg.value === 'running') {
+            setState('COMPACTING');
+            showToast(msg.content || '正在壓縮上下文');
+            return;
+          }
+          setState((current) => (current === 'COMPACTING' ? 'IDLE' : current));
+          showToast(msg.content || (msg.value === 'done' ? '已壓縮上下文' : '壓縮沒有完成'), {
+            error: msg.value !== 'done',
+            duration: msg.value === 'done' ? 1600 : 3000,
+          });
+          return;
+        }
+
         if (msg.type === 'status') {
           setState(msg.value);
           if (msg.value !== 'STREAMING') setLiveActivity(null);

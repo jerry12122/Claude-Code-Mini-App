@@ -38,7 +38,19 @@ const SLASH_COMMANDS = [
     command: '/clear',
     description: '清除對話 context（等同 /reset）',
   },
+  {
+    command: '/compact',
+    description: '壓縮目前 Claude 上下文',
+  },
 ];
+
+function compactRejectCopy(agentType, inputMode, isGuest, providerSessionID) {
+  if (isGuest) return '分享連線不能壓縮';
+  if (inputMode === 'shell') return 'Shell 模式不能壓縮';
+  if (agentType !== 'claude') return '此 runner 尚未驗證，不能壓縮';
+  if (!providerSessionID) return '沒有可續接的會話';
+  return '';
+}
 
 /**
  * 依 agent_type 回傳可用的 permission_mode 下拉選項。
