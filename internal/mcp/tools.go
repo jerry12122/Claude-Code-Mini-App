@@ -176,14 +176,15 @@ type getMessagesIn struct {
 }
 
 type messageOut struct {
-	ID         int64  `json:"id"`
-	SessionID  string `json:"session_id"`
-	Role       string `json:"role"`
-	Content    string `json:"content"`
-	Status     string `json:"status"`
-	CreatedAt  string `json:"created_at"`
-	ResultText string `json:"result_text,omitempty"`
-	Truncated  bool   `json:"truncated,omitempty"`
+	ID          int64          `json:"id"`
+	SessionID   string         `json:"session_id"`
+	Role        string         `json:"role"`
+	Content     string         `json:"content"`
+	Status      string         `json:"status"`
+	CreatedAt   string         `json:"created_at"`
+	ResultText  string         `json:"result_text,omitempty"`
+	Truncated   bool           `json:"truncated,omitempty"`
+	Attachments []imageReceipt `json:"attachments,omitempty"`
 }
 
 type getMessagesOut struct {
@@ -236,6 +237,9 @@ func toMessageOut(m *db.Message, maxChars int, includeResult bool) messageOut {
 		if rtTrunc {
 			o.Truncated = true
 		}
+	}
+	if len(m.Attachments) > 0 {
+		o.Attachments = receiptsFrom(m.Attachments)
 	}
 	return o
 }
@@ -702,17 +706,32 @@ func (d *deps) getQuota(_ context.Context, _ *gomcp.CallToolRequest, in getQuota
 // --- post_message ---
 
 type postMessageIn struct {
-	SessionID string `json:"session_id" jsonschema:"目標 miniapp session_id"`
-	Text      string `json:"text" jsonschema:"要寫入的 Markdown 訊息內容"`
-	Role      string `json:"role,omitempty" jsonschema:"訊息角色：assistant 或 system，預設 assistant"`
-	Author    string `json:"author,omitempty" jsonschema:"訊息署名（選填，如 'PR Worker'、'Reviewer'，會顯示於氣泡上方）"`
-	Notify    bool   `json:"notify,omitempty" jsonschema:"是否同時透過 Telegram Bot 發送推播通知給使用者"`
+	SessionID     string   `json:"session_id" jsonschema:"目標 miniapp session_id"`
+	Text          string   `json:"text" jsonschema:"要寫入的 Markdown 訊息內容。只有圖片時可留空"`
+	Role          string   `json:"role,omitempty" jsonschema:"訊息角色：assistant 或 system，預設 assistant"`
+	Author        string   `json:"author,omitempty" jsonschema:"訊息署名（選填，如 'PR Worker'、'Reviewer'，會顯示於氣泡上方）"`
+	Notify        bool     `json:"notify,omitempty" jsonschema:"是否同時透過 Telegram Bot 發送推播通知給使用者"`
+	ImagePaths    []string `json:"image_paths,omitempty" jsonschema:"目標 session 工作目錄或該 session 受控上傳區內的本機圖片。工作區外要先自行複製進去。不讀 URL、不收 base64、不刪來源"`
+	AttachmentIDs []string `json:"attachment_ids,omitempty" jsonschema:"已屬於目標 session 的圖片附件 id，沿用原檔不再複製"`
+}
+
+type imageReceipt struct {
+	ID     string `json:"id"`
+	URL    string `json:"url"`
+	Mime   string `json:"mime"`
+	Bytes  int64  `json:"bytes"`
+	SHA256 string `json:"sha256,omitempty"`
 }
 
 type postMessageOut struct {
-	OK        bool   `json:"ok"`
-	MessageID int64  `json:"message_id"`
-	CreatedAt string `json:"created_at"`
+	OK          bool           `json:"ok"`
+	MessageID   int64          `json:"message_id"`
+	CreatedAt   string         `json:"created_at"`
+	SessionID   string         `json:"session_id,omitempty"`
+	Delivery    string         `json:"delivery,omitempty"`
+	Retry       string         `json:"retry,omitempty"`
+	Attachments []imageReceipt `json:"attachments,omitempty"`
+	RoomIDs     []string       `json:"room_ids,omitempty"`
 }
 
 func (d *deps) postMessage(_ context.Context, _ *gomcp.CallToolRequest, in postMessageIn) (*gomcp.CallToolResult, postMessageOut, error) {
@@ -721,10 +740,10 @@ func (d *deps) postMessage(_ context.Context, _ *gomcp.CallToolRequest, in postM
 		return nil, postMessageOut{}, fmt.Errorf("session_id 不可為空")
 	}
 	text := strings.TrimSpace(in.Text)
-	if text == "" {
+	if text == "" && !hasPostImages(in) {
 		return nil, postMessageOut{}, fmt.Errorf("text 不可為空")
 	}
-	_, err := d.db.GetSession(sessionID)
+	sess, err := d.db.GetSession(sessionID)
 	if err != nil {
 		return nil, postMessageOut{}, fmt.Errorf("session_id 不存在: %w", err)
 	}
@@ -738,6 +757,9 @@ func (d *deps) postMessage(_ context.Context, _ *gomcp.CallToolRequest, in postM
 	}
 
 	author := strings.TrimSpace(in.Author)
+	if hasPostImages(in) {
+		return d.deliverPostImages(sess, role, text, author, in)
+	}
 	msgID, createdAt, err := d.db.AddMessageWithID(sessionID, role, text, author)
 	if err != nil {
 		return nil, postMessageOut{}, fmt.Errorf("寫入訊息失敗: %w", err)
@@ -774,12 +796,12 @@ func registerTools(s *gomcp.Server, d *deps) {
 	gomcp.AddTool(s, &gomcp.Tool{Name: "list_sessions", Description: "列出所有 session。互問／討論時用 id 當 send_message 的 session_id；自己的 id 見使用者 prompt 的 [miniapp] self，或上次諮詢信封的「你是 session_id」"}, d.listSessions)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "create_session", Description: "建立新 session"}, d.createSession)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "delete_session", Description: "刪除 session"}, d.deleteSession)
-	gomcp.AddTool(s, &gomcp.Tool{Name: "get_messages", Description: "讀取 session 歷史訊息；建議帶 since/until/limit，避免整包歷史"}, d.getMessages)
+	gomcp.AddTool(s, &gomcp.Tool{Name: "get_messages", Description: "讀取 session 歷史訊息；建議帶 since/until/limit，避免整包歷史。圖片訊息的 attachments 為 id、url、mime、bytes，不含 sha256；sha256 只在 post_message 這次回執。讀歷史不重算，也不沿用舊雜湊。這不是已讀"}, d.getMessages)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "get_queue", Description: "讀取指定 session 尚未開始執行的訊息佇列（FIFO，含 id、內容、署名、時間與附件）及 queue_paused；空佇列回傳 []"}, d.getQueue)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "delete_queue_message", Description: "刪除指定 session 的單則待執行訊息，message_id 取自 get_queue 的 id，並即時更新畫面。訊息已不在該佇列時仍回傳 ok；不會中斷已開始的任務或解除佇列暫停"}, d.deleteQueueMessage)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "list_activity", Description: "依時間列出跨 session 活動（日報／秘書用）。since 建議帶時區。預設只回 user 訊息。操控 session 仍用 create_session / send_message"}, d.listActivity)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "send_message", Description: "非阻塞送出給目標 session（對方忙碌時排入佇列）。session 互問／討論時必填 from_session_id（你自己的 miniapp session_id），伺服器會蓋上自介與回覆署名；立刻回傳，用 get_status 輪詢結果。要直接拿回答請用 ask_session"}, d.sendMessage)
-	gomcp.AddTool(s, &gomcp.Tool{Name: "post_message", Description: "主動將回覆、通知或執行結果寫入指定 session，立刻呈現在聊天畫面中，不觸發目標 session 的 Agent 執行（不消耗額外 token、不啟動 CLI）。目標 session 正在執行其他任務時亦可寫入"}, d.postMessage)
+	gomcp.AddTool(s, &gomcp.Tool{Name: "post_message", Description: "主動將回覆、通知或執行結果寫入指定 session，立刻呈現在聊天畫面中，不觸發目標 session 的 Agent 執行（不消耗額外 token、不啟動 CLI）。目標 session 正在執行其他任務時亦可寫入。圖片只接受 image_paths（目標 session 工作目錄或該 session 受控上傳區內、可完整解碼的 png/jpeg/gif；webp 沒有解碼器所以不接受）或該 session 既有 attachment_ids。回執的 sha256 是本次核對過的位元組；stored_verified 必須與這份雜湊一致；工作區外的圖要先複製進工作目錄，不讀任意路徑、URL 或 base64，也不刪來源。沒有 delivery=stored_verified 就不要說已送到。stored_verified 只代表該 session 已存且回讀到同一份位元組，不是畫面已載入，也不是使用者已讀。room_ids 只列出這則訊息實際出現的工作室時間軸；沒有這個欄位代表沒有出現在工作室，worker 或私人 session 有圖不等於使用者的工作室有圖。沒有冪等鍵：錯誤且沒有 message_id 才可重試；已有 message_id 但不是 stored_verified 時不要重送。單次最多 8 張、每張 8MB"}, d.postMessage)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "ask_session", Description: "阻塞式詢問：送出後等目標 session 這一輪回答完才回傳（含回答全文）。目標須閒置；互問時帶 from_session_id。可設 timeout_sec，逾時回部分回覆。等待期間若同一 session 被其他操作（send_message、set_model 等）介入，會回傳 error 說明結果可能不完整"}, d.askSession)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "get_status", Description: "查詢 session 目前狀態與累積回覆內容"}, d.getStatus)
 	gomcp.AddTool(s, &gomcp.Tool{Name: "respond_permission", Description: "回覆待授權的工具請求（allow_once/deny_once）"}, d.respondPermission)

@@ -19,6 +19,8 @@ type Attachment struct {
 	Size        int64  `json:"size"`
 	CreatedAt   string `json:"created_at"`
 	URL         string `json:"url"`
+	// AcceptedSHA256 是這次讀入並接受的位元組雜湊，只跟這筆記憶體附件走，不寫進資料庫。
+	AcceptedSHA256 string `json:"-"`
 }
 
 func (db *DB) AddAttachment(a *Attachment) error {

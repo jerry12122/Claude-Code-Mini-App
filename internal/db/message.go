@@ -62,6 +62,137 @@ func (db *DB) AddMessageWithID(sessionID, role, content, author string) (int64, 
 	return id, now, err
 }
 
+// MessageByID 回讀同一 session 的一則訊息與其附件。附件必須都能解析，否則視為回讀失敗。
+func (db *DB) MessageByID(sessionID string, id int64) (*Message, error) {
+	var m Message
+	var ids string
+	err := db.QueryRow(`SELECT id, session_id, role, content, status, created_at, attachment_ids, author FROM messages WHERE session_id = ? AND id = ?`, sessionID, id).
+		Scan(&m.ID, &m.SessionID, &m.Role, &m.Content, &m.Status, &m.CreatedAt, &ids, &m.Author)
+	if err != nil {
+		return nil, err
+	}
+	m.AttachmentIDs, err = decodeAttachmentIDs(ids)
+	if err != nil {
+		return nil, err
+	}
+	m.Attachments, err = db.ResolveAttachments(sessionID, m.AttachmentIDs)
+	if err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+// BindImageMessage 在同一個交易寫入新附件與一則已完成的 assistant／system 訊息。
+func (db *DB) BindImageMessage(sessionID, role, content, author string, fresh []Attachment, ids []string) (*Message, error) {
+	if role != "claude" && role != "system" {
+		return nil, errors.New("圖片只寫入 assistant 或 system")
+	}
+	seen := map[string]bool{}
+	for _, id := range ids {
+		if id == "" || seen[id] {
+			return nil, ErrInvalidAttachment
+		}
+		seen[id] = true
+	}
+	freshIDs := map[string]bool{}
+	for _, a := range fresh {
+		if a.ID == "" || a.SessionID != sessionID || a.StorageName == "" || !seen[a.ID] || freshIDs[a.ID] {
+			return nil, ErrInvalidAttachment
+		}
+		freshIDs[a.ID] = true
+	}
+	var existing []string
+	for _, id := range ids {
+		if !freshIDs[id] {
+			existing = append(existing, id)
+		}
+	}
+	resolved, err := db.ResolveAttachments(sessionID, existing)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]Attachment, len(ids))
+	for _, a := range resolved {
+		byID[a.ID] = a
+	}
+	for _, a := range fresh {
+		byID[a.ID] = a
+	}
+	ordered := make([]Attachment, 0, len(ids))
+	for _, id := range ids {
+		a, ok := byID[id]
+		if !ok {
+			return nil, ErrInvalidAttachment
+		}
+		ordered = append(ordered, a)
+	}
+	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	for _, a := range fresh {
+		if _, err := tx.Exec(`INSERT INTO attachments (id, session_id, original_name, storage_name, mime_type, size) VALUES (?, ?, ?, ?, ?, ?)`,
+			a.ID, sessionID, a.Name, a.StorageName, a.MimeType, a.Size); err != nil {
+			return nil, err
+		}
+	}
+	res, err := tx.Exec(`INSERT INTO messages (session_id, role, content, status, attachment_ids, author, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		sessionID, role, content, MessageStatusDone, attachmentIDsJSON(ids), author, now)
+	if err != nil {
+		return nil, err
+	}
+	msgID, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &Message{
+		ID: msgID, SessionID: sessionID, Role: role, Content: content, Status: MessageStatusDone,
+		CreatedAt: now, Author: author, AttachmentIDs: append([]string(nil), ids...), Attachments: ordered,
+	}, nil
+}
+
+// DeleteImageMessage 撤回剛寫入的圖片訊息，並只刪這次新增、且已不再被引用的附件列。
+func (db *DB) DeleteImageMessage(sessionID string, messageID int64, freshIDs []string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`DELETE FROM messages WHERE session_id = ? AND id = ?`, sessionID, messageID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return nil
+	}
+	for _, id := range freshIDs {
+		var refs int
+		err := tx.QueryRow(`SELECT
+			(SELECT COUNT(*) FROM messages m, json_each(m.attachment_ids) j WHERE j.value = ?)
+			+ (SELECT COUNT(*) FROM queued_messages q, json_each(q.attachment_ids) j WHERE j.value = ?)
+			+ (SELECT COUNT(*) FROM attachment_access g WHERE g.attachment_id = ?)`, id, id, id).Scan(&refs)
+		if err != nil {
+			return err
+		}
+		if refs > 0 {
+			continue
+		}
+		if _, err := tx.Exec(`DELETE FROM attachments WHERE session_id = ? AND id = ?`, sessionID, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // LatestUserMessage 回傳 session 最近一則 user 訊息內容；沒有時回空字串。
 func (db *DB) LatestUserMessage(sessionID string) (string, error) {
 	var content string

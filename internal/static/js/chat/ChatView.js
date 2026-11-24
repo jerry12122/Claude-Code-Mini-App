@@ -1120,7 +1120,7 @@ function ChatView({ session, onBack, showBack = true, fullHeight = true, usePerm
         {(m, i) => {
           const userParts = m.role === 'user' ? attachmentMessageParts(m, session.id) : null;
           // 收到的訊息（Telegram 朋友傳的圖片／檔案）也要顯示附件卡片；純附件時內容為空，不能當成「思考中」。
-          const claudeAtts = m.role === 'claude' && Array.isArray(m.attachments) && m.attachments.length ? attachmentMessageParts(m, session.id).attachments : [];
+          const claudeAtts = (m.role === 'claude' || m.role === 'system') && Array.isArray(m.attachments) && m.attachments.length ? attachmentMessageParts(m, session.id).attachments : [];
           const msgKey = m.id != null ? String(m.id) : `idx-${i}`;
           const forwardBody =
             m.role === 'claude' && String(m.resultText || '').trim() !== ''

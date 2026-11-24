@@ -111,13 +111,19 @@ func NotifySessionsChanged() {
 
 // BroadcastSessionMessage 向指定 session 的所有 WS 訂閱者推播一則新訊息。
 func BroadcastSessionMessage(sessionID, msgType, content, role, author string, msgID int64, createdAt string) {
+	BroadcastSessionMessageAttachments(sessionID, msgType, content, role, author, msgID, createdAt, nil)
+}
+
+// BroadcastSessionMessageAttachments 與 BroadcastSessionMessage 相同，並帶上已綁定的附件。
+func BroadcastSessionMessageAttachments(sessionID, msgType, content, role, author string, msgID int64, createdAt string, attachments []db.Attachment) {
 	hub.Broadcast(sessionID, serverMsg{
-		Type:      msgType,
-		Role:      role,
-		Content:   content,
-		ID:        msgID,
-		Author:    author,
-		CreatedAt: createdAt,
+		Type:        msgType,
+		Role:        role,
+		Content:     content,
+		ID:          msgID,
+		Author:      author,
+		CreatedAt:   createdAt,
+		Attachments: attachments,
 	})
 }
 
