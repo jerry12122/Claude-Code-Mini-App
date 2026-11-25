@@ -27,6 +27,7 @@ func NewHTTPHandler(database *db.DB, quotaSvc *quota.Service, reg *Registry, max
 	}
 
 	server := gomcp.NewServer(&gomcp.Implementation{Name: "claude-miniapp", Version: "1.0.0"}, nil)
+	server.AddReceivingMiddleware(toolCallLogMiddleware)
 	registerTools(server, d)
 	registerRoomTools(server, database, "room_", func(_ *gomcp.CallToolRequest, roomID string) (string, string, error) {
 		pm, err := database.RoomPM(roomID)
